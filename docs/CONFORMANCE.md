@@ -35,7 +35,7 @@ Inspection: QGDXC-GEN-0004 — Server semantics are limited to the pinned source
 
 Inspection: QGDXC-GEN-0005 — Session output has one construction path: configured login, fixed startup literals, and caller-generated readiness token. No posting or arbitrary command API is exposed.
 
-Inspection: QGDXC-IO-0001 — Cargo metadata checks library dependency declarations on every target, including optional and renamed packages. The library has no normal, build, or development dependencies. Source policy scans every Rust file in the library, including tests and inactive source; all time and transport outcomes enter through caller methods.
+Inspection: QGDXC-IO-0001 — Cargo metadata checks library dependency declarations on every target, including optional and renamed packages. The library has no normal, build, or development dependencies. Source policy scans every Rust file in the library, including tests and inactive source. It conservatively reserves the `path` token to reject plain and nested conditional module redirection. An offline Cargo check supplies compiler dep-info for both production and unit-test library artifacts; canonical source paths are confined to `crates/qso-graph-dxcluster/src`. The compiled external-module and symlink planted tests check that confinement independently of attribute detection. All time and transport outcomes enter through caller methods.
 
 Inspection: QGDXC-SEC-0001 — One-byte admission bounds each returned batch, line storage is bounded, and numeric conversions are checked. Fuzz targets cover values, spots, enhanced input, non-spot input, RBN comments, framing, Telnet, and sessions. Fuzz execution status is reported separately by verify.
 

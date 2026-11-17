@@ -445,6 +445,18 @@
         {
           "file": "xtask/src/checks.rs",
           "name": "metadata_rejects_dependency_tables_on_every_target"
+        },
+        {
+          "file": "xtask/src/checks.rs",
+          "name": "source_policy_rejects_conditional_module_paths"
+        },
+        {
+          "file": "xtask/src/checks.rs",
+          "name": "dep_info_rejects_compiled_external_module_and_symlink"
+        },
+        {
+          "file": "xtask/src/checks.rs",
+          "name": "dep_info_reads_escaped_paths_and_ignores_phony_rules"
         }
       ],
       "vectors": []

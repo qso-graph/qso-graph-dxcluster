@@ -234,6 +234,9 @@ pub fn source_violation(s: &str, library: bool) -> bool {
                     "thread",
                     "os",
                     "ffi",
+                    // Reserve the attribute name conservatively, including
+                    // inactive/nested cfg_attr and whitespace/comment variants.
+                    "path",
                 ]
                 .contains(w)
             })
@@ -302,8 +305,135 @@ fn dependency_policy(root: &Path) -> Result<(), String> {
     }
     library_dependencies(&serde_json::from_slice(&output.stdout).map_err(|e| e.to_string())?)
 }
+// Read rustc's first Make-style rule, whose prerequisites are the complete
+// source inputs. Keep escaped spaces and Windows path separators intact.
+fn dep_info_paths(source: &str) -> Result<Vec<PathBuf>, String> {
+    let source = source.replace("\\\r\n", "").replace("\\\n", "");
+    let (_, prerequisites) = source
+        .lines()
+        .next()
+        .and_then(|line| line.split_once(": "))
+        .ok_or("missing dep-info prerequisite rule")?;
+    let mut paths = vec![];
+    let mut word = String::new();
+    let mut chars = prerequisites.chars().peekable();
+    while let Some(c) = chars.next() {
+        if c == '\\'
+            && chars
+                .peek()
+                .is_some_and(|c| matches!(c, ' ' | '\t' | '#' | '\\'))
+        {
+            word.push(chars.next().unwrap());
+        } else if c.is_whitespace() {
+            if !word.is_empty() {
+                paths.push(PathBuf::from(std::mem::take(&mut word)));
+            }
+        } else {
+            word.push(c);
+        }
+    }
+    if !word.is_empty() {
+        paths.push(PathBuf::from(word));
+    }
+    if paths.is_empty() {
+        return Err("empty dep-info prerequisite rule".into());
+    }
+    Ok(paths)
+}
+fn compiled_library_sources(root: &Path) -> Result<BTreeSet<PathBuf>, String> {
+    let root = root.canonicalize().map_err(|e| e.to_string())?;
+    let allowed = root.join("crates/qso-graph-dxcluster/src");
+    let manifest = root.join("crates/qso-graph-dxcluster/Cargo.toml");
+    let output = std::process::Command::new("cargo")
+        .args([
+            "check",
+            "--locked",
+            "--offline",
+            "-p",
+            "qso-graph-dxcluster",
+            "--lib",
+            "--tests",
+            "--all-features",
+            "--message-format=json",
+            "--target-dir",
+        ])
+        .arg(root.join("target/policy-sources"))
+        .current_dir(&root)
+        .output()
+        .map_err(|e| e.to_string())?;
+    if !output.status.success() {
+        return Err(format!(
+            "library source compilation failed: {}\n{}",
+            String::from_utf8_lossy(&output.stderr),
+            String::from_utf8_lossy(&output.stdout)
+        ));
+    }
+    let mut sources = BTreeSet::new();
+    for line in output
+        .stdout
+        .split(|b| *b == b'\n')
+        .filter(|l| !l.is_empty())
+    {
+        let artifact: Value = serde_json::from_slice(line).map_err(|e| e.to_string())?;
+        if artifact["reason"] != "compiler-artifact"
+            || artifact["target"]["kind"] != serde_json::json!(["lib"])
+            || artifact["manifest_path"]
+                .as_str()
+                .and_then(|p| Path::new(p).canonicalize().ok())
+                != Some(manifest.clone())
+        {
+            continue;
+        }
+        let metadata = artifact["filenames"]
+            .as_array()
+            .and_then(|names| {
+                names
+                    .iter()
+                    .filter_map(Value::as_str)
+                    .find(|p| p.ends_with(".rmeta"))
+            })
+            .map(Path::new)
+            .ok_or("missing library metadata artifact")?;
+        let stem = metadata
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .and_then(|s| s.strip_prefix("lib"))
+            .ok_or("invalid library metadata artifact")?;
+        let dep_info = metadata.with_file_name(format!("{stem}.d"));
+        let dependencies = fs::read_to_string(&dep_info)
+            .map_err(|e| format!("cannot read {}: {e}", dep_info.display()))?;
+        for path in dep_info_paths(&dependencies)? {
+            if !path.extension().is_some_and(|e| e == "rs") {
+                continue;
+            }
+            let path = root.join(path).canonicalize().map_err(|e| e.to_string())?;
+            if !path.starts_with(&allowed) {
+                return Err(format!(
+                    "compiled library source outside src: {}",
+                    path.display()
+                ));
+            }
+            sources.insert(path);
+        }
+    }
+    if !sources.contains(&allowed.join("lib.rs")) {
+        return Err("library root missing from compiler dep-info".into());
+    }
+    Ok(sources)
+}
 pub fn policy() -> Result<(), String> {
     dependency_policy(Path::new("."))?;
+    let sources = compiled_library_sources(Path::new("."))?;
+    for source in &sources {
+        let text = fs::read_to_string(source).map_err(|e| e.to_string())?;
+        if source_violation(&text, true) {
+            return Err(format!("compiled source policy: {}", source.display()));
+        }
+    }
+    println!(
+        "{} compiled library sources confined to src by compiler dep-info",
+        sources.len()
+    );
     // Planted violations include inactive code, grouped imports, aliases and redirection.
     for planted in [
         "use std::net::TcpStream;",
@@ -319,8 +449,10 @@ pub fn policy() -> Result<(), String> {
         "unsafe {}",
         "include!(\"extra.rs\");",
         "#[path=\"extra.rs\"] mod hidden;",
+        "#[cfg_attr(all(), path = \"../../../shared.rs\")] mod shared;",
+        "#[cfg_attr(any(), path = \"../../../shared.rs\")] mod shared;",
     ] {
-        if !source_violation(planted, true) && !planted.contains("#[path") {
+        if !source_violation(planted, true) {
             return Err("policy planted-case detector failed".into());
         }
     }
@@ -802,6 +934,90 @@ pub fn seed_fuzz() -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn dep_info_rejects_compiled_external_module_and_symlink() {
+        // QGDXC-IO-0001: compile the planted module, without executing it.
+        // Check locations independently of the attribute-name source detector.
+        let root = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../target")
+            .join(format!("policy sources-{}", std::process::id()));
+        let source = root.join("crates/qso-graph-dxcluster/src");
+        fs::create_dir_all(&source).unwrap();
+        fs::write(root.join("Cargo.toml"), "# SPDX-License-Identifier: GPL-3.0-or-later\n[workspace]\nmembers = [\"crates/qso-graph-dxcluster\"]\nresolver = \"3\"\n").unwrap();
+        fs::write(root.join("Cargo.lock"), "# SPDX-License-Identifier: GPL-3.0-or-later\nversion = 4\n[[package]]\nname = \"qso-graph-dxcluster\"\nversion = \"0.1.0\"\n").unwrap();
+        fs::write(source.join("../Cargo.toml"), "# SPDX-License-Identifier: GPL-3.0-or-later\n[package]\nname = \"qso-graph-dxcluster\"\nversion = \"0.1.0\"\nedition = \"2024\"\n").unwrap();
+        let inside = "// SPDX-License-Identifier: GPL-3.0-or-later\npub fn probe() {}\n";
+        let library = "// SPDX-License-Identifier: GPL-3.0-or-later\n#![forbid(unsafe_code)]\nmod inside;\npub struct Session;\nimpl Session { pub fn new() -> Self { inside::probe(); Self } }\n";
+        fs::write(source.join("inside.rs"), inside).unwrap();
+        fs::write(source.join("lib.rs"), library).unwrap();
+        let baseline = compiled_library_sources(&root).unwrap();
+        assert_eq!(baseline.len(), 2);
+        assert!(baseline.contains(&source.join("inside.rs").canonicalize().unwrap()));
+        fs::write(root.join("shared.rs"), "// SPDX-License-Identifier: GPL-3.0-or-later\npub fn probe() { let _ = std::fs::metadata(\"Cargo.toml\"); }\n").unwrap();
+        let redirected = format!(
+            "{}\n#[cfg_attr(all(), path = \"../../../shared.rs\")] mod shared;\n",
+            library.replace(
+                "inside::probe();",
+                "inside::probe(); crate::shared::probe();"
+            )
+        );
+        fs::write(source.join("lib.rs"), &redirected).unwrap();
+        assert!(source_violation(&redirected, true));
+        let error = compiled_library_sources(&root).unwrap_err();
+        assert!(
+            error.contains("compiled library source outside src:"),
+            "{error}"
+        );
+        assert!(error.contains("shared.rs"), "{error}");
+        fs::write(source.join("lib.rs"), library).unwrap();
+        assert_eq!(compiled_library_sources(&root).unwrap(), baseline);
+        // A conventional module name can also escape through a symlink, with
+        // no path attribute at all. Canonical source locations catch this.
+        #[cfg(unix)]
+        {
+            fs::remove_file(source.join("inside.rs")).unwrap();
+            std::os::unix::fs::symlink(
+                root.join("shared.rs").canonicalize().unwrap(),
+                source.join("inside.rs"),
+            )
+            .unwrap();
+            let error = compiled_library_sources(&root).unwrap_err();
+            assert!(
+                error.contains("compiled library source outside src:"),
+                "{error}"
+            );
+            fs::remove_file(source.join("inside.rs")).unwrap();
+            fs::write(source.join("inside.rs"), inside).unwrap();
+            assert_eq!(compiled_library_sources(&root).unwrap(), baseline);
+        }
+        fs::remove_dir_all(root).unwrap();
+    }
+    #[test]
+    fn dep_info_reads_escaped_paths_and_ignores_phony_rules() {
+        let source = "artifact.d: src/lib.rs src/nested\\ space.rs \\\n C:\\project\\src\\values.rs\n\nsrc/lib.rs:\n";
+        assert_eq!(
+            dep_info_paths(source).unwrap(),
+            vec![
+                PathBuf::from("src/lib.rs"),
+                PathBuf::from("src/nested space.rs"),
+                PathBuf::from("C:\\project\\src\\values.rs"),
+            ]
+        );
+        assert!(dep_info_paths("").is_err());
+        assert!(dep_info_paths("artifact.d: \n").is_err());
+    }
+    #[test]
+    fn source_policy_rejects_conditional_module_paths() {
+        // QGDXC-IO-0001: include inactive and nested attribute forms.
+        for source in [
+            "#[path = \"../../../shared.rs\"] mod shared;",
+            "#[cfg_attr(all(), path = \"../../../shared.rs\")] mod shared;",
+            "#[cfg_attr(any(), path = \"../../../shared.rs\")] mod shared;",
+            "# [cfg_attr(all(), cfg_attr(all(), path /* gap */ = \"../../../shared.rs\"))] mod shared;",
+        ] {
+            assert!(source_violation(source, true), "accepted {source}");
+        }
+    }
     #[test]
     fn metadata_rejects_dependency_tables_on_every_target() {
         // QGDXC-IO-0001: Cargo, rather than manifest text matching, identifies
