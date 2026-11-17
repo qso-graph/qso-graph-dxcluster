@@ -95,7 +95,7 @@ Results remain subject to `QGDXC-SEC-0005`.
 
 | Order | Recognition | Content result |
 |---|---|---|
-| 1 | Framer-designated blank, partial, or overlong frame | `unrecognized_line` with the framing reason; no semantic parsing |
+| 1 | Framer-designated blank, partial, or overlong frame (except an annex-defined terminal notice discovered during end-of-input finalization under `QGDXC-SES-0014`) | `unrecognized_line` with the framing reason; no semantic parsing |
 | 2 | Applicable password/login prompt, then annex-defined refusal/displacement notice | `prompt_status` with `password_prompt`, `login_prompt`, or `notice`, respectively |
 | 3 | Complete annex identity signature, full ready prompt, or current expected setup acknowledgment/token-only reply | `prompt_status` with `server_identity`, `ready_prompt`, or `setup_reply`, respectively; a prompt that also identifies the profile uses `ready_prompt` |
 | 4 | In `auto` with no identified profile, literal prefix `DX de ` or `CC11^` at frame start | `unrecognized_line`/`before_identification`; evidence follows `QGDXC-EVT-0001`; no delivery service is inferred from the comment or spotter suffix |
