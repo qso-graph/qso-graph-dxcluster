@@ -284,8 +284,7 @@ Password handling is defined only by `QGDXC-SES-0003`.
 ### 7.2 Vector format
 
 This format is incorporated by `QGDXC-VEC-0001`. A vector is one UTF-8 JSON
-object; an optional `SPDX-License-Identifier` metadata member identifies its license and has no protocol meaning; a suite is NDJSON with one object per physical line. Fixture generation
-is a later task. There are no vector files in this draft.
+object; an optional `SPDX-License-Identifier` metadata member identifies its license and has no protocol meaning; a suite is NDJSON with one object per physical line. Published vectors live in `vectors/`; implementation conformance is reported separately.
 
 | Member | Type and meaning |
 |---|---|

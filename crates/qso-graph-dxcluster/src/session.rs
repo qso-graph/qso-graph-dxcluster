@@ -19,6 +19,7 @@ pub struct Config {
     pub window_ms: u64,
     pub window_lines: usize,
     pub custom_prompt: Option<String>,
+    pub supported_setup_errors: Vec<String>,
 }
 impl Config {
     pub fn new(host: String, port: u16, call: String, profile: Profile) -> Self {
@@ -38,6 +39,7 @@ impl Config {
             window_ms: 20000,
             window_lines: 20,
             custom_prompt: None,
+            supported_setup_errors: Vec::new(),
         }
     }
     pub fn validate(&self) -> Result<(), &'static str> {
@@ -79,6 +81,14 @@ impl Config {
             || self.window_lines > 20
         {
             return Err("invalid output pacing");
+        }
+        if self.supported_setup_errors.len() > 16
+            || self
+                .supported_setup_errors
+                .iter()
+                .any(|s| s.is_empty() || s.len() > self.line_limit)
+        {
+            return Err("invalid setup-error recognizer configuration");
         }
         if self.custom_prompt.as_ref().is_some_and(|s| {
             s.len() > self.line_limit || !matches!(s.as_bytes().last(), Some(b'>' | b':'))
@@ -208,6 +218,7 @@ pub struct Session {
     outstanding: bool,
     evidence: Option<Profile>,
     terminal: Option<&'static str>,
+    terminal_evidence: Option<Event>,
     flushing: bool,
 }
 impl Session {
@@ -255,6 +266,7 @@ impl Session {
             outstanding: false,
             evidence: None,
             terminal: None,
+            terminal_evidence: None,
             flushing: false,
         })
     }
@@ -264,6 +276,9 @@ impl Session {
         }
         self.now = now;
         Ok(())
+    }
+    pub fn current_time(&self) -> u64 {
+        self.now
     }
     pub fn deadline(&self, t: Timer) -> Option<u64> {
         self.timers[t as usize]
@@ -342,6 +357,7 @@ impl Session {
             .filter(|n| *n <= values::MAX_INTEGER)
             .ok_or("attempt limit")?;
         self.terminal = None;
+        self.terminal_evidence = None;
         self.profile = self.config.profile;
         self.evidence = None;
         self.setup_step = 0;
@@ -459,7 +475,7 @@ impl Session {
         }
         if matches!(
             self.state,
-            State::AwaitIdentity | State::Setup | State::Ready
+            State::AwaitLogin | State::AwaitIdentity | State::Setup | State::Ready
         ) {
             let detected = if status.as_deref() == Some("ready_prompt") {
                 parser::ready_profile(&raw, &self.parser.context)
@@ -498,9 +514,11 @@ impl Session {
                 if text == self.reply() && status.as_deref() == Some("setup_reply") {
                     self.ack = true;
                 }
-                if text.starts_with("Invalid command")
-                    || text.starts_with("Unknown command")
-                    || text.starts_with("Error")
+                if self
+                    .config
+                    .supported_setup_errors
+                    .iter()
+                    .any(|supported| supported == &text)
                 {
                     self.end("setup_failed", Some(&e), false, b)?;
                 } else if status.as_deref() == Some("ready_prompt") && self.ack {
@@ -623,6 +641,7 @@ impl Session {
         if self.flushing {
             if reason != "cancelled" && self.terminal.is_none() {
                 self.terminal = Some(reason);
+                self.terminal_evidence = e.cloned();
             }
             return Ok(());
         }
@@ -639,6 +658,12 @@ impl Session {
                 .or(telnet_failed.then_some("resource_limit"))
                 .unwrap_or(reason)
         };
+        let evidence = if reason == "cancelled" {
+            e.cloned()
+        } else {
+            self.terminal_evidence.take().or_else(|| e.cloned())
+        };
+        let e = evidence.as_ref();
         for t in Timer::ALL {
             self.cancel_timer(t, b);
         }

@@ -127,3 +127,47 @@ pub fn token(s: &str) -> bool {
             .iter()
             .all(|b| b.is_ascii_digit() || (b'A'..=b'F').contains(b))
 }
+
+/// Validated UTC receipt timestamps; receipt time is never a spot-date source.
+pub fn receipt(s: &str) -> bool {
+    if s.len() < 20 || !s.is_ascii() {
+        return false;
+    }
+    let b = s.as_bytes();
+    if b[4] != b'-' || b[7] != b'-' || b[10] != b'T' || b[13] != b':' || b[16] != b':' {
+        return false;
+    }
+    let Some(tail) = s[19..]
+        .strip_suffix('Z')
+        .or_else(|| s[19..].strip_suffix("+00:00"))
+    else {
+        return false;
+    };
+    if !tail.is_empty()
+        && (!tail.starts_with('.')
+            || tail.len() < 2
+            || !tail[1..].bytes().all(|b| b.is_ascii_digit()))
+    {
+        return false;
+    }
+    let parts = [
+        &s[..4],
+        &s[5..7],
+        &s[8..10],
+        &s[11..13],
+        &s[14..16],
+        &s[17..19],
+    ];
+    if parts.iter().any(|p| !p.bytes().all(|b| b.is_ascii_digit())) {
+        return false;
+    }
+    let n: Vec<u32> = parts.iter().filter_map(|p| p.parse().ok()).collect();
+    n.len() == 6
+        && n[0] > 0
+        && (1..=12).contains(&n[1])
+        && n[2] > 0
+        && n[2] <= days(n[1], n[0])
+        && n[3] < 24
+        && n[4] < 60
+        && n[5] <= 60
+}

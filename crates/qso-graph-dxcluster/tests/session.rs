@@ -250,3 +250,29 @@ fn identity_mismatch_timeout_and_resource_flush() {
             .any(|e| e.get("reason") == Some("resource_limit"))
     );
 }
+
+#[test]
+fn silence_uses_application_bytes_and_custom_context() {
+    // QGDXC-SES-0008 QGDXC-IO-0004 QGDXC-DSP-0002
+    let mut s = session(Profile::Rbn);
+    s.config.silence_ms = Some(900000);
+    begin(&mut s);
+    input(&mut s, 100, b"Q1ABC de RELAY 1-Nov-2026 18:32Z >");
+    assert_eq!(s.deadline(Timer::Silence), Some(900100));
+    input(&mut s, 1000, &[255, 251, 1]);
+    assert_eq!(s.deadline(Timer::Silence), Some(900100));
+    input(&mut s, 2000, b"x");
+    assert_eq!(s.deadline(Timer::Silence), Some(902000));
+    let mut c = Context::ready(Profile::DxSpider);
+    c.identity = "Q1ABC".into();
+    c.custom_prompt = Some("Q custom:>".into());
+    let mut p = Parser::new(c, 256).unwrap();
+    let mut events = vec![];
+    for b in b"Q custom:>  \r\n" {
+        events.extend(p.push(*b, None).unwrap());
+    }
+    assert_eq!(events.len(), 2);
+    assert_eq!(events[0].raw_line, b"Q custom:>");
+    assert_eq!(events[1].get("reason"), Some("blank"));
+    assert_eq!(events[1].raw_line, b"  ");
+}

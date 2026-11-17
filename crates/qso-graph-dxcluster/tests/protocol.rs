@@ -59,7 +59,7 @@ fn exact_values_and_identity() {
     assert!(values::date("1-Jan-0000").is_none());
     assert!(values::grid("aR09"));
     assert!(!values::grid("SS99"));
-    assert!(!values::grid("AA00aa"));
+    assert!(!values::grid("QA00aa"));
 }
 #[test]
 fn delimiters_bounds_and_encoding() {
@@ -320,5 +320,51 @@ fn base64_roundtrip() {
     }
     for s in ["A===", "AA=A", "AB==", "AAAA=", "!!!!"] {
         assert!(unbase64(s).is_err());
+    }
+}
+
+#[test]
+fn arbitrary_bytes_and_receipt_times() {
+    // QGDXC-SEC-0001 QGDXC-IO-0005 QGDXC-EVT-0001
+    let mut seed = 1u64;
+    for profile in [
+        Profile::Auto,
+        Profile::DxSpider,
+        Profile::ArCluster,
+        Profile::CcCluster,
+        Profile::Rbn,
+    ] {
+        for retain in [false, true] {
+            let mut context = Context::ready(profile);
+            context.retain_third_party_data = retain;
+            let mut parser = Parser::new(context, 256).unwrap();
+            for _ in 0..20000 {
+                seed = seed.wrapping_mul(6364136223846793005).wrapping_add(1);
+                let byte = (seed >> 32) as u8;
+                match parser.push(byte, None) {
+                    Ok(events) => {
+                        assert!(events.len() <= 3);
+                        for e in events {
+                            assert!(e.raw_line.len() <= 256);
+                        }
+                    }
+                    Err(_) => {
+                        let _ = parser.eof(None);
+                    }
+                }
+            }
+            let _ = parser.eof(None);
+        }
+    }
+    for good in ["2026-11-16T18:32:00Z", "2000-02-29T00:00:00.123+00:00"] {
+        assert!(values::receipt(good));
+    }
+    for bad in [
+        "1900-02-29T00:00:00Z",
+        "2026-11-16T24:00:00Z",
+        "2026-11-16T00:00:00+01:00",
+        "2026-11-16\n00:00:00Z",
+    ] {
+        assert!(!values::receipt(bad));
     }
 }

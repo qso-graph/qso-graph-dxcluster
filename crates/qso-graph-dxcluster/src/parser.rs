@@ -53,6 +53,9 @@ impl Parser {
     }
     /// At most three events per byte; the caller drains before its next call.
     pub fn push(&mut self, b: u8, received_at: Option<&str>) -> Result<Vec<Event>, &'static str> {
+        if received_at.is_some_and(|s| !v::receipt(s)) {
+            return Err("invalid UTC receipt timestamp");
+        }
         self.application = false;
         let Some(b) = self.telnet.push(b)? else {
             return Ok(Vec::new());
@@ -179,7 +182,7 @@ pub fn identity_profile(s: &str, c: &Context) -> Option<Profile> {
             return Some(Profile::DxSpider);
         }
     }
-    if s.starts_with("Running CC Cluster software version ") {
+    if (c.login || c.identity_context) && s.starts_with("Running CC Cluster software version ") {
         return Some(Profile::CcCluster);
     }
     None
