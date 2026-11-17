@@ -1,0 +1,69 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+[package]
+name = "qso-graph-dxcluster-fuzz"
+version = "0.0.0"
+edition = "2024"
+license = "GPL-3.0-or-later"
+publish = false
+[package.metadata]
+cargo-fuzz = true
+[workspace]
+[dependencies]
+libfuzzer-sys = "=0.4.10"
+qso-graph-dxcluster = { path = "../crates/qso-graph-dxcluster", version = "=0.1.0" }
+
+[[bin]]
+name = "values"
+path = "fuzz_targets/values.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "dx_de"
+path = "fuzz_targets/dx_de.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "cc11"
+path = "fuzz_targets/cc11.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "other"
+path = "fuzz_targets/other.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "rbn"
+path = "fuzz_targets/rbn.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "framer"
+path = "fuzz_targets/framer.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "telnet"
+path = "fuzz_targets/telnet.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "session"
+path = "fuzz_targets/session.rs"
+test = false
+doc = false
+bench = false

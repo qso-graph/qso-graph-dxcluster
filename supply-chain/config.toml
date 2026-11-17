@@ -1,0 +1,134 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+[cargo-vet]
+version = "0.10"
+
+[imports.bytecode-alliance]
+url = "https://raw.githubusercontent.com/bytecodealliance/wasmtime/main/supply-chain/audits.toml"
+[imports.google]
+url = "https://raw.githubusercontent.com/google/rust-crate-audits/main/audits.toml"
+[imports.mozilla]
+url = "https://raw.githubusercontent.com/mozilla/supply-chain/main/audits.toml"
+[imports.zcash]
+url = "https://raw.githubusercontent.com/zcash/rust-ecosystem/main/supply-chain/audits.toml"
+
+[policy.qso-graph-dxcluster]
+audit-as-crates-io = false
+[policy.qso-graph-dxcluster-cli]
+audit-as-crates-io = false
+[policy.xtask]
+criteria = "safe-to-run"
+
+[[exemptions.bitflags]]
+version = "2.13.2"
+criteria = "safe-to-deploy"
+notes = "SPDX-License-Identifier: GPL-3.0-or-later. Not audited yet: exact-version review backlog for Rust-only JSON serialization or OS signal handling. No completed audit is claimed; see docs/DEPENDENCIES.md."
+
+[[exemptions.block2]]
+version = "0.6.2"
+criteria = "safe-to-deploy"
+notes = "SPDX-License-Identifier: GPL-3.0-or-later. Not audited yet: exact-version review backlog for Rust-only JSON serialization or OS signal handling. No completed audit is claimed; see docs/DEPENDENCIES.md."
+
+[[exemptions.cfg-if]]
+version = "1.0.5"
+criteria = "safe-to-deploy"
+notes = "SPDX-License-Identifier: GPL-3.0-or-later. Not audited yet: exact-version review backlog for Rust-only JSON serialization or OS signal handling. No completed audit is claimed; see docs/DEPENDENCIES.md."
+
+[[exemptions.cfg_aliases]]
+version = "0.2.2"
+criteria = "safe-to-deploy"
+notes = "SPDX-License-Identifier: GPL-3.0-or-later. Not audited yet: exact-version review backlog for Rust-only JSON serialization or OS signal handling. No completed audit is claimed; see docs/DEPENDENCIES.md."
+
+[[exemptions.ctrlc]]
+version = "3.5.1"
+criteria = "safe-to-deploy"
+notes = "SPDX-License-Identifier: GPL-3.0-or-later. Not audited yet: exact-version review backlog for Rust-only JSON serialization or OS signal handling. No completed audit is claimed; see docs/DEPENDENCIES.md."
+
+[[exemptions.dispatch2]]
+version = "0.3.1"
+criteria = "safe-to-deploy"
+notes = "SPDX-License-Identifier: GPL-3.0-or-later. Not audited yet: exact-version review backlog for Rust-only JSON serialization or OS signal handling. No completed audit is claimed; see docs/DEPENDENCIES.md."
+
+[[exemptions.itoa]]
+version = "1.0.19"
+criteria = "safe-to-deploy"
+notes = "SPDX-License-Identifier: GPL-3.0-or-later. Not audited yet: exact-version review backlog for Rust-only JSON serialization or OS signal handling. No completed audit is claimed; see docs/DEPENDENCIES.md."
+
+[[exemptions.libc]]
+version = "0.2.191"
+criteria = "safe-to-deploy"
+notes = "SPDX-License-Identifier: GPL-3.0-or-later. Not audited yet: exact-version review backlog for Rust-only JSON serialization or OS signal handling. No completed audit is claimed; see docs/DEPENDENCIES.md."
+
+[[exemptions.memchr]]
+version = "2.8.3"
+criteria = "safe-to-deploy"
+notes = "SPDX-License-Identifier: GPL-3.0-or-later. Not audited yet: exact-version review backlog for Rust-only JSON serialization or OS signal handling. No completed audit is claimed; see docs/DEPENDENCIES.md."
+
+[[exemptions.nix]]
+version = "0.30.1"
+criteria = "safe-to-deploy"
+notes = "SPDX-License-Identifier: GPL-3.0-or-later. Not audited yet: exact-version review backlog for Rust-only JSON serialization or OS signal handling. No completed audit is claimed; see docs/DEPENDENCIES.md."
+
+[[exemptions.objc2]]
+version = "0.6.5"
+criteria = "safe-to-deploy"
+notes = "SPDX-License-Identifier: GPL-3.0-or-later. Not audited yet: exact-version review backlog for Rust-only JSON serialization or OS signal handling. No completed audit is claimed; see docs/DEPENDENCIES.md."
+
+[[exemptions.objc2-encode]]
+version = "4.1.0"
+criteria = "safe-to-deploy"
+notes = "SPDX-License-Identifier: GPL-3.0-or-later. Not audited yet: exact-version review backlog for Rust-only JSON serialization or OS signal handling. No completed audit is claimed; see docs/DEPENDENCIES.md."
+
+[[exemptions.proc-macro2]]
+version = "1.0.107"
+criteria = "safe-to-deploy"
+notes = "SPDX-License-Identifier: GPL-3.0-or-later. Not audited yet: exact-version review backlog for Rust-only JSON serialization or OS signal handling. No completed audit is claimed; see docs/DEPENDENCIES.md."
+
+[[exemptions.quote]]
+version = "1.0.47"
+criteria = "safe-to-deploy"
+notes = "SPDX-License-Identifier: GPL-3.0-or-later. Not audited yet: exact-version review backlog for Rust-only JSON serialization or OS signal handling. No completed audit is claimed; see docs/DEPENDENCIES.md."
+
+[[exemptions.ryu]]
+version = "1.0.23"
+criteria = "safe-to-deploy"
+notes = "SPDX-License-Identifier: GPL-3.0-or-later. Not audited yet: exact-version review backlog for Rust-only JSON serialization or OS signal handling. No completed audit is claimed; see docs/DEPENDENCIES.md."
+
+[[exemptions.serde]]
+version = "1.0.229"
+criteria = "safe-to-deploy"
+notes = "SPDX-License-Identifier: GPL-3.0-or-later. Not audited yet: exact-version review backlog for Rust-only JSON serialization or OS signal handling. No completed audit is claimed; see docs/DEPENDENCIES.md."
+
+[[exemptions.serde_core]]
+version = "1.0.229"
+criteria = "safe-to-deploy"
+notes = "SPDX-License-Identifier: GPL-3.0-or-later. Not audited yet: exact-version review backlog for Rust-only JSON serialization or OS signal handling. No completed audit is claimed; see docs/DEPENDENCIES.md."
+
+[[exemptions.serde_derive]]
+version = "1.0.229"
+criteria = "safe-to-deploy"
+notes = "SPDX-License-Identifier: GPL-3.0-or-later. Not audited yet: exact-version review backlog for Rust-only JSON serialization or OS signal handling. No completed audit is claimed; see docs/DEPENDENCIES.md."
+
+[[exemptions.serde_json]]
+version = "1.0.145"
+criteria = "safe-to-deploy"
+notes = "SPDX-License-Identifier: GPL-3.0-or-later. Not audited yet: exact-version review backlog for Rust-only JSON serialization or OS signal handling. No completed audit is claimed; see docs/DEPENDENCIES.md."
+
+[[exemptions.syn]]
+version = "3.0.10"
+criteria = "safe-to-deploy"
+notes = "SPDX-License-Identifier: GPL-3.0-or-later. Not audited yet: exact-version review backlog for Rust-only JSON serialization or OS signal handling. No completed audit is claimed; see docs/DEPENDENCIES.md."
+
+[[exemptions.unicode-ident]]
+version = "1.0.27"
+criteria = "safe-to-deploy"
+notes = "SPDX-License-Identifier: GPL-3.0-or-later. Not audited yet: exact-version review backlog for Rust-only JSON serialization or OS signal handling. No completed audit is claimed; see docs/DEPENDENCIES.md."
+
+[[exemptions.windows-link]]
+version = "0.2.1"
+criteria = "safe-to-deploy"
+notes = "SPDX-License-Identifier: GPL-3.0-or-later. Not audited yet: exact-version review backlog for Rust-only JSON serialization or OS signal handling. No completed audit is claimed; see docs/DEPENDENCIES.md."
+
+[[exemptions.windows-sys]]
+version = "0.61.2"
+criteria = "safe-to-deploy"
+notes = "SPDX-License-Identifier: GPL-3.0-or-later. Not audited yet: exact-version review backlog for Rust-only JSON serialization or OS signal handling. No completed audit is claimed; see docs/DEPENDENCIES.md."
