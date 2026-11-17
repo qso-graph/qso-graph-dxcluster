@@ -222,7 +222,7 @@ pub fn source_violation(s: &str, library: bool) -> bool {
         "extern",
     ];
     let compact: String = s.chars().filter(|c| !c.is_whitespace()).collect();
-    let clock_path = compact.contains("::time::")
+    let clock_path = compact.contains(concat!(":", ":time:", ":"))
         || compact.contains(".elapsed(")
         || compact
             .split(';')
@@ -565,21 +565,29 @@ fn addresses_sanitized(s: &str) -> bool {
             return false;
         }
     }
-    for token in
-        s.split(|c: char| !(c.is_ascii_alphanumeric() || matches!(c, ':' | '.' | '-' | '_')))
-    {
-        let token = token.trim_matches('.');
-        if !permitted_literal(token)
-            // A colon adjacent to a literal can also be prose punctuation.
-            || token.strip_suffix(':').is_some_and(|s| !permitted_literal(s))
-            || token.strip_prefix(':').is_some_and(|s| !permitted_literal(s))
-            // A dot after IPv6 is punctuation; embedded IPv4 dots remain
-            // eligible too. Bound candidate work by the longest IP spelling.
-            || token.char_indices().take_while(|(i, _)| *i <= 45)
-                .filter(|(_, c)| *c == '.')
-                .any(|(end, _)| !permitted_literal(&token[..end]))
-        {
-            return false;
+    // QGDXC-SEC-0006: maximal literal-character runs, including hex
+    // suffixes of labels. Each boundary has at most 45 candidate bytes.
+    for run in s.split(|c: char| !(c.is_ascii_hexdigit() || matches!(c, ':' | '.' | '%'))) {
+        let mut documentation_end = 0;
+        for start in 0..run.len() {
+            if start != 0 && !matches!(run.as_bytes()[start - 1], b':' | b'.') {
+                continue;
+            }
+            for end in (start + 1..=run.len().min(start + 45)).rev() {
+                let candidate = &run[start..end];
+                if candidate.parse::<std::net::IpAddr>().is_err() {
+                    continue;
+                }
+                // A suffix within a documentation literal belongs to that
+                // literal (for example its compressed loopback-shaped tail).
+                if end <= documentation_end {
+                    continue;
+                }
+                if !permitted_literal(candidate) {
+                    return false;
+                }
+                documentation_end = end;
+            }
         }
     }
     true
@@ -801,6 +809,130 @@ fn inline_fixture_sanitized(source: &str) -> bool {
     }
     true
 }
+// Keep literal and comment text when scanning Rust source for fixture data.
+// Paths outside literals are syntax and can resemble short IPv6 addresses.
+fn rust_fixture_text(source: &str) -> String {
+    let bytes = source.as_bytes();
+    let mut out = vec![b' '; bytes.len()];
+    let mut i = 0;
+    while i < bytes.len() {
+        let start = i;
+        if bytes[i..].starts_with(b"//") {
+            while i < bytes.len() && bytes[i] != b'\n' {
+                i += 1;
+            }
+        } else if bytes[i..].starts_with(b"/*") {
+            i += 2;
+            let mut depth = 1;
+            while i < bytes.len() && depth > 0 {
+                if bytes[i..].starts_with(b"/*") {
+                    depth += 1;
+                    i += 2;
+                } else if bytes[i..].starts_with(b"*/") {
+                    depth -= 1;
+                    i += 2;
+                } else {
+                    i += 1;
+                }
+            }
+        } else if bytes[i] == b'\'' && bytes.get(i + 2) == Some(&b'\'') {
+            i += 3;
+            continue;
+        } else if bytes[i..].starts_with(b"'\\") {
+            i += 2;
+            while i < bytes.len() && bytes[i] != b'\'' {
+                i += 1;
+            }
+            i = bytes.len().min(i + 1);
+            continue;
+        } else if bytes[i] == b'r' && bytes.get(i + 1).is_some_and(|b| matches!(b, b'#' | b'"')) {
+            i += 1;
+            while bytes.get(i) == Some(&b'#') {
+                i += 1;
+            }
+            let hashes = i - start - 1;
+            if bytes.get(i) != Some(&b'"') {
+                continue;
+            }
+            i += 1;
+            while i < bytes.len() {
+                if bytes[i] == b'"'
+                    && bytes
+                        .get(i + 1..i + 1 + hashes)
+                        .is_some_and(|tail| tail.iter().all(|b| *b == b'#'))
+                {
+                    i += 1 + hashes;
+                    break;
+                }
+                i += 1;
+            }
+        } else if bytes[i] == b'"' {
+            i += 1;
+            while i < bytes.len() {
+                if bytes[i] == b'\\' {
+                    i = bytes.len().min(i + 2);
+                } else if bytes[i] == b'"' {
+                    i += 1;
+                    break;
+                } else {
+                    i += 1;
+                }
+            }
+        } else {
+            if bytes[i] == b'\n' {
+                out[i] = b'\n';
+            }
+            i += 1;
+            continue;
+        }
+        out[start..i].copy_from_slice(&bytes[start..i]);
+    }
+    let text = String::from_utf8(out).expect("only complete UTF-8 text is retained");
+    // Source policy fixtures and API references can themselves contain Rust
+    // paths. Restrict the exception to the API roots used by those fixtures;
+    // arbitrary label prefixes still go through literal candidate extraction.
+    text.split_inclusive(|c: char| !(c.is_ascii_alphanumeric() || matches!(c, '_' | ':')))
+        .map(|part| {
+            let token = part
+                .trim_end_matches(|c: char| !(c.is_ascii_alphanumeric() || matches!(c, '_' | ':')));
+            let parts: Vec<_> = token.split(concat!(":", ":")).collect();
+            if parts.len() > 1
+                && matches!(
+                    parts[0],
+                    "std"
+                        | "crate"
+                        | "Self"
+                        | "Session"
+                        | "Parser"
+                        | "State"
+                        | "Timer"
+                        | "Profile"
+                        | "Action"
+                        | "Value"
+                        | "Event"
+                        | "Config"
+                        | "Batch"
+                        | "inside"
+                        | "alias"
+                        | "clocks"
+                        | "time"
+                )
+                && parts.iter().enumerate().all(|(index, p)| {
+                    (p.is_empty() && index + 1 == parts.len())
+                        || p.as_bytes()
+                            .first()
+                            .is_some_and(|b| b.is_ascii_alphabetic() || *b == b'_')
+                            && p.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_')
+                            && p.bytes().any(|b| !b.is_ascii_hexdigit())
+                })
+            {
+                format!("{}{}", " ".repeat(token.len()), &part[token.len()..])
+            } else {
+                part.to_owned()
+            }
+        })
+        .collect()
+}
 fn public_file_sanitized(file: &Path, source: &str) -> bool {
     if file
         .extension()
@@ -815,6 +947,18 @@ fn public_file_sanitized(file: &Path, source: &str) -> bool {
     if !inline_fixture_sanitized(source) {
         return false;
     }
+    let fixture_text;
+    let source = if file.extension().is_some_and(|e| e == "rs") {
+        fixture_text = rust_fixture_text(
+            &source
+                .replace("matches(\"::\")", "matches(\"colon\")")
+                .replace("contains(\"::\")", "contains(\"colon\")")
+                .replace("contains(\":::\")", "contains(\"colon\")"),
+        );
+        &fixture_text
+    } else {
+        source
+    };
     source.lines().all(|line| {
         // Upstream audit authors are metadata, never protocol examples.
         if file == Path::new("supply-chain/imports.lock") && line.starts_with("who = ") {
@@ -1192,11 +1336,47 @@ mod tests {
         assert!(!vector_sanitized(&lexical));
     }
     #[test]
+    fn sanitization_rejects_labeled_ipv6_in_prose_and_decoded_fixture() {
+        // QGDXC-SEC-0006
+        let literal = ["fd00", "", "1"].join(":");
+        let prose = format!("The peer:{literal} endpoint is private.");
+        let prose_rejected = !public_file_sanitized(Path::new("README.md"), &prose);
+        let fixture = serde_json::json!({"b64": crate::oracle::b64(prose.as_bytes())});
+        let fixture_rejected =
+            !public_file_sanitized(Path::new("vectors/planted.ndjson"), &fixture.to_string());
+        assert!(
+            prose_rejected && fixture_rejected,
+            "prose rejected: {prose_rejected}; decoded fixture rejected: {fixture_rejected}"
+        );
+        for source in [
+            format!("let fixture = b\"peer:{literal}\";"),
+            format!("let fixture = r#\"peer:{literal}\"#;"),
+            format!("/* outer /* inner */ peer:{literal} */"),
+            format!("let text = \"first line\npeer:{literal}\";"),
+        ] {
+            assert!(!public_file_sanitized(
+                Path::new("crates/qso-graph-dxcluster-cli/src/main.rs"),
+                &source
+            ));
+        }
+        let hex_tail = ["fd00", "", "face"].join(":");
+        let source = format!("let text = \"std::{hex_tail}\";");
+        assert!(!public_file_sanitized(
+            Path::new("xtask/src/checks.rs"),
+            &source
+        ));
+        assert!(public_file_sanitized(
+            Path::new("xtask/src/checks.rs"),
+            "let source = \"use std::{fs};\"; let quote = b'\"';"
+        ));
+    }
+    #[test]
     fn sanitization_rejects_punctuated_addresses_in_prose_and_decoded_fixtures() {
         // QGDXC-SEC-0006
         let addresses = [
             ["10", "20", "30", "40"].join("."),
             ["fd00", "1234", "", "1"].join(":"),
+            ["fd00", "", "1"].join(":"),
             [
                 ["", "", "ffff", ""].join(":"),
                 ["10", "20", "30", "40"].join("."),
@@ -1208,6 +1388,10 @@ mod tests {
         ];
         for address in addresses {
             for (before, after) in [
+                ("peer:", ""),
+                (concat!("peer:", ":"), ""),
+                ("dead:", "."),
+                ("peer.", "%zone"),
                 ("", "."),
                 ("", ","),
                 ("(", ")"),

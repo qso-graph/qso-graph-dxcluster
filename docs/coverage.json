@@ -816,6 +816,10 @@
         {
           "file": "xtask/src/checks.rs",
           "name": "sanitization_rejects_punctuated_addresses_in_prose_and_decoded_fixtures"
+        },
+        {
+          "file": "xtask/src/checks.rs",
+          "name": "sanitization_rejects_labeled_ipv6_in_prose_and_decoded_fixture"
         }
       ],
       "vectors": []
