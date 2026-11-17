@@ -55,6 +55,22 @@ single-digit suffix; startup-cccluster-cccluster admits setup at 1000 ms, arms
 its reply deadline at 6000 ms, and accepts completion at 5500 ms. These values
 were checked from the specification, not copied from library output.
 
+Additional independent session oracles cover QGDXC-SES-0011:
+`stricter-spacing` admits setup at 2000 ms; `stricter-window-lines` uses a
+one-line window and admits at 20000 ms; `stricter-window-duration` extends that
+window to 30000 ms. Each rejects earlier admission and starts the reply deadline
+at admission. `overlong-ar-banner-no-profile-evidence` checks QGDXC-EVT-0010
+and QGDXC-ARC-0001: the truncated banner leaves the extended prompt unrecognized
+and the session reaches `profile_unknown`.
+
+The recording tests cover QGDXC-REC-0004 with fragmented, delayed outbound
+completion, a reply at 33 seconds after setup admission at 5 seconds, delayed
+close boundaries, and readiness tokens reserved only at recorded opens.
+The CLI's controlled connector tests cover QGDXC-SES-0009 without network I/O:
+a nonresponding first address consumes its share before a working alternative
+connects. Additional cases cover the minimum address budget, remaining deadline,
+redistribution after an immediate error, and cancellation before another attempt.
+
 Four sanitized captured samples were also checked directly: captured-0000
 (AR-Cluster) reports 10105.0 kHz as 10105000 Hz at 18:56 without a date;
 captured-0049 (CC Cluster) preserves comment `up 1.4` and maps 14027000 Hz;

@@ -2,34 +2,59 @@
 use qso_graph_dxcluster::{model::unbase64, *};
 use serde_json::{Value, json};
 fn config(v: &Value) -> Result<Config, String> {
-    let c = &v["config"];
-    let mut cfg = Config::new(
-        c["host"].as_str().unwrap_or("example.invalid").into(),
-        c["port"].as_u64().unwrap_or(7300) as u16,
-        c["identity"].as_str().unwrap_or("Q1ABC").into(),
-        Profile::parse(v["profile"].as_str().ok_or("profile")?).ok_or("profile")?,
-    );
-    cfg.line_limit = c["line_limit"].as_u64().unwrap_or(4096) as usize;
-    cfg.retain_third_party_data = c["retain_third_party_data"].as_bool().unwrap_or(false);
-    cfg.connect_ms = c["connect_ms"].as_u64().unwrap_or(30000);
-    cfg.login_ms = c["login_ms"].as_u64().unwrap_or(30000);
-    cfg.identity_ms = c["identity_ms"].as_u64().unwrap_or(30000);
-    cfg.setup_ms = c["setup_ms"].as_u64().unwrap_or(30000);
-    cfg.silence_ms = c["silence_ms"].as_u64();
-    cfg.custom_prompt = c["custom_prompt"].as_str().map(str::to_owned);
-    cfg.supported_setup_errors = c["supported_setup_errors"]
-        .as_array()
-        .map(|a| {
-            a.iter()
-                .map(|s| {
-                    s.as_str()
-                        .map(str::to_owned)
-                        .ok_or("setup-error recognizer")
-                })
-                .collect::<Result<Vec<_>, _>>()
-        })
-        .transpose()?
-        .unwrap_or_default();
+    let c = v["config"].as_object().ok_or("configuration object")?;
+    let profile = Profile::parse(v["profile"].as_str().ok_or("profile")?).ok_or("profile")?;
+    let mut cfg = Config::new("example.invalid".into(), 7300, "Q1ABC".into(), profile);
+    for (key, value) in c {
+        let invalid = || format!("invalid configuration member: {key}");
+        let text = || value.as_str().ok_or_else(invalid);
+        let integer = || value.as_u64().ok_or_else(invalid);
+        let size = || usize::try_from(integer()?).map_err(|_| invalid());
+        match key.as_str() {
+            "host" => cfg.host = text()?.into(),
+            "port" => cfg.port = u16::try_from(integer()?).map_err(|_| invalid())?,
+            "identity" => cfg.call = text()?.into(),
+            "profile" => {
+                if Profile::parse(text()?) != Some(profile) {
+                    return Err("configuration profile differs from vector profile".into());
+                }
+            }
+            "line_limit" => cfg.line_limit = size()?,
+            "retain_third_party_data" => {
+                cfg.retain_third_party_data = value.as_bool().ok_or_else(invalid)?
+            }
+            "connect_ms" => cfg.connect_ms = integer()?,
+            "login_ms" => cfg.login_ms = integer()?,
+            "identity_ms" => cfg.identity_ms = integer()?,
+            "setup_ms" => cfg.setup_ms = integer()?,
+            "silence_ms" => {
+                cfg.silence_ms = if value.is_null() {
+                    None
+                } else {
+                    Some(integer()?)
+                }
+            }
+            "spacing_ms" => cfg.spacing_ms = integer()?,
+            "window_ms" => cfg.window_ms = integer()?,
+            "window_lines" => cfg.window_lines = size()?,
+            "custom_prompt" => {
+                cfg.custom_prompt = if value.is_null() {
+                    None
+                } else {
+                    Some(text()?.into())
+                }
+            }
+            "supported_setup_errors" => {
+                cfg.supported_setup_errors = value
+                    .as_array()
+                    .ok_or_else(invalid)?
+                    .iter()
+                    .map(|v| v.as_str().map(str::to_owned).ok_or_else(invalid))
+                    .collect::<Result<Vec<_>, _>>()?
+            }
+            _ => return Err(format!("unsupported configuration member: {key}")),
+        }
+    }
     cfg.validate().map_err(str::to_owned)?;
     Ok(cfg)
 }
@@ -425,6 +450,62 @@ fn application_roundtrip(v: &Value, actions: &[Value], expected: &[Value]) -> Re
 
 #[cfg(test)]
 mod tests {
+    use serde_json::json;
+    #[test]
+    fn stricter_pacing_vectors_apply_configuration() {
+        // QGDXC-SES-0011 QGDXC-VEC-0006
+        for v in crate::scenarios::vectors()
+            .iter()
+            .filter(|v| v["id"].as_str().unwrap().starts_with("stricter-"))
+        {
+            super::check(v).unwrap();
+        }
+    }
+    #[test]
+    fn vector_configuration_rejects_unknown_or_invalid_members() {
+        // QGDXC-VEC-0006
+        let base = crate::generate::vector("config-validation", "rbn", b"text", "lf", None);
+        for (key, value) in [
+            ("unknown_setting", json!(true)),
+            ("spacing_ms", json!("2000")),
+            ("window_ms", json!(null)),
+            ("window_lines", json!(-1)),
+            ("port", json!(65537)),
+            ("line_limit", json!("4096")),
+            ("host", json!(false)),
+            ("identity", json!(0)),
+            ("retain_third_party_data", json!("false")),
+            ("login_ms", json!(null)),
+            ("silence_ms", json!(false)),
+            ("custom_prompt", json!(0)),
+            ("supported_setup_errors", json!("error")),
+            ("profile", json!("arcluster")),
+        ] {
+            let mut v = base.clone();
+            v["config"][key] = value;
+            assert!(super::config(&v).is_err(), "admitted {key}");
+        }
+    }
+    #[test]
+    fn pacing_mutation_invalidates_old_expectations() {
+        // QGDXC-SES-0011 QGDXC-VEC-0006
+        let mut v = crate::scenarios::vectors()
+            .into_iter()
+            .find(|v| v["id"] == "startup-cccluster-cccluster")
+            .unwrap();
+        super::check(&v).unwrap();
+        v["config"]["spacing_ms"] = json!(2000);
+        assert!(super::check(&v).is_err());
+    }
+    #[test]
+    fn overlong_banner_cannot_establish_session_identity() {
+        // QGDXC-EVT-0010 QGDXC-ARC-0001 QGDXC-SES-0004
+        let v = crate::scenarios::vectors()
+            .into_iter()
+            .find(|v| v["id"] == "overlong-ar-banner-no-profile-evidence")
+            .unwrap();
+        super::check(&v).unwrap();
+    }
     #[test]
     fn independent_oracles_reject_mutated_expectations() {
         // QGDXC-VEC-0005 QGDXC-VEC-0006

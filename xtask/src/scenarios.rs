@@ -124,6 +124,8 @@ impl Case {
 }
 pub fn vectors() -> Vec<Value> {
     let mut cases = extra();
+    cases.push(overlong_banner());
+    cases.extend(stricter_pacing());
     let prompts = [
         ("arcluster", "Q1ABC de Q2ABC 1-Nov 1832Z arc6>"),
         ("rbn", "Q1ABC de RELAY 1-Nov-2026 18:32Z >"),
@@ -303,6 +305,82 @@ pub fn vectors() -> Vec<Value> {
     cases.extend(mutations(&cases));
     cases.extend(application_and_validation());
     cases
+}
+
+fn stricter_pacing() -> Vec<Value> {
+    let mut cases = vec![];
+    // QGDXC-SES-0011 QGDXC-VEC-0006. These deadlines are specified here,
+    // independently of the session's pacing implementation.
+    for (id, settings, send_at) in [
+        ("stricter-spacing", json!({"spacing_ms":2000}), 2000),
+        ("stricter-window-lines", json!({"window_lines":1}), 20000),
+        (
+            "stricter-window-duration",
+            json!({"window_ms":30000,"window_lines":1}),
+            30000,
+        ),
+    ] {
+        let mut c = Case::new(id, "cccluster");
+        for (key, value) in settings.as_object().unwrap() {
+            c.v["config"][key] = value.clone();
+        }
+        c.v["provenance"]["derived_from"] = json!("QGDXC-SES-0011 QGDXC-VEC-0006");
+        c.begin();
+        c.login("login:");
+        let prompt = "Q1ABC de Q2ABC 1-Nov-2026 1832Z CCC >";
+        c.input(100, prompt);
+        let e = c.content(prompt, "ready_prompt", "none");
+        c.cancel("identity");
+        c.state("setup", "identified", Some(&e));
+        c.arm("pacing", send_at);
+        c.tick();
+        for at in [1000, send_at - 1] {
+            c.step(at, json!({"type":"tick"}));
+        }
+        c.step(send_at, json!({"type":"tick"}));
+        c.output("set/ve7cc");
+        c.arm("setup", send_at + 5000);
+        c.input(send_at + 100, &format!("Enhanced Spots Enabled\n{prompt}"));
+        c.content("Enhanced Spots Enabled", "setup_reply", "lf");
+        let e = c.content(prompt, "ready_prompt", "none");
+        c.cancel("setup");
+        c.state("ready", "setup_complete", Some(&e));
+        c.arm("stable_ready", send_at + 600100);
+        c.tick();
+        cases.push(c.finish());
+    }
+    cases
+}
+
+fn overlong_banner() -> Value {
+    let mut c = Case::new("overlong-ar-banner-no-profile-evidence", "auto");
+    c.v["provenance"]["derived_from"] = json!("QGDXC-EVT-0010 QGDXC-SES-0004 QGDXC-ARC-0001");
+    c.begin();
+    c.login("login:");
+    let banner = format!("Running AR-Cluster Version 7 {}", "x".repeat(4100));
+    c.input(1, &format!("{banner}\n"));
+    c.event(oracle::line(
+        "auto",
+        &banner.as_bytes()[..4096],
+        "none",
+        Some("line_too_long"),
+    ));
+    c.tick();
+    let prompt = "Q1ABC de Q2ABC 1-Nov 1832Z arc7>";
+    c.input(2, &format!("{prompt}\n"));
+    c.event(oracle::event(
+        "auto",
+        "unrecognized_line",
+        json!({"reason":"unknown","text":prompt}),
+        prompt.as_bytes(),
+        "lf",
+        "exact",
+    ));
+    c.tick();
+    c.step(30000, json!({"type":"tick"}));
+    c.action(json!({"type":"close","attempt":1}));
+    c.state("blocked", "profile_unknown", None);
+    c.finish()
 }
 
 fn extra() -> Vec<Value> {

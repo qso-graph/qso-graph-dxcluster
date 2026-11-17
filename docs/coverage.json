@@ -8,7 +8,9 @@
           "name": "passive_profiles_and_duplicate_login"
         }
       ],
-      "vectors": []
+      "vectors": [
+        "overlong-ar-banner-no-profile-evidence"
+      ]
     },
     "QGDXC-ARC-0002": {
       "tests": [
@@ -332,7 +334,9 @@
           "name": "common_spots_and_dispatch"
         }
       ],
-      "vectors": []
+      "vectors": [
+        "overlong-ar-banner-no-profile-evidence"
+      ]
     },
     "QGDXC-FRM-0001": {
       "tests": [
@@ -560,6 +564,22 @@
         {
           "file": "crates/qso-graph-dxcluster-cli/src/recording.rs",
           "name": "recording_boundaries_and_replay"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/recording.rs",
+          "name": "replay_uses_last_outbound_fragment_for_admission"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/recording.rs",
+          "name": "replay_waits_for_delayed_login_completion"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/recording.rs",
+          "name": "replay_boundaries_own_attempts_and_delayed_termination"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/recording.rs",
+          "name": "replay_defers_received_termination_until_recorded_close"
         }
       ],
       "vectors": []
@@ -569,6 +589,10 @@
         {
           "file": "crates/qso-graph-dxcluster-cli/src/recording.rs",
           "name": "recording_boundaries_and_replay"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/recording.rs",
+          "name": "replay_boundaries_own_attempts_and_delayed_termination"
         }
       ],
       "vectors": []
@@ -673,7 +697,9 @@
           "name": "passive_profiles_and_duplicate_login"
         }
       ],
-      "vectors": []
+      "vectors": [
+        "overlong-ar-banner-no-profile-evidence"
+      ]
     },
     "QGDXC-SES-0005": {
       "tests": [
@@ -706,6 +732,26 @@
         {
           "file": "crates/qso-graph-dxcluster/tests/session.rs",
           "name": "delayed_transport_admission_controls_pacing_and_reply_deadlines"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/recording.rs",
+          "name": "replay_uses_last_outbound_fragment_for_admission"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/recording.rs",
+          "name": "replay_waits_for_delayed_login_completion"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/main.rs",
+          "name": "sequential_address_fallback_survives_a_blackhole"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/main.rs",
+          "name": "address_budgets_respect_minimum_and_overall_deadline"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/main.rs",
+          "name": "address_budget_redistributes_unused_time_and_honors_cancellation"
         }
       ],
       "vectors": []
@@ -728,6 +774,22 @@
         {
           "file": "crates/qso-graph-dxcluster/tests/session.rs",
           "name": "retries_stability_and_restart"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/recording.rs",
+          "name": "replay_boundaries_own_attempts_and_delayed_termination"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/main.rs",
+          "name": "sequential_address_fallback_survives_a_blackhole"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/main.rs",
+          "name": "address_budgets_respect_minimum_and_overall_deadline"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/main.rs",
+          "name": "address_budget_redistributes_unused_time_and_honors_cancellation"
         }
       ],
       "vectors": []
@@ -752,7 +814,11 @@
           "name": "delayed_transport_admission_controls_pacing_and_reply_deadlines"
         }
       ],
-      "vectors": []
+      "vectors": [
+        "stricter-spacing",
+        "stricter-window-lines",
+        "stricter-window-duration"
+      ]
     },
     "QGDXC-SES-0012": {
       "tests": [
@@ -777,6 +843,10 @@
         {
           "file": "crates/qso-graph-dxcluster/tests/session.rs",
           "name": "failures_latch_flush_and_cancel"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/recording.rs",
+          "name": "replay_defers_received_termination_until_recorded_close"
         }
       ],
       "vectors": []
@@ -829,10 +899,25 @@
         {
           "file": "xtask/src/runner.rs",
           "name": "independent_oracles_reject_mutated_expectations"
+        },
+        {
+          "file": "xtask/src/runner.rs",
+          "name": "vector_configuration_rejects_unknown_or_invalid_members"
+        },
+        {
+          "file": "xtask/src/runner.rs",
+          "name": "pacing_mutation_invalidates_old_expectations"
+        },
+        {
+          "file": "xtask/src/runner.rs",
+          "name": "stricter_pacing_vectors_apply_configuration"
         }
       ],
       "vectors": [
-        "startup-dxspider-dxspider"
+        "startup-dxspider-dxspider",
+        "stricter-spacing",
+        "stricter-window-lines",
+        "stricter-window-duration"
       ]
     }
   },
@@ -1382,6 +1467,14 @@
       "termination-unsupported_transport-8",
       "termination-resource_limit-7",
       "termination-resource_limit-8"
+    ],
+    "overlong": [
+      "overlong-ar-banner-no-profile-evidence"
+    ],
+    "stricter": [
+      "stricter-spacing",
+      "stricter-window-lines",
+      "stricter-window-duration"
     ]
   }
 }

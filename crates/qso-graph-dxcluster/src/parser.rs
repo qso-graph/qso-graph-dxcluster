@@ -100,9 +100,10 @@ impl Parser {
         self.context.post_login && ready_profile(&s, &self.context).is_some()
     }
     fn event(&mut self, frame: Frame, received_at: Option<&str>) -> Event {
+        let semantic = frame.reason.is_none();
         let event = parse_frame(frame, &self.context, received_at);
         let text = v::decode(&event.raw_line).0;
-        if ar_banner(&text) {
+        if semantic && ar_banner(&text) {
             self.context.ar_banner = true;
         }
         if self.context.profile == Profile::Auto {
