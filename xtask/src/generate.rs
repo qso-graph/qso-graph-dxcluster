@@ -562,6 +562,19 @@ fn synthetic() -> Vec<Value> {
 
 fn extra_vectors() -> Vec<Value> {
     let mut out = vec![];
+    let prompt = "Q1ABC de RELAY 1-Nov-2026 18:32Z >";
+    let spot = b"DX de Q1ABC-#: 14074 Q2ABC FT8 -12 dB AA00 CQ 1832Z";
+    let mut auto = vector("event-auto-detection-context", "auto", b"", "lf", None);
+    let mut bytes = prompt.as_bytes().to_vec();
+    bytes.extend_from_slice(spot);
+    bytes.push(b'\n');
+    auto["steps"][0]["b64"] = json!(oracle::b64(&bytes));
+    auto["expected_events"] = json!([
+        {"step":0,"elapsed_ms":0,"event":oracle::event("auto","prompt_status",json!({"status":"ready_prompt","text":prompt}),prompt.as_bytes(),"none","exact")},
+        {"step":0,"elapsed_ms":0,"event":oracle::line("rbn",spot,"lf",None)},
+    ]);
+    out.push(auto);
+
     let ordinary = b"DX de Q1ABC: 1 Q2ABC 0000Z";
     let mut long = vector(
         "line-limit-recovery",

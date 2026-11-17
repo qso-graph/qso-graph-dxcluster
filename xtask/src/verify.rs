@@ -87,7 +87,16 @@ pub fn verify() -> Result<(), String> {
             format!("{:.2}s", start.elapsed().as_secs_f64()),
         ));
     }
-    if on_path("cargo-fuzz") {
+    let nightly_available = Command::new("rustup")
+        .args(["toolchain", "list"])
+        .output()
+        .is_ok_and(|o| {
+            o.status.success()
+                && String::from_utf8_lossy(&o.stdout)
+                    .lines()
+                    .any(|line| line.starts_with("nightly-2026-10-30-"))
+        });
+    if on_path("cargo-fuzz") && nightly_available {
         for (name, args) in [
             (
                 "fuzz fmt",
@@ -173,6 +182,8 @@ pub fn verify() -> Result<(), String> {
                 "1-second smoke".into(),
             ));
         }
+    } else if on_path("cargo-fuzz") {
+        results.push(("fuzz smoke".into(),"FAIL".into(),"blocker: nightly-2026-10-30 is not installed; verification does not download toolchains".into()));
     } else {
         results.push((
             "fuzz smoke".into(),

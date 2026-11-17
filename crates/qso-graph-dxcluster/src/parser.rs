@@ -64,9 +64,6 @@ impl Parser {
         let mut out = Vec::new();
         for f in self.framer.push(b) {
             let e = self.event(f, received_at);
-            if ar_banner(&v::decode(&e.raw_line).0) {
-                self.context.ar_banner = true;
-            }
             out.push(e);
         }
         if self.prompt_fragment() {
@@ -102,8 +99,23 @@ impl Parser {
         }
         self.context.post_login && ready_profile(&s, &self.context).is_some()
     }
-    fn event(&self, frame: Frame, received_at: Option<&str>) -> Event {
-        parse_frame(frame, &self.context, received_at)
+    fn event(&mut self, frame: Frame, received_at: Option<&str>) -> Event {
+        let event = parse_frame(frame, &self.context, received_at);
+        let text = v::decode(&event.raw_line).0;
+        if ar_banner(&text) {
+            self.context.ar_banner = true;
+        }
+        if self.context.profile == Profile::Auto {
+            let identified = match event.get("status") {
+                Some("ready_prompt") => ready_profile(&text, &self.context),
+                Some("server_identity") => identity_profile(&text, &self.context),
+                _ => None,
+            };
+            if let Some(profile) = identified {
+                self.context.profile = profile;
+            }
+        }
+        event
     }
 }
 pub fn boundary(s: &str, token: &str) -> bool {
