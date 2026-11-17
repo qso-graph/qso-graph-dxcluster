@@ -1,7 +1,13 @@
 <!-- SPDX-License-Identifier: GPL-3.0-or-later -->
 # Dependencies
 
-The library has zero runtime and development dependencies. CLI argument handling,
+The library has zero normal, build, and development dependencies.
+The policy gate reads `cargo metadata --locked --offline --no-deps` package
+declarations for every target (QGDXC-IO-0001). It rejects normal and build
+dependencies, lists development dependencies, and checks them against the
+explicit, currently empty `LIBRARY_DEV_ALLOWLIST` in `xtask/src/checks.rs`.
+Planted manifest tests cover individual dependency tables, optional aliases,
+and target-specific normal, build, and development declarations. CLI argument handling,
 base64, event serialization, framing, and protocol parsing use first-party Rust.
 The CLI and repository tooling share serde_json. Repository tooling also imports the first-party CLI recording adapter to check application recording/replay vectors without sockets. The CLI uses ctrlc for portable
 OS signal registration, avoiding first-party unsafe signal handlers.

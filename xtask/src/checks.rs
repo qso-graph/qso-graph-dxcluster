@@ -238,7 +238,72 @@ pub fn source_violation(s: &str, library: bool) -> bool {
                 .contains(w)
             })
 }
+// QGDXC-IO-0001: no approved third-party library test dependencies yet.
+const LIBRARY_DEV_ALLOWLIST: &[&str] = &[];
+fn library_dependencies(metadata: &Value) -> Result<(), String> {
+    let packages = metadata["packages"].as_array().ok_or("metadata packages")?;
+    let library = packages
+        .iter()
+        .find(|p| p["name"] == "qso-graph-dxcluster")
+        .ok_or("library missing from Cargo metadata")?;
+    let dependencies = library["dependencies"]
+        .as_array()
+        .ok_or("metadata dependencies")?;
+    let mut rejected = vec![];
+    let mut development = vec![];
+    for dependency in dependencies {
+        let name = dependency["name"].as_str().ok_or("dependency name")?;
+        let alias = dependency["rename"].as_str().unwrap_or(name);
+        let target = dependency["target"].as_str().unwrap_or("all targets");
+        let description = format!("{name} (as {alias}; {target})");
+        if dependency["kind"] == "dev" {
+            development.push(description.clone());
+            if !LIBRARY_DEV_ALLOWLIST.contains(&name) {
+                rejected.push(format!("unapproved dev dependency: {description}"));
+            }
+        } else {
+            rejected.push(format!("normal/build dependency: {description}"));
+        }
+    }
+    println!(
+        "library dev-dependencies: {}",
+        if development.is_empty() {
+            "none".to_owned()
+        } else {
+            development.join(", ")
+        }
+    );
+    if rejected.is_empty() {
+        Ok(())
+    } else {
+        Err(rejected.join("\n"))
+    }
+}
+fn dependency_policy(root: &Path) -> Result<(), String> {
+    // Package declarations include optional, renamed, and target-specific
+    // dependencies, even when the current host or features do not enable them.
+    let output = std::process::Command::new("cargo")
+        .args([
+            "metadata",
+            "--locked",
+            "--offline",
+            "--format-version",
+            "1",
+            "--no-deps",
+        ])
+        .current_dir(root)
+        .output()
+        .map_err(|e| e.to_string())?;
+    if !output.status.success() {
+        return Err(format!(
+            "Cargo metadata failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        ));
+    }
+    library_dependencies(&serde_json::from_slice(&output.stdout).map_err(|e| e.to_string())?)
+}
 pub fn policy() -> Result<(), String> {
+    dependency_policy(Path::new("."))?;
     // Planted violations include inactive code, grouped imports, aliases and redirection.
     for planted in [
         "use std::net::TcpStream;",
@@ -263,11 +328,6 @@ pub fn policy() -> Result<(), String> {
         ("crates/qso-graph-dxcluster", true),
         ("crates/qso-graph-dxcluster-cli", false),
     ] {
-        let manifest =
-            fs::read_to_string(format!("{root}/Cargo.toml")).map_err(|e| e.to_string())?;
-        if library && manifest.contains("[dependencies]") {
-            return Err("library runtime dependencies require review".into());
-        }
         for file in files(Path::new(root))? {
             if file.file_name().is_some_and(|n| n == "build.rs")
                 || file
@@ -742,6 +802,50 @@ pub fn seed_fuzz() -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn metadata_rejects_dependency_tables_on_every_target() {
+        // QGDXC-IO-0001: Cargo, rather than manifest text matching, identifies
+        // each dependency declaration. No network or compilation is needed.
+        let root = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../target")
+            .join(format!("policy-dependencies-{}", std::process::id()));
+        fs::create_dir_all(root.join("src")).unwrap();
+        let base = "# SPDX-License-Identifier: GPL-3.0-or-later\n[workspace]\n[package]\nname = \"qso-graph-dxcluster\"\nversion = \"0.1.0\"\nedition = \"2024\"\n";
+        fs::write(
+            root.join("src/lib.rs"),
+            "// SPDX-License-Identifier: GPL-3.0-or-later\n#![forbid(unsafe_code)]\n",
+        )
+        .unwrap();
+        fs::write(
+            root.join("Cargo.lock"),
+            fs::read(Path::new(env!("CARGO_MANIFEST_DIR")).join("../Cargo.lock")).unwrap(),
+        )
+        .unwrap();
+        for declaration in [
+            "",
+            "[dependencies.ctrlc]\nversion = \"=3.5.1\"\n",
+            "[dependencies]\nsignals = { package = \"ctrlc\", version = \"=3.5.1\", optional = true }\n",
+            "[build-dependencies.ctrlc]\nversion = \"=3.5.1\"\n",
+            "[target.'cfg(target_os = \"none\")'.dependencies.ctrlc]\nversion = \"=3.5.1\"\n",
+            "[target.'cfg(target_os = \"none\")'.build-dependencies]\nsignals = { package = \"ctrlc\", version = \"=3.5.1\" }\n",
+            "[dev-dependencies.ctrlc]\nversion = \"=3.5.1\"\n",
+            "[target.'cfg(target_os = \"none\")'.dev-dependencies]\nsignals = { package = \"ctrlc\", version = \"=3.5.1\" }\n",
+        ] {
+            fs::write(root.join("Cargo.toml"), format!("{base}{declaration}")).unwrap();
+            let result = dependency_policy(&root);
+            if declaration.is_empty() {
+                result.unwrap();
+            } else {
+                let error = result.unwrap_err();
+                assert!(
+                    error.contains("dependency: ctrlc"),
+                    "{declaration}: {error}"
+                );
+                assert!(!error.contains("Cargo metadata failed"), "{error}");
+            }
+        }
+        fs::remove_dir_all(root).unwrap();
+    }
     #[test]
     fn sanitization_rejects_digit_initial_calls_and_identity_field_mutations() {
         // QGDXC-SEC-0006

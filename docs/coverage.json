@@ -441,7 +441,12 @@
       "vectors": []
     },
     "QGDXC-IO-0001": {
-      "tests": [],
+      "tests": [
+        {
+          "file": "xtask/src/checks.rs",
+          "name": "metadata_rejects_dependency_tables_on_every_target"
+        }
+      ],
       "vectors": []
     },
     "QGDXC-IO-0002": {
