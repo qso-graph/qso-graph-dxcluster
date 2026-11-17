@@ -129,8 +129,13 @@ fn coverage_at(root: &Path, compiled: Option<&BTreeSet<String>>) -> Result<(), S
             let file = test["file"].as_str().ok_or("test file")?;
             let name = test["name"].as_str().ok_or("test name")?;
             let source = crate::input::text(root.join(file)).map_err(|e| format!("{file}: {e}"))?;
+            // A test gated to one OS is compiled only there; elsewhere it must still exist in source.
+            let here = match test.get("platform") {
+                None => true,
+                Some(p) => p.as_str().ok_or("test platform")? == std::env::consts::OS,
+            };
             if !named_tests(&source).contains(name)
-                || compiled.is_some_and(|names| !names.contains(name))
+                || (here && compiled.is_some_and(|names| !names.contains(name)))
             {
                 return Err(format!("missing named test: {file}#{name}"));
             }
@@ -1500,14 +1505,24 @@ mod tests {
 
 #[cfg(test)]
 mod privacy_complexity_tests {
+    // Growth, not wall time: a 16x longer run must cost well under 64x (linear is 16x,
+    // quadratic 256x), so the check holds on slow runners and still catches superlinear scans.
+    fn cost(length: usize) -> std::time::Duration {
+        (0..5)
+            .map(|_| {
+                let start = std::time::Instant::now();
+                for byte in *b":.f" {
+                    qso_graph_dxcluster::privacy::redact(&vec![byte; length]);
+                }
+                start.elapsed()
+            })
+            .min()
+            .unwrap()
+    }
     #[test]
     fn hostile_ip_runs_have_bounded_processing() {
-        let start = std::time::Instant::now();
-        for length in [256, 512, 1024, 4096, 65536] {
-            for byte in *b":.f" {
-                qso_graph_dxcluster::privacy::redact(&vec![byte; length]);
-            }
-        }
-        assert!(start.elapsed() < std::time::Duration::from_secs(2));
+        let small = cost(4096).max(std::time::Duration::from_micros(50));
+        let large = cost(65536);
+        assert!(large < small * 64, "4096: {small:?}, 65536: {large:?}");
     }
 }

@@ -532,11 +532,13 @@
         },
         {
           "file": "crates/qso-graph-dxcluster-cli/src/main.rs",
-          "name": "library_and_live_drain_one_mib_under_memory_ceiling"
+          "name": "library_and_live_drain_one_mib_under_memory_ceiling",
+          "platform": "linux"
         },
         {
           "file": "crates/qso-graph-dxcluster-cli/src/recording.rs",
-          "name": "replay_drains_one_mib_under_memory_ceiling"
+          "name": "replay_drains_one_mib_under_memory_ceiling",
+          "platform": "linux"
         },
         {
           "file": "crates/qso-graph-dxcluster/tests/session.rs",
@@ -674,7 +676,8 @@
         },
         {
           "file": "crates/qso-graph-dxcluster-cli/src/recording.rs",
-          "name": "replay_drains_one_mib_under_memory_ceiling"
+          "name": "replay_drains_one_mib_under_memory_ceiling",
+          "platform": "linux"
         }
       ],
       "vectors": [
@@ -738,11 +741,13 @@
         },
         {
           "file": "crates/qso-graph-dxcluster-cli/src/main.rs",
-          "name": "library_and_live_drain_one_mib_under_memory_ceiling"
+          "name": "library_and_live_drain_one_mib_under_memory_ceiling",
+          "platform": "linux"
         },
         {
           "file": "crates/qso-graph-dxcluster-cli/src/recording.rs",
-          "name": "replay_drains_one_mib_under_memory_ceiling"
+          "name": "replay_drains_one_mib_under_memory_ceiling",
+          "platform": "linux"
         }
       ],
       "vectors": []
