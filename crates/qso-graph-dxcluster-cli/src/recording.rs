@@ -177,7 +177,17 @@ pub struct Replay {
 }
 impl Replay {
     pub fn new(call: String, profile: Profile, tokens: Vec<String>) -> Result<Self, String> {
-        let config = Config::new("example.invalid".into(), 7300, call, profile);
+        Self::new_with_retention(call, profile, tokens, false)
+    }
+    /// Apply the caller's explicit QGDXC-SEC-0005 retention choice to replay.
+    pub fn new_with_retention(
+        call: String,
+        profile: Profile,
+        tokens: Vec<String>,
+        retain: bool,
+    ) -> Result<Self, String> {
+        let mut config = Config::new("example.invalid".into(), 7300, call, profile);
+        config.retain_third_party_data = retain;
         Ok(Self {
             engine: Session::new(config, tokens, vec![0; 1024])
                 .map_err(str::to_owned)?

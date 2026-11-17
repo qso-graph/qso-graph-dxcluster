@@ -33,7 +33,8 @@ qg-dxc replay session.ndjson --json
 ```
 
 Recording is opt-in; exact recording also requires the explicit retention flag.
-Replay opens only the specified local file. Ctrl-C closes the active connection.
+Replay opens only the specified local file. The same retention flag also applies
+to replay; its output follows `QGDXC-SEC-0003` and `QGDXC-SEC-0005`. Ctrl-C closes the active connection.
 A node that asks for a password stops the session with `password_unsupported`.
 No password option is available in this version. Human output has one escaped
 line per event; `--json` produces Annex A NDJSON events.

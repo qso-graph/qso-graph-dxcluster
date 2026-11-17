@@ -20,7 +20,7 @@ locations, verification evidence, and limitations; it does not redefine them.
 | IO, FRM | Library framing.rs, session.rs, and tests/protocol.rs |
 | DX, EVT, server mappings | Library parser.rs and tests/protocol.rs |
 | SES, startup profiles | Library session.rs and tests/session.rs; vectors/sessions.ndjson |
-| Privacy | Library privacy.rs; protocol tests; sanitization planted-case check |
+| Privacy | Library privacy.rs; protocol and CLI rendering tests; sanitization planted-case check |
 | REC | CLI recording.rs tests; offline Records and Replay adapters; the application-recording-replay-multiple-connections vector |
 | VEC | Independent xtask oracle.rs, generate.rs, scenarios.rs, runner.rs |
 | Security policy | xtask checks.rs and its planted cases; excluded fuzz targets |
@@ -62,6 +62,12 @@ window to 30000 ms. Each rejects earlier admission and starts the reply deadline
 at admission. `overlong-ar-banner-no-profile-evidence` checks QGDXC-EVT-0010
 and QGDXC-ARC-0001: the truncated banner leaves the extended prompt unrecognized
 and the session reaches `profile_unknown`.
+
+The CLI rendering tests cover QGDXC-SEC-0003 and QGDXC-SEC-0005 for observer
+notes, errors, diagnostics, and events. Human and JSON replay cases check both
+retention settings, control escaping, IP replacement, sensitive CC11 slots,
+and ambiguous-layout withholding. The render-path inspection found only static
+help/version text outside the shared privacy and escaping paths.
 
 The recording tests cover QGDXC-REC-0004 with fragmented, delayed outbound
 completion, a reply at 33 seconds after setup admission at 5 seconds, delayed

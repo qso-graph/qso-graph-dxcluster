@@ -573,6 +573,10 @@
         {
           "file": "crates/qso-graph-dxcluster-cli/src/recording.rs",
           "name": "recording_boundaries_and_replay"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster-cli/tests/rendering.rs",
+          "name": "replay_redacts_notes_and_events_in_both_output_formats"
         }
       ],
       "vectors": []
@@ -665,6 +669,14 @@
         {
           "file": "crates/qso-graph-dxcluster/tests/protocol.rs",
           "name": "privacy_and_terminal"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster-cli/tests/rendering.rs",
+          "name": "replay_redacts_notes_and_events_in_both_output_formats"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/main.rs",
+          "name": "diagnostics_share_event_privacy_and_control_escaping"
         }
       ],
       "vectors": []
@@ -687,6 +699,14 @@
         {
           "file": "crates/qso-graph-dxcluster/tests/protocol.rs",
           "name": "unsupported_cc11_privacy_is_profile_independent"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster-cli/tests/rendering.rs",
+          "name": "replay_redacts_notes_and_events_in_both_output_formats"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/main.rs",
+          "name": "diagnostics_share_event_privacy_and_control_escaping"
         }
       ],
       "vectors": []

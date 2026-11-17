@@ -16,17 +16,29 @@ use std::{
     },
     time::{Duration, Instant},
 };
-const HELP: &str = "qg-dxc reads live DX spots for radio operators and application developers.\n\nUsage:\n  qg-dxc connect <host> <port> --call <CALL> [--profile auto|dxspider|arcluster|cccluster|rbn]\n                 [--record <file>] [--retain-third-party-data] [--json]\n  qg-dxc replay <file> [--json]\n\nReceive-only. Supply your own node and operator identity. No node directory or password support.\nRecording requires --retain-third-party-data. Replay never opens a socket.\n";
+const HELP: &str = "qg-dxc reads live DX spots for radio operators and application developers.\n\nUsage:\n  qg-dxc connect <host> <port> --call <CALL> [--profile auto|dxspider|arcluster|cccluster|rbn]\n                 [--record <file>] [--retain-third-party-data] [--json]\n  qg-dxc replay <file> [--json] [--retain-third-party-data]\n\nReceive-only. Supply your own node and operator identity. No node directory or password support.\nRecording requires --retain-third-party-data. Replay never opens a socket.\n";
 fn main() -> std::process::ExitCode {
-    match run() {
+    let mut retain = false;
+    match run(&mut retain) {
         Ok(code) => std::process::ExitCode::from(code),
         Err(e) => {
-            eprintln!("qg-dxc: {}", escape(&e));
+            eprintln!("qg-dxc: {}", terminal_text(&e, retain));
             std::process::ExitCode::FAILURE
         }
     }
 }
-fn rendered(event: &Event, json: bool) -> String {
+// QGDXC-SEC-0003 QGDXC-SEC-0005: notes and diagnostics use the same
+// privacy transform as events, including sensitive or ambiguous CC11 layouts.
+fn terminal_text(text: &str, retain: bool) -> String {
+    let mut event = Event::new(Profile::Auto, "unrecognized_line");
+    event.raw_line = text.as_bytes().to_vec();
+    event.set("text", text);
+    privacy::apply(&mut event, retain);
+    escape(event.get("text").unwrap_or_default())
+}
+fn rendered(event: &Event, json: bool, retain: bool) -> String {
+    let mut event = event.clone();
+    privacy::apply(&mut event, retain);
     if json {
         event.json()
     } else {
@@ -44,10 +56,10 @@ fn rendered(event: &Event, json: bool) -> String {
         )
     }
 }
-fn render(event: &Event, json: bool) -> io::Result<()> {
-    writeln!(io::stdout().lock(), "{}", rendered(event, json))
+fn render(event: &Event, json: bool, retain: bool) -> io::Result<()> {
+    writeln!(io::stdout().lock(), "{}", rendered(event, json, retain))
 }
-fn run() -> Result<u8, String> {
+fn run(retention: &mut bool) -> Result<u8, String> {
     let args: Vec<String> = std::env::args().skip(1).collect();
     if args.is_empty() || args.iter().any(|a| a == "--help" || a == "-h") {
         print!("{HELP}");
@@ -59,26 +71,32 @@ fn run() -> Result<u8, String> {
     }
     let json = args.iter().any(|a| a == "--json");
     if args[0] == "replay" {
-        if args.len() < 2 || args[1].starts_with('-') || args[2..].iter().any(|a| a != "--json") {
-            return Err("usage: qg-dxc replay <file> [--json]".into());
+        if args.len() < 2
+            || args[1].starts_with('-')
+            || args[2..]
+                .iter()
+                .any(|a| !matches!(a.as_str(), "--json" | "--retain-third-party-data"))
+        {
+            return Err("usage: qg-dxc replay <file> [--json] [--retain-third-party-data]".into());
         }
+        *retention = args[2..].iter().any(|a| a == "--retain-third-party-data");
         let mut records = Records::new(BufReader::new(
             File::open(&args[1]).map_err(|e| e.to_string())?,
         ));
         let (identity, profile, tokens) = recording::replay_config(BufReader::new(
             File::open(&args[1]).map_err(|e| e.to_string())?,
         ))?;
-        let mut replay = Replay::new(identity, profile, tokens)?;
+        let mut replay = Replay::new_with_retention(identity, profile, tokens, *retention)?;
         while let Some(v) = records.next_record()? {
             if let Some(note) = v["note"].as_str() {
-                eprintln!("note {}: {}", records.line, escape(note));
+                eprintln!("note {}: {}", records.line, terminal_text(note, *retention));
             }
             for event in replay.record(&v)? {
-                render(&event, json).map_err(|e| e.to_string())?;
+                render(&event, json, *retention).map_err(|e| e.to_string())?;
             }
         }
         for event in replay.finish()? {
-            render(&event, json).map_err(|e| e.to_string())?;
+            render(&event, json, *retention).map_err(|e| e.to_string())?;
         }
         return Ok(0);
     }
@@ -115,6 +133,7 @@ fn run() -> Result<u8, String> {
         call.ok_or("--call is required")?,
         profile,
     );
+    *retention = retain;
     config.retain_third_party_data = retain;
     config.validate().map_err(str::to_owned)?;
     if destination.is_some() && !retain {
@@ -212,10 +231,13 @@ impl Live {
             .and_then(|e| e.get("reason"))
             .unwrap_or("cancelled")
             .to_owned();
-        let rendering = b
-            .events
-            .into_iter()
-            .try_for_each(|e| self.output.enqueue(rendered(&e, self.json)));
+        let rendering = b.events.into_iter().try_for_each(|e| {
+            self.output.enqueue(rendered(
+                &e,
+                self.json,
+                self.session.config.retain_third_party_data,
+            ))
+        });
         for a in b.actions {
             match a {
                 Action::Connect { .. } => {
@@ -511,6 +533,43 @@ fn connect(config: Config, recorder: Option<Recorder<File>>, json: bool) -> Resu
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn diagnostics_share_event_privacy_and_control_escaping() {
+        // QGDXC-SEC-0003 QGDXC-SEC-0005: an adapter's error can contain
+        // arbitrary text. The top-level error handler always uses this path.
+        let message = "recording failed: third party 192.0.2.1 [2001:db8::1]\u{001b}\n\u{009b}";
+        assert_eq!(
+            terminal_text(message, false),
+            "recording failed: third party <ip> [<ip>]\\u{001b}\\u{000a}\\u{009b}"
+        );
+        assert_eq!(terminal_text(message, true), escape(message));
+        let mut slots = vec![""; 25];
+        slots[0] = "CC11";
+        slots[22] = "+12.3456/-45.6789";
+        slots[23] = "192.0.2.1";
+        let cc11 = slots.join("^");
+        let expected = format!("CC11{}", "^".repeat(24));
+        assert_eq!(terminal_text(&cc11, false), expected);
+        assert_eq!(terminal_text(&format!("error: {cc11}"), false), "");
+        assert_eq!(terminal_text(&cc11, true), cc11);
+        let mut event = Event::new(Profile::Auto, "unrecognized_line");
+        event.raw_line = message.as_bytes().to_vec();
+        event.set("text", message);
+        for json in [false, true] {
+            let output = rendered(&event, json, false);
+            assert!(!output.contains("192.0.2.1"));
+            assert!(!output.contains("2001:db8::1"));
+            assert!(!output.chars().any(char::is_control));
+            if json {
+                let value: serde_json::Value = serde_json::from_str(&output).unwrap();
+                let raw = model::unbase64(value["raw_line"].as_str().unwrap()).unwrap();
+                assert_eq!(
+                    raw,
+                    b"recording failed: third party <ip> [<ip>]\x1b\n\xc2\x9b"
+                );
+            }
+        }
+    }
     #[test]
     fn live_deadline_closes_transport_while_rendering_is_stalled() {
         // QGDXC-IO-0002 QGDXC-IO-0005 QGDXC-SES-0007
