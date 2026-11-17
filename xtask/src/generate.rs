@@ -150,32 +150,9 @@ pub fn default_privacy(e: &mut Value, _p: &str, retain: bool) {
     fn ip(s: &str) -> bool {
         s.parse::<std::net::IpAddr>().is_ok()
     }
-    fn redact(s: &str) -> String {
-        let mut result = String::new();
-        let mut i = 0;
-        let b = s.as_bytes();
-        while i < b.len() {
-            if b[i].is_ascii_hexdigit() || b[i] == b':' {
-                let mut end = i;
-                while end < b.len() && (b[end].is_ascii_hexdigit() || matches!(b[end], b':' | b'.'))
-                {
-                    end += 1;
-                }
-                if (i == 0 || !b[i - 1].is_ascii_alphanumeric()) && s.get(i..end).is_some_and(ip) {
-                    result.push_str("<ip>");
-                    i = end;
-                    continue;
-                }
-            }
-            let c = s[i..].chars().next().expect("character");
-            result.push(c);
-            i += c.len_utf8();
-        }
-        result
-    }
     fn fields(v: &mut Value) {
         match v {
-            Value::String(s) => *s = redact(s),
+            Value::String(s) => *s = crate::addresses::redact(s),
             Value::Object(o) => {
                 for v in o.values_mut() {
                     fields(v)
@@ -219,7 +196,7 @@ pub fn default_privacy(e: &mut Value, _p: &str, retain: bool) {
         e["raw_status"] = json!("withheld");
         return;
     }
-    transformed = redact(&transformed);
+    transformed = crate::addresses::redact(&transformed);
     fields(&mut e["fields"]);
     if transformed != text {
         e["raw_status"] = json!("redacted");
@@ -377,6 +354,9 @@ pub fn generate(captures: Option<&Path>) -> Result<(), String> {
                 if selected_bytes > qso_graph_dxcluster_cli::bounded::TEXT_BYTES {
                     return Err("capture sample exceeds 8 MiB limit".into());
                 }
+                // Remove literals before identity substitution can split IPv6
+                // components that happen to resemble callsigns.
+                let text = crate::addresses::redact(&text);
                 collect_names(&text, &mut names);
                 for (a, b) in role_ranges(&text, profile) {
                     names.insert(text[a..b].to_owned());
@@ -403,7 +383,7 @@ pub fn generate(captures: Option<&Path>) -> Result<(), String> {
                     name.clone(),
                     profile.to_owned(),
                     records.to_vec(),
-                    text.into_owned(),
+                    text,
                     ending.to_owned(),
                 ));
                 Ok(())
@@ -466,9 +446,14 @@ pub fn generate(captures: Option<&Path>) -> Result<(), String> {
             vectors.push(v);
         }
     }
-    write("vectors/events.ndjson", &vectors)?;
     let sessions = crate::scenarios::vectors();
-    write("vectors/sessions.ndjson", &sessions)?;
+    publish(
+        Path::new("."),
+        &[
+            ("vectors/events.ndjson", &vectors),
+            ("vectors/sessions.ndjson", &sessions),
+        ],
+    )?;
     println!(
         "generated {} event vectors and {} session vectors",
         vectors.len(),
@@ -476,13 +461,28 @@ pub fn generate(captures: Option<&Path>) -> Result<(), String> {
     );
     Ok(())
 }
-fn write(path: &str, vectors: &[Value]) -> Result<(), String> {
-    let mut text = String::new();
-    for v in vectors {
-        text.push_str(&serde_json::to_string(v).map_err(|e| e.to_string())?);
-        text.push('\n');
+fn publish(root: &Path, files: &[(&str, &[Value])]) -> Result<(), String> {
+    let mut validated = Vec::new();
+    for (path, vectors) in files {
+        let mut text = String::new();
+        for v in *vectors {
+            text.push_str(&serde_json::to_string(v).map_err(|e| e.to_string())?);
+            text.push('\n');
+        }
+        if !crate::checks::public_file_sanitized(Path::new(path), &text) {
+            let line = text
+                .lines()
+                .position(|line| !crate::checks::public_file_sanitized(Path::new(path), line))
+                .map_or(1, |n| n + 1);
+            return Err(format!("unsanitized generated file: {path}:{line}"));
+        }
+        validated.push((root.join(path), text));
     }
-    fs::write(path, text).map_err(|e| e.to_string())
+    // Validate the complete output set before replacing any public file.
+    for (path, text) in validated {
+        fs::write(path, text).map_err(|e| e.to_string())?;
+    }
+    Ok(())
 }
 fn synthetic() -> Vec<Value> {
     let mut out = extra_vectors();
@@ -823,6 +823,97 @@ fn extra_vectors() -> Vec<Value> {
 #[cfg(test)]
 mod input_tests {
     use super::*;
+    #[test]
+    fn publication_validates_all_files_before_writing_anything() {
+        // QGDXC-SEC-0006
+        let root = Path::new("target").join(format!("publication-check-{}", std::process::id()));
+        fs::create_dir_all(root.join("vectors")).unwrap();
+        let good = vector(
+            "publication-check",
+            "dxspider",
+            b"DX de Q1ABC: 14025 Q2ABC CQ 1832Z",
+            "lf",
+            None,
+        );
+        let private = [10, 20, 30, 40].map(|n| n.to_string()).join(".");
+        for key in ["b64", "raw_line", "comment", "capture"] {
+            let mut bad = good.clone();
+            match key {
+                "b64" => {
+                    bad["steps"][0]["b64"] =
+                        json!(oracle::b64(format!("peer {private}.").as_bytes()))
+                }
+                "raw_line" => {
+                    bad["expected_events"][0]["event"]["raw_line"] =
+                        json!(oracle::b64(format!("peer:{private}").as_bytes()))
+                }
+                "comment" => {
+                    bad["expected_events"][0]["event"]["fields"]["comment"] =
+                        json!(format!("peer {private}."))
+                }
+                _ => bad["provenance"]["capture"] = json!("unregistered.ndjson"),
+            }
+            for exists in [false, true] {
+                let paths = ["vectors/events.ndjson", "vectors/sessions.ndjson"];
+                if exists {
+                    for path in paths {
+                        fs::write(root.join(path), "previous content").unwrap();
+                    }
+                }
+                let error = publish(
+                    &root,
+                    &[
+                        (paths[0], std::slice::from_ref(&good)),
+                        (paths[1], std::slice::from_ref(&bad)),
+                    ],
+                )
+                .unwrap_err();
+                assert!(
+                    error.contains("unsanitized generated file: vectors/sessions.ndjson"),
+                    "{error}"
+                );
+                for path in paths {
+                    if exists {
+                        assert_eq!(
+                            fs::read_to_string(root.join(path)).unwrap(),
+                            "previous content"
+                        );
+                        fs::remove_file(root.join(path)).unwrap();
+                    } else {
+                        assert!(!root.join(path).exists());
+                    }
+                }
+            }
+        }
+        fs::remove_dir_all(root).unwrap();
+    }
+    #[test]
+    fn export_privacy_redacts_boundary_candidates() {
+        // QGDXC-SEC-0005 QGDXC-SEC-0006
+        for address in [
+            [192, 0, 2, 1].map(|n| n.to_string()).join("."),
+            ["2001", "db8", "", "1"].join(":"),
+        ] {
+            for (before, after) in [
+                ("", "."),
+                ("peer:", ""),
+                ("peer:", "Z"),
+                ("x", "."),
+                ("é", ","),
+            ] {
+                let line = format!("DX de Q1ABC: 14025 Q2ABC peer {before}{address}{after} 1832Z");
+                let mut event = oracle::line("dxspider", line.as_bytes(), "lf", None);
+                default_privacy(&mut event, "dxspider", false);
+                let safe = format!("DX de Q1ABC: 14025 Q2ABC peer {before}<ip>{after} 1832Z");
+                assert_eq!(
+                    oracle::unb64(event["raw_line"].as_str().unwrap()).unwrap(),
+                    safe.as_bytes()
+                );
+                assert!(!event.to_string().contains(&address));
+                assert_eq!(event["raw_status"], "redacted");
+            }
+        }
+    }
     #[test]
     fn capture_frame_provenance_caps_only_contributing_records() {
         // QGDXC-SEC-0001 QGDXC-VEC-0001

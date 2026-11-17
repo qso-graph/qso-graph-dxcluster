@@ -799,6 +799,18 @@
         {
           "file": "crates/qso-graph-dxcluster-cli/src/main.rs",
           "name": "diagnostics_share_event_privacy_and_control_escaping"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster/tests/protocol.rs",
+          "name": "privacy_redacts_punctuated_and_labeled_addresses_in_all_views"
+        },
+        {
+          "file": "xtask/src/addresses.rs",
+          "name": "independent_runtime_scanner_matches_public_scanner_at_boundaries"
+        },
+        {
+          "file": "xtask/src/generate.rs",
+          "name": "export_privacy_redacts_boundary_candidates"
         }
       ],
       "vectors": []
@@ -820,6 +832,14 @@
         {
           "file": "xtask/src/checks.rs",
           "name": "sanitization_rejects_labeled_ipv6_in_prose_and_decoded_fixture"
+        },
+        {
+          "file": "xtask/src/generate.rs",
+          "name": "publication_validates_all_files_before_writing_anything"
+        },
+        {
+          "file": "xtask/tests/capture_export.rs",
+          "name": "capture_export_redacts_boundaries_and_validates_before_publication"
         }
       ],
       "vectors": []

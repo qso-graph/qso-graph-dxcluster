@@ -565,32 +565,7 @@ fn addresses_sanitized(s: &str) -> bool {
             return false;
         }
     }
-    // QGDXC-SEC-0006: maximal literal-character runs, including hex
-    // suffixes of labels. Each boundary has at most 45 candidate bytes.
-    for run in s.split(|c: char| !(c.is_ascii_hexdigit() || matches!(c, ':' | '.' | '%'))) {
-        let mut documentation_end = 0;
-        for start in 0..run.len() {
-            if start != 0 && !matches!(run.as_bytes()[start - 1], b':' | b'.') {
-                continue;
-            }
-            for end in (start + 1..=run.len().min(start + 45)).rev() {
-                let candidate = &run[start..end];
-                if candidate.parse::<std::net::IpAddr>().is_err() {
-                    continue;
-                }
-                // A suffix within a documentation literal belongs to that
-                // literal (for example its compressed loopback-shaped tail).
-                if end <= documentation_end {
-                    continue;
-                }
-                if !permitted_literal(candidate) {
-                    return false;
-                }
-                documentation_end = end;
-            }
-        }
-    }
-    true
+    crate::addresses::visit(s, |range, _| permitted_literal(&s[range]))
 }
 fn text_sanitized(s: &str) -> bool {
     if !addresses_sanitized(s) {
@@ -933,7 +908,7 @@ fn rust_fixture_text(source: &str) -> String {
         })
         .collect()
 }
-fn public_file_sanitized(file: &Path, source: &str) -> bool {
+pub(crate) fn public_file_sanitized(file: &Path, source: &str) -> bool {
     if file
         .extension()
         .is_some_and(|e| e == "ndjson" || e == "json")

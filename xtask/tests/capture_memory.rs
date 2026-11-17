@@ -14,6 +14,8 @@ fn capture_provenance_ignores_notes_under_a_memory_ceiling() {
     let captures = root.join("captures");
     fs::create_dir_all(&captures).unwrap();
     fs::create_dir_all(root.join("vectors")).unwrap();
+    fs::create_dir_all(root.join("spec")).unwrap();
+    fs::write(root.join("spec/evidence.md"), "<!-- SPDX-License-Identifier: GPL-3.0-or-later -->\nSynthetic capture `dxspider-synthetic.ndjson`.\n").unwrap();
     let notes = 2_000_000;
     let mut file = std::io::BufWriter::new(
         fs::File::create(captures.join("dxspider-synthetic.ndjson")).unwrap(),

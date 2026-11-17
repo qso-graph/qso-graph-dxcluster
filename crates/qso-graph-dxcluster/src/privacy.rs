@@ -2,14 +2,21 @@
 use crate::{Event, Value};
 
 fn ipv4(s: &str) -> bool {
-    let p: Vec<_> = s.split('.').collect();
-    p.len() == 4
-        && p.iter().all(|p| {
-            !p.is_empty()
-                && p.len() <= 3
-                && p.bytes().all(|b| b.is_ascii_digit())
-                && p.parse::<u16>().is_ok_and(|v| v <= 255)
-        })
+    let mut parts = s.split('.');
+    for _ in 0..4 {
+        let Some(p) = parts.next() else {
+            return false;
+        };
+        if p.is_empty()
+            || p.len() > 3
+            || (p.len() > 1 && p.starts_with('0'))
+            || !p.bytes().all(|b| b.is_ascii_digit())
+            || p.parse::<u8>().is_err()
+        {
+            return false;
+        }
+    }
+    parts.next().is_none()
 }
 /// Literal recognition uses lexical IP syntax without invoking a network API.
 pub fn is_ip(s: &str) -> bool {
@@ -17,20 +24,26 @@ pub fn is_ip(s: &str) -> bool {
     if s.len() > 45 {
         return false;
     }
-    if ipv4(s) {
-        return true;
+    if !s.contains(':') {
+        return ipv4(s);
     }
-    if !s.contains(':') || s.contains(":::") || s.matches("::").count() > 1 {
+    if s.contains(":::") || s.matches("::").count() > 1 {
         return false;
     }
-    let p: Vec<_> = s.split(':').collect();
+    if s.strip_prefix(':')
+        .is_some_and(|rest| !rest.starts_with(':'))
+        || s.strip_suffix(':').is_some_and(|rest| !rest.ends_with(':'))
+    {
+        return false;
+    }
+    let mut parts = s.split(':').peekable();
     let mut units = 0;
-    for (i, p) in p.iter().enumerate() {
+    while let Some(p) = parts.next() {
         if p.is_empty() {
             continue;
         }
         if p.contains('.') {
-            if i + 1 != s.split(':').count() {
+            if parts.peek().is_some() {
                 return false;
             }
             if !ipv4(p) {
@@ -45,7 +58,7 @@ pub fn is_ip(s: &str) -> bool {
         }
     }
     if s.contains("::") {
-        units < 8 && !s.contains(":::")
+        units < 8
     } else {
         units == 8 && !s.starts_with(':') && !s.ends_with(':')
     }
@@ -53,41 +66,34 @@ pub fn is_ip(s: &str) -> bool {
 /// Return only redacted data. The original never enters an event queue.
 pub fn redact(bytes: &[u8]) -> (Vec<u8>, bool) {
     let mut out = Vec::with_capacity(bytes.len());
-    let mut i = 0;
-    let mut changed = false;
-    while i < bytes.len() {
-        if (bytes[i].is_ascii_hexdigit() || bytes[i] == b':')
-            && (i == 0 || !bytes[i - 1].is_ascii_alphanumeric())
-        {
-            let mut end = i;
-            // An IPv6 literal with a dotted tail has at most 45 bytes.
-            // Each input position examines a fixed-size window.
-            while end < bytes.len().min(i + 45)
-                && (bytes[end].is_ascii_hexdigit() || matches!(bytes[end], b'.' | b':'))
-            {
-                end += 1;
+    let mut offset = 0;
+    let mut copied_to = 0;
+    // QGDXC-SEC-0005: the same bounded boundary extraction as the public
+    // sanitization gate, with independent, dependency-free recognition.
+    for run in bytes.split(|b| !(b.is_ascii_hexdigit() || matches!(b, b':' | b'.' | b'%'))) {
+        for start in 0..run.len() {
+            if start != 0 && !matches!(run[start - 1], b':' | b'.') {
+                continue;
             }
-            let mut found = None;
-            for e in (i + 1..=end).rev() {
-                if e < bytes.len() && bytes[e].is_ascii_alphanumeric() {
-                    continue;
+            // An IPv6 literal with a dotted tail has at most 45 bytes.
+            for end in (start + 1..=run.len().min(start + 45)).rev() {
+                if offset + end <= copied_to {
+                    break;
                 }
-                if std::str::from_utf8(&bytes[i..e]).is_ok_and(is_ip) {
-                    found = Some(e);
+                if std::str::from_utf8(&run[start..end]).is_ok_and(is_ip) {
+                    if offset + start >= copied_to {
+                        out.extend_from_slice(&bytes[copied_to..offset + start]);
+                        out.extend_from_slice(b"<ip>");
+                    }
+                    copied_to = offset + end;
                     break;
                 }
             }
-            if let Some(e) = found {
-                out.extend_from_slice(b"<ip>");
-                changed = true;
-                i = e;
-                continue;
-            }
         }
-        out.push(bytes[i]);
-        i += 1;
+        offset += run.len() + 1;
     }
-    (out, changed)
+    out.extend_from_slice(&bytes[copied_to..]);
+    (out, copied_to != 0)
 }
 fn value(v: &mut Value) -> bool {
     match v {

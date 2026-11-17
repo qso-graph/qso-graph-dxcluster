@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #![forbid(unsafe_code)]
+mod addresses;
 mod checks;
 mod generate;
 mod input;

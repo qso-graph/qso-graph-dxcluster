@@ -213,6 +213,63 @@ fn nonspot_layouts() {
     }
 }
 #[test]
+fn privacy_redacts_punctuated_and_labeled_addresses_in_all_views() {
+    // QGDXC-SEC-0005
+    let addresses = [
+        [192, 0, 2, 1].map(|n| n.to_string()).join("."),
+        ["2001", "db8", "", "1"].join(":"),
+    ];
+    for address in addresses {
+        for (before, after) in [
+            ("", "."),
+            ("peer:", ""),
+            ("peer:", "Z"),
+            ("x", "."),
+            ("peer.", "%zone"),
+            ("('", ".'),"),
+            ("[", "]:7300"),
+            ("é", ","),
+        ] {
+            let comment = format!("peer {before}{address}{after}");
+            let safe = format!("peer {before}<ip>{after}");
+            for prefix in ["DX de Q1ABC: 14025 Q2ABC ", "Unknown "] {
+                let suffix = if prefix.starts_with("DX") {
+                    " 1832Z"
+                } else {
+                    ""
+                };
+                let line = format!("{prefix}{comment}{suffix}");
+                let event =
+                    parse(Profile::DxSpider, format!("{line}\n").as_bytes(), false).remove(0);
+                assert_eq!(event.raw_status, "redacted", "{line}");
+                let safe_line = format!("{prefix}{safe}{suffix}");
+                assert_eq!(event.raw_line, safe_line.as_bytes());
+                assert_eq!(
+                    event.get(if event.kind == "spot" {
+                        "comment"
+                    } else {
+                        "text"
+                    }),
+                    Some(if event.kind == "spot" {
+                        safe.as_str()
+                    } else {
+                        safe_line.as_str()
+                    })
+                );
+                assert!(!event.json().contains(&address));
+                assert!(event.json().contains(&format!(
+                    "\"raw_line\":\"{}\"",
+                    base64(safe_line.as_bytes())
+                )));
+                let retained =
+                    parse(Profile::DxSpider, format!("{line}\n").as_bytes(), true).remove(0);
+                assert_eq!(retained.raw_status, "exact");
+                assert_eq!(retained.raw_line, line.as_bytes());
+            }
+        }
+    }
+}
+#[test]
 fn privacy_and_terminal() {
     // QGDXC-SEC-0003 QGDXC-SEC-0005
     // Documentation addresses are deliberately assembled, also used by the sanitizer's planted checks.
