@@ -100,17 +100,29 @@ fn stalled_pipe_cancellation_closes_and_records_before_bounded_exit() {
         sent == feed.len()
     });
     expect("feed", done, &mut child, &stderr);
-    // Prove that the child has actually reached a blocked pipe write.
-    let done = wait_for(Duration::from_secs(5), || {
-        fs::read_dir(format!("/proc/{}/task", child.0.id()))
-            .unwrap()
-            .filter_map(Result::ok)
-            .any(|task| {
-                fs::read_to_string(task.path().join("wchan"))
-                    .is_ok_and(|state| state.trim() == "pipe_write")
-            })
-    });
-    expect("pipe_write", done, &mut child, &stderr);
+    // Prove that the child has actually reached a blocked pipe write, where the
+    // kernel exposes wait channels (Linux 5.16+ reports 0 unless privileged). The
+    // recording check below proves the paused input on every kernel.
+    let tasks = format!("/proc/{}/task", child.0.id());
+    let wchan_visible = fs::read_dir(&tasks)
+        .unwrap()
+        .filter_map(Result::ok)
+        .any(|task| {
+            fs::read_to_string(task.path().join("wchan"))
+                .is_ok_and(|state| !matches!(state.trim(), "" | "0"))
+        });
+    if wchan_visible {
+        let done = wait_for(Duration::from_secs(5), || {
+            fs::read_dir(format!("/proc/{}/task", child.0.id()))
+                .unwrap()
+                .filter_map(Result::ok)
+                .any(|task| {
+                    fs::read_to_string(task.path().join("wchan"))
+                        .is_ok_and(|state| state.trim() == "pipe_write")
+                })
+        });
+        expect("pipe_write", done, &mut child, &stderr);
+    }
     // Once the queue fills, recording stops admitting wire input too.
     let mut previous = 0;
     let done = wait_for(Duration::from_secs(5), || {

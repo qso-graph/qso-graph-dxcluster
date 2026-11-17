@@ -31,6 +31,7 @@ fn replay_memory_is_independent_of_recording_length() {
         .arg(env!("CARGO_BIN_EXE_qg-dxc"))
         .arg(&path)
         .stdout(Stdio::null())
+        .env("MALLOC_ARENA_MAX", "1") // see test_support.rs in the CLI crate
         .output()
         .unwrap();
     fs::remove_file(path).unwrap();

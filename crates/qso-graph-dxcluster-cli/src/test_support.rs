@@ -14,6 +14,9 @@ pub(crate) fn memory_child(parts: &[&str]) -> bool {
         .arg(std::env::current_exe().unwrap())
         .arg(&test)
         .env("QGDXC_MEMORY_CHILD", &test)
+        // One malloc arena: glibc's per-thread arenas reserve 64 MiB each, which
+        // fails under this address-space limit and degrades every allocation to mmap.
+        .env("MALLOC_ARENA_MAX", "1")
         .output()
         .unwrap();
     assert!(output.status.success(), "64 MiB input ceiling: {output:?}");
