@@ -181,6 +181,9 @@ pub fn line(profile: &str, b: &[u8], ending: &str, reason: Option<&str>) -> Valu
     if s.starts_with("DX de ") {
         let result = (|| {
             let (spotter, tail) = s[6..].trim_start_matches(' ').split_once(':')?;
+            if !tail.starts_with(' ') {
+                return None;
+            }
             let mut parts = tail
                 .trim_start_matches(' ')
                 .splitn(3, ' ')
@@ -320,7 +323,7 @@ pub fn line(profile: &str, b: &[u8], ending: &str, reason: Option<&str>) -> Valu
         .any(|p| s.starts_with(p))
         || profile == "dxspider" && s.contains(" de ")
     {
-        if !["dxspider", "cccluster"].contains(&profile) {
+        if profile != "dxspider" && !(profile == "cccluster" && s.starts_with("To ALL de ")) {
             return bad("unsupported_layout");
         }
         let clean = s.strip_suffix("\x07\x07").unwrap_or(s);

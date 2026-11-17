@@ -127,7 +127,11 @@ fn common_spots_and_dispatch() {
 fn enhanced_and_rbn() {
     // QGDXC-DSP-0006 QGDXC-CCC-0004 QGDXC-EVT-0007 QGDXC-RBN-0003 QGDXC-RBN-0004 QGDXC-RBN-0005
     let line = b"CC11^14025^Q2ABC^1-Nov-2026^1832Z^A^B^Q1ABC^1^2^Q3ABC^4^5^6^7^^^QX^QY^aA00^\n";
-    let e = parse(Profile::DxSpider, line, false).remove(0);
+    assert_eq!(
+        parse(Profile::DxSpider, line, false)[0].raw_status,
+        "withheld"
+    );
+    let e = parse(Profile::DxSpider, line, true).remove(0);
     assert_eq!(e.kind, "spot");
     assert_eq!(e.get("comment"), Some("A^B"));
     assert_eq!(e.get("grid"), Some("aA00"));
@@ -366,5 +370,72 @@ fn arbitrary_bytes_and_receipt_times() {
         "2026-11-16\n00:00:00Z",
     ] {
         assert!(!values::receipt(bad));
+    }
+}
+
+#[test]
+fn unsupported_cc11_privacy_is_profile_independent() {
+    let mut slots = vec![""; 25];
+    slots[0] = "CC11";
+    slots[1] = "14025";
+    slots[2] = "Q2ABC";
+    slots[3] = "1-Nov-2026";
+    slots[4] = "1832";
+    slots[6] = "Q1ABC";
+    slots[22] = "+12.3456/-45.6789";
+    slots[23] = "192.0.2.1";
+    for profile in [
+        Profile::Auto,
+        Profile::ArCluster,
+        Profile::Rbn,
+        Profile::CcCluster,
+        Profile::DxSpider,
+    ] {
+        for prefix in ["", "  ", "notice "] {
+            for count in [25, 24, 26] {
+                let mut fields = slots.clone();
+                fields.resize(count, "");
+                let wire = format!("{prefix}{}\n", fields.join("^"));
+                let event = parse(profile, wire.as_bytes(), false).remove(0);
+                assert!(
+                    !event.json().contains("12.3456"),
+                    "{profile:?}: {}",
+                    event.json()
+                );
+                assert!(!String::from_utf8_lossy(&event.raw_line).contains("12.3456"));
+                assert!(matches!(event.raw_status, "redacted" | "withheld"));
+                if count != 25 {
+                    assert_eq!(event.raw_status, "withheld");
+                }
+                assert!(
+                    parse(profile, wire.as_bytes(), true)[0]
+                        .json()
+                        .contains("12.3456")
+                );
+            }
+        }
+    }
+}
+#[test]
+fn unsupported_cccluster_weather_and_propagation() {
+    for line in [
+        "WX de Q1ABC: Rain",
+        "WWV de Q1ABC <23>: SFI=99, A=x, K=3, quiet",
+        "WCY de Q1ABC <0> : K=3",
+    ] {
+        let event = parse(Profile::CcCluster, format!("{line}\n").as_bytes(), false).remove(0);
+        assert_eq!(event.get("reason"), Some("unsupported_layout"));
+    }
+}
+#[test]
+fn live_spot_requires_space_after_colon() {
+    for profile in [
+        Profile::DxSpider,
+        Profile::ArCluster,
+        Profile::CcCluster,
+        Profile::Rbn,
+    ] {
+        let event = parse(profile, b"DX de Q1ABC:14025 Q2ABC CQ 1832Z\n", false).remove(0);
+        assert_eq!(event.get("reason"), Some("malformed"));
     }
 }

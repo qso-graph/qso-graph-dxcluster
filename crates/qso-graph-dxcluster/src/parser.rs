@@ -279,7 +279,9 @@ pub fn parse_frame(frame: Frame, c: &Context, received_at: Option<&str>) -> Even
             .iter()
             .any(|p| s.starts_with(p))
         {
-            if matches!(c.profile, Profile::DxSpider | Profile::CcCluster) {
+            if c.profile == Profile::DxSpider
+                || c.profile == Profile::CcCluster && s.starts_with("To ALL de ")
+            {
                 if !other(s, c.profile, &mut e) {
                     reason = Some("malformed");
                 }
@@ -343,7 +345,7 @@ fn dx(s: &str, p: Profile, e: &mut Event) -> bool {
     let Some((spotter, rest)) = s.trim_start_matches(' ').split_once(':') else {
         return false;
     };
-    if !v::received_call(spotter) {
+    if !v::received_call(spotter) || !rest.starts_with(' ') {
         return false;
     }
     let Some((f, rest)) = word(rest.trim_start_matches(' ')) else {

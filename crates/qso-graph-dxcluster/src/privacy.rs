@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-use crate::{Event, Profile, Value};
+use crate::{Event, Value};
 
 fn ipv4(s: &str) -> bool {
     let p: Vec<_> = s.split('.').collect();
@@ -14,10 +14,13 @@ fn ipv4(s: &str) -> bool {
 /// Literal recognition uses lexical IP syntax without invoking a network API.
 pub fn is_ip(s: &str) -> bool {
     let s = s.trim_matches(['[', ']']);
+    if s.len() > 45 {
+        return false;
+    }
     if ipv4(s) {
         return true;
     }
-    if !s.contains(':') || s.matches("::").count() > 1 {
+    if !s.contains(':') || s.contains(":::") || s.matches("::").count() > 1 {
         return false;
     }
     let p: Vec<_> = s.split(':').collect();
@@ -57,7 +60,9 @@ pub fn redact(bytes: &[u8]) -> (Vec<u8>, bool) {
             && (i == 0 || !bytes[i - 1].is_ascii_alphanumeric())
         {
             let mut end = i;
-            while end < bytes.len()
+            // An IPv6 literal with a dotted tail has at most 45 bytes.
+            // Each input position examines a fixed-size window.
+            while end < bytes.len().min(i + 45)
                 && (bytes[end].is_ascii_hexdigit() || matches!(bytes[end], b'.' | b':'))
             {
                 end += 1;
@@ -115,19 +120,25 @@ pub fn apply(e: &mut Event, retain: bool) {
         return;
     }
     let mut changed = false;
-    if e.raw_line.starts_with(b"CC11^")
-        && matches!(e.server_type, Profile::CcCluster | Profile::Auto)
-    {
+    if e.raw_line.windows(5).any(|w| w == b"CC11^") {
+        if !e.raw_line.trim_ascii_start().starts_with(b"CC11^") {
+            withhold(e);
+            return;
+        }
         let mut slots: Vec<Vec<u8>> = e
             .raw_line
             .split(|b| *b == b'^')
             .map(<[u8]>::to_vec)
             .collect();
-        if slots.len() != 25 {
+        // A variable-length DXSpider comment can overlap an unknown CC
+        // layout. Without retention, only fixed boundaries are safe.
+        if slots.len() == 20 {
+            // Fixed DXSpider layout: no designated coordinate slots.
+        } else if slots.len() != 25 || e.get("format") == Some("cc11_dxspider") {
             withhold(e);
             return;
         }
-        if !slots[22].is_empty() || !slots[23].is_empty() {
+        if slots.len() == 25 && (!slots[22].is_empty() || !slots[23].is_empty()) {
             slots[22].clear();
             slots[23].clear();
             e.raw_line = slots.join(&b'^');

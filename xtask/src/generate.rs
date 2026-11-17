@@ -127,7 +127,7 @@ pub fn vector(id: &str, profile: &str, bytes: &[u8], ending: &str, reason: Optio
     json!({"SPDX-License-Identifier":"GPL-3.0-or-later","id":id,"spec":"0.1.0","class":"Event parser","profile":profile,"provenance":{"capture":"synthetic","records":[],"sanitization":["Invented Q-prefix identities; sensitive slots removed"],"derived_from":"QGDXC-VEC-0002"},"config":{"line_limit":4096,"profile":profile,"retain_third_party_data":false,"connect_ms":30000,"login_ms":30000,"identity_ms":30000,"setup_ms":30000},"tokens":[],"jitter_ms":[],"steps":steps,"expected_events":[{"step":trigger,"elapsed_ms":0,"event":expected}],"expected_actions":[]})
 }
 /// An independently implemented privacy oracle, including malformed CC11.
-pub fn default_privacy(e: &mut Value, p: &str, retain: bool) {
+pub fn default_privacy(e: &mut Value, _p: &str, retain: bool) {
     if retain {
         return;
     }
@@ -176,9 +176,12 @@ pub fn default_privacy(e: &mut Value, p: &str, retain: bool) {
         .unwrap_or_else(|_| raw.iter().map(|b| char::from(*b)).collect());
     let mut transformed = text.clone();
     let mut withheld = withheld;
-    if transformed.starts_with("CC11^") && ["cccluster", "auto"].contains(&p) {
+    if transformed.contains("CC11^") {
+        withheld |= !transformed.trim_start().starts_with("CC11^");
         let mut slots: Vec<_> = transformed.split('^').map(str::to_owned).collect();
-        if slots.len() != 25 {
+        if slots.len() == 20 {
+            // Fixed DXSpider fields contain no coordinate slots.
+        } else if slots.len() != 25 || e["fields"]["format"] == "cc11_dxspider" {
             withheld = true;
         } else {
             slots[22].clear();
@@ -562,6 +565,16 @@ fn synthetic() -> Vec<Value> {
 
 fn extra_vectors() -> Vec<Value> {
     let mut out = vec![];
+    // Manually specified negative oracle: do not ask the spot parser whether
+    // its own missing-separator interpretation is correct.
+    out.push(vector(
+        "manual-missing-colon-space",
+        "arcluster",
+        b"DX de Q1ABC:14025 Q2ABC CQ 1832Z",
+        "lf",
+        Some("malformed"),
+    ));
+
     let prompt = "Q1ABC de RELAY 1-Nov-2026 18:32Z >";
     let spot = b"DX de Q1ABC-#: 14074 Q2ABC FT8 -12 dB AA00 CQ 1832Z";
     let mut auto = vector("event-auto-detection-context", "auto", b"", "lf", None);
