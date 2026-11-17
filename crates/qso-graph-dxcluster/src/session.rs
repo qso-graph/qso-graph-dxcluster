@@ -417,6 +417,18 @@ impl Session {
         }
         Ok(b)
     }
+    /// Resume an automatic attempt at an authoritative recorded boundary
+    /// (QGDXC-REC-0004), preserving QGDXC-SES-0010 retry history.
+    pub fn recorded_retry(&mut self, now: u64) -> Result<Batch, &'static str> {
+        self.at(now)?;
+        if !self.recorded_transport || self.state != State::Backoff {
+            return Err("unexpected recorded retry");
+        }
+        let mut b = Batch::default();
+        self.cancel_timer(Timer::Retry, &mut b);
+        self.begin(&mut b)?;
+        Ok(b)
+    }
     pub fn restart(&mut self, now: u64) -> Result<Batch, &'static str> {
         let mut b = self.cancel(now)?;
         self.retries = 0;

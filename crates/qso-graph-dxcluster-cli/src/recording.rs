@@ -223,10 +223,10 @@ impl Replay {
             self.open = true;
             self.outbound.clear();
             if self.engine.state != State::Connecting {
-                let b = if self.engine.attempt == 0 {
-                    self.engine.start(at)
+                let b = if self.engine.state == State::Backoff {
+                    self.engine.recorded_retry(at)
                 } else {
-                    self.engine.restart(at)
+                    self.engine.start(at)
                 }
                 .map_err(str::to_owned)?;
                 events.extend(b.events);
@@ -373,6 +373,49 @@ mod tests {
         replay
             .record(&json!({"t":t,"dir":dir,"b64":base64(bytes)}))
             .unwrap()
+    }
+    #[test]
+    fn replay_preserves_automatic_retry_history_through_exhaustion() {
+        // QGDXC-REC-0004 QGDXC-SES-0010
+        let mut replay = Replay::new("Q1ABC".into(), Profile::Rbn, vec![]).unwrap();
+        let mut at = 0;
+        let mut actual = vec![];
+        let mut expected = vec![];
+        for delay in [5000, 10000, 20000, 40000, 80000, 160000, 300000, 300000, 0] {
+            actual.extend(
+                replay
+                    .record(&json!({"t":at as f64 / 1000.0,"conn":"open"}))
+                    .unwrap(),
+            );
+            at += 1000;
+            actual.extend(
+                replay
+                    .record(&json!({"t":at as f64 / 1000.0,"conn":"close","reason":"eof"}))
+                    .unwrap(),
+            );
+            expected.extend([
+                json!({"state":"connecting","reason":"started"}),
+                json!({"state":"await_login","reason":"connected"}),
+                json!({"state":"disconnected","reason":"eof"}),
+            ]);
+            expected.push(if delay == 0 {
+                json!({"state":"blocked","reason":"retry_exhausted"})
+            } else {
+                json!({"state":"backoff","reason":"retry_scheduled","retry_in_ms":delay})
+            });
+            at += delay;
+        }
+        let fields: Vec<Value> = actual
+            .iter()
+            .map(|e| {
+                assert_eq!(e.kind, "connection_state");
+                serde_json::from_str::<Value>(&e.json()).unwrap()["fields"].clone()
+            })
+            .collect();
+        assert_eq!(fields, expected);
+        assert_eq!(replay.engine.state, State::Blocked);
+        assert_eq!(replay.engine.attempt, 9);
+        assert!(replay.finish().unwrap().is_empty());
     }
     #[test]
     fn replay_uses_last_outbound_fragment_for_admission() {

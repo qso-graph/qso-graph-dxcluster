@@ -126,6 +126,7 @@ pub fn vectors() -> Vec<Value> {
     let mut cases = extra();
     cases.push(overlong_banner());
     cases.extend(inert_status_text());
+    cases.push(application_retry_exhaustion());
     cases.extend(stricter_pacing());
     let prompts = [
         ("arcluster", "Q1ABC de Q2ABC 1-Nov 1832Z arc6>"),
@@ -943,4 +944,51 @@ fn inert_status_text() -> Vec<Value> {
     c.tick();
     out.push(c.finish());
     out
+}
+
+fn application_retry_exhaustion() -> Value {
+    let mut c = Case::new("application-replay-retry-exhaustion", "rbn");
+    c.v["class"] = json!("Application");
+    c.v["provenance"]["derived_from"] = json!("QGDXC-REC-0004 QGDXC-SES-0010");
+    c.begin();
+    c.tick();
+    let mut close_at = 1000;
+    for delay in [5000, 10000, 20000, 40000, 80000, 160000, 300000, 300000, 0] {
+        c.step(
+            close_at,
+            json!({"type":"transport","attempt":c.attempt,"outcome":"eof"}),
+        );
+        c.cancel("login");
+        c.state("disconnected", "eof", None);
+        if delay == 0 {
+            c.state("blocked", "retry_exhausted", None);
+            c.tick();
+            break;
+        }
+        c.event(oracle::local(
+            "rbn",
+            "backoff",
+            "retry_scheduled",
+            Some(delay),
+        ));
+        c.v["expected_state"] = json!("backoff");
+        c.arm("retry", close_at + delay);
+        c.tick();
+        let retry_at = close_at + delay;
+        c.attempt += 1;
+        c.step(retry_at, json!({"type":"tick"}));
+        c.state("connecting", "started", None);
+        c.action(json!({"type":"connect","attempt":c.attempt}));
+        c.arm("connect", retry_at + 30000);
+        c.step(
+            retry_at + 1,
+            json!({"type":"transport","attempt":c.attempt,"outcome":"connected"}),
+        );
+        c.cancel("connect");
+        c.state("await_login", "connected", None);
+        c.arm("login", retry_at + 30001);
+        c.tick();
+        close_at = retry_at + 1001;
+    }
+    c.finish()
 }

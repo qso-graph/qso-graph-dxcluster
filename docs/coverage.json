@@ -590,9 +590,19 @@
         {
           "file": "crates/qso-graph-dxcluster-cli/src/recording.rs",
           "name": "replay_defers_received_termination_until_recorded_close"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/recording.rs",
+          "name": "replay_preserves_automatic_retry_history_through_exhaustion"
+        },
+        {
+          "file": "xtask/src/runner.rs",
+          "name": "replay_gate_compares_connection_state_and_retry_delays"
         }
       ],
-      "vectors": []
+      "vectors": [
+        "application-replay-retry-exhaustion"
+      ]
     },
     "QGDXC-REC-0005": {
       "tests": [
@@ -813,9 +823,19 @@
         {
           "file": "crates/qso-graph-dxcluster/tests/session.rs",
           "name": "retries_stability_and_restart"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/recording.rs",
+          "name": "replay_preserves_automatic_retry_history_through_exhaustion"
+        },
+        {
+          "file": "xtask/src/runner.rs",
+          "name": "replay_gate_compares_connection_state_and_retry_delays"
         }
       ],
-      "vectors": []
+      "vectors": [
+        "application-replay-retry-exhaustion"
+      ]
     },
     "QGDXC-SES-0011": {
       "tests": [

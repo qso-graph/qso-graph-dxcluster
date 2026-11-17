@@ -305,7 +305,11 @@ pub fn check(v: &Value) -> Result<(), String> {
         return Err("final state differs".into());
     }
     if v["class"] == "Application" {
-        application_roundtrip(v, &a, &e)?;
+        application_roundtrip(
+            v,
+            &a,
+            v["expected_events"].as_array().ok_or("expected_events")?,
+        )?;
     }
     let mut split = v.clone();
     let mut steps = vec![];
@@ -430,19 +434,11 @@ fn application_roundtrip(v: &Value, actions: &[Value], expected: &[Value]) -> Re
         actual.extend(replay.record(&record)?);
     }
     actual.extend(replay.finish()?);
-    let actual: Vec<_> = actual
-        .into_iter()
-        .filter(|e| e.kind != "connection_state")
-        .map(json_event)
-        .collect();
-    let wanted: Vec<_> = expected
-        .iter()
-        .filter(|w| w["event"]["kind"] != "connection_state")
-        .map(|w| w["event"].clone())
-        .collect();
+    let actual: Vec<_> = actual.into_iter().map(json_event).collect();
+    let wanted: Vec<_> = expected.iter().map(|w| w["event"].clone()).collect();
     if actual != wanted {
         return Err(
-            "application recording/replay content trace differs from independent oracle".into(),
+            "application recording/replay event trace differs from independent oracle".into(),
         );
     }
     Ok(())
@@ -451,6 +447,33 @@ fn application_roundtrip(v: &Value, actions: &[Value], expected: &[Value]) -> Re
 #[cfg(test)]
 mod tests {
     use serde_json::json;
+    #[test]
+    fn replay_gate_compares_connection_state_and_retry_delays() {
+        // QGDXC-REC-0004 QGDXC-SES-0010
+        let v = crate::scenarios::vectors()
+            .into_iter()
+            .find(|v| v["id"] == "application-replay-retry-exhaustion")
+            .unwrap();
+        let actions = v["expected_actions"].as_array().unwrap();
+        let expected = v["expected_events"].as_array().unwrap();
+        super::check(&v).unwrap();
+        for reason in ["retry_scheduled", "retry_exhausted"] {
+            let mut mutated = expected.clone();
+            let event = mutated
+                .iter_mut()
+                .find(|e| e["event"]["fields"]["reason"] == reason)
+                .unwrap();
+            event["event"]["fields"]["reason"] = json!("cancelled");
+            assert!(super::application_roundtrip(&v, actions, &mutated).is_err());
+        }
+        let mut mutated = expected.clone();
+        let event = mutated
+            .iter_mut()
+            .find(|e| e["event"]["fields"]["retry_in_ms"] == 10000)
+            .unwrap();
+        event["event"]["fields"]["retry_in_ms"] = json!(5000);
+        assert!(super::application_roundtrip(&v, actions, &mutated).is_err());
+    }
     #[test]
     fn stricter_pacing_vectors_apply_configuration() {
         // QGDXC-SES-0011 QGDXC-VEC-0006
