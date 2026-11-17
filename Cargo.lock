@@ -214,5 +214,6 @@ name = "xtask"
 version = "0.1.0"
 dependencies = [
  "qso-graph-dxcluster",
+ "qso-graph-dxcluster-cli",
  "serde_json",
 ]

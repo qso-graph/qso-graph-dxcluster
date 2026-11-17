@@ -17,7 +17,7 @@ locations, verification evidence, and limitations; it does not redefine them.
 | DX, EVT, server mappings | Library parser.rs and tests/protocol.rs |
 | SES, startup profiles | Library session.rs and tests/session.rs; vectors/sessions.ndjson |
 | Privacy | Library privacy.rs; protocol tests; sanitization planted-case check |
-| REC | CLI recording.rs tests; offline Records and Replay adapters |
+| REC | CLI recording.rs tests; offline Records and Replay adapters; the application-recording-replay-multiple-connections vector |
 | VEC | Independent xtask oracle.rs, generate.rs, scenarios.rs, runner.rs |
 | Security policy | xtask checks.rs and its planted cases; excluded fuzz targets |
 
@@ -70,7 +70,7 @@ complete Close before a later Connect; dispatch timers at their logical times,
 with completion and cancellation before equal-time expiry except stable_ready;
 and preserve shared pacing history when replacing a Session for the same
 endpoint and canonical identity. The supplied CLI implements one active session.
-The vector harness follows the abstract ordering in QGDXC-VEC-0006.
+The vector harness follows the abstract ordering in QGDXC-VEC-0006. Its Application vector also writes conforming in-memory recording boundaries and checks replayed content against the same independent complete event oracles. Local configuration-rejection vectors request no connection or output.
 
 Live checks are intentionally absent. The evidence limitations marked
 UNCONFIRMED in Annexes B–E remain: charset guarantees, additional or translated

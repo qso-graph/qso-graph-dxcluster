@@ -33,6 +33,9 @@ impl<W: Write> Recorder<W> {
         self.writer.write_all(b"\n")?;
         self.writer.flush()
     }
+    pub fn into_inner(self) -> W {
+        self.writer
+    }
     pub fn note(&mut self, t: f64, note: &str) -> io::Result<()> {
         self.write(t, json!({"t":t,"note":note}))
     }
@@ -100,7 +103,7 @@ impl<R: BufRead> Records<R> {
             done: false,
         }
     }
-    pub fn next(&mut self) -> Result<Option<Value>, String> {
+    pub fn next_record(&mut self) -> Result<Option<Value>, String> {
         if self.done {
             return Ok(None);
         }
@@ -256,7 +259,7 @@ pub fn replay_config<R: BufRead>(reader: R) -> Result<(String, Profile, Vec<Stri
     let mut tokens = Vec::<Option<String>>::new();
     let mut first_out = false;
     let mut outbound = Vec::<u8>::new();
-    while let Some(v) = records.next()? {
+    while let Some(v) = records.next_record()? {
         if v["conn"] == "open" {
             if tokens.len() == 1024 {
                 return Err("recording exceeds 1024 connections".into());
@@ -366,7 +369,7 @@ mod tests {
         )
         .unwrap();
         let mut events = vec![];
-        while let Some(v) = rows.next().unwrap() {
+        while let Some(v) = rows.next_record().unwrap() {
             events.extend(replay.record(&v).unwrap());
         }
         assert_eq!(
@@ -384,7 +387,7 @@ mod tests {
             let mut rows = Records::new(std::io::Cursor::new(invalid));
             let mut failed = false;
             for _ in 0..4 {
-                match rows.next() {
+                match rows.next_record() {
                     Err(_) => {
                         failed = true;
                         break;

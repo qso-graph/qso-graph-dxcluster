@@ -300,6 +300,7 @@ object; an optional `SPDX-License-Identifier` metadata member identifies its lic
 | `expected_events` | Ordered objects `{step, elapsed_ms, event}`; `event` is a complete Annex A oracle using base64 for byte members; `step` is the zero-based triggering step index |
 | `expected_actions` | Ordered objects `{step, elapsed_ms, action}`; `action` follows the schema below |
 | `expected_state` | Final session state for session cases; absent for line-only cases |
+| `expected_config_error` | Optional text for a local configuration-rejection case; when present, `steps`, `expected_events`, and `expected_actions` are empty and `expected_state` is absent. No connection or output is requested. Other invalid vector shapes remain invalid. |
 
 An expected event is an independent oracle, not a copy of the implementation's
 output. A line vector can contain one captured line split across several input

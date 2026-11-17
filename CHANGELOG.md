@@ -12,4 +12,4 @@
 - Add independently specified sanitized vectors, requirement coverage checks,
   source policy, offline verification, and a three-platform CI matrix.
 - Clarify AR-Cluster banner extension context, terminal notices during EOF
-  finalization, synthetic privacy-test addresses, and vector license metadata.
+  finalization, synthetic privacy-test addresses, vector license metadata, and local configuration-rejection vectors.

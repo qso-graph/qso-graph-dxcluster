@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #![forbid(unsafe_code)]
-mod recording;
 use qso_graph_dxcluster::{model::escape, *};
+use qso_graph_dxcluster_cli::recording;
 use recording::{Recorder, Records, Replay};
 use std::{
     fs::File,
@@ -65,7 +65,7 @@ fn run() -> Result<(), String> {
             File::open(&args[1]).map_err(|e| e.to_string())?,
         ))?;
         let mut replay = Replay::new(identity, profile, tokens)?;
-        while let Some(v) = records.next()? {
+        while let Some(v) = records.next_record()? {
             if let Some(note) = v["note"].as_str() {
                 eprintln!("note {}: {}", records.line, escape(note));
             }

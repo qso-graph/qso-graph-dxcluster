@@ -301,6 +301,7 @@ pub fn vectors() -> Vec<Value> {
         cases.push(c.finish());
     }
     cases.extend(mutations(&cases));
+    cases.extend(application_and_validation());
     cases
 }
 
@@ -665,6 +666,159 @@ fn mutations(cases: &[Value]) -> Vec<Value> {
     c.cancel("setup");
     c.action(json!({"type":"close","attempt":1}));
     c.state("blocked", "setup_failed", Some(&e));
+    c.tick();
+    out.push(c.finish());
+    out
+}
+
+fn application_and_validation() -> Vec<Value> {
+    let mut out = vec![];
+    for identity in ["Q1ABC-0", "Q1ABC-00", "Q1ABC-01"] {
+        let mut c = Case::new(&format!("reject-{identity}"), "auto");
+        c.v["config"]["identity"] = json!(identity);
+        c.v["expected_config_error"] = json!("invalid login token or SSID");
+        c.v.as_object_mut().unwrap().remove("expected_state");
+        c.v["provenance"]["derived_from"] = json!("QGDXC-IO-0003");
+        out.push(c.finish());
+    }
+    for prompt in ["missing terminator".into(), format!("{}>", "Q".repeat(256))] {
+        let mut c = Case::new(
+            &format!("reject-custom-prompt-{}", prompt.len()),
+            "dxspider",
+        );
+        c.v["config"]["line_limit"] = json!(256);
+        c.v["config"]["custom_prompt"] = json!(prompt);
+        c.v["expected_config_error"] =
+            json!("custom prompt must fit the line bound and end in > or :");
+        c.v.as_object_mut().unwrap().remove("expected_state");
+        c.v["provenance"]["derived_from"] = json!("QGDXC-DSP-0002");
+        out.push(c.finish());
+    }
+    for phase in ["login", "identity", "setup"] {
+        for suffix in ["partial", "pending\r"] {
+            let mut c = Case::new(
+                &format!("deadline-{phase}-flush-{}", suffix.len()),
+                if phase == "setup" {
+                    "cccluster"
+                } else {
+                    "auto"
+                },
+            );
+            c.begin();
+            if phase != "login" {
+                c.login("login:");
+            } else {
+                c.tick();
+            }
+            let deadline = if phase == "setup" {
+                c.ready("cccluster", "Q1ABC de Q2ABC 1-Nov-2026 1832Z CCC >");
+                c.step(1000, json!({"type":"tick"}));
+                c.output("set/ve7cc");
+                c.arm("setup", 6000);
+                6000
+            } else {
+                30000
+            };
+            c.input(1100, suffix);
+            c.tick();
+            c.step(deadline, json!({"type":"tick"}));
+            c.event(oracle::line(
+                &c.profile,
+                suffix.trim_end_matches('\r').as_bytes(),
+                if suffix.ends_with('\r') { "cr" } else { "none" },
+                (!suffix.ends_with('\r')).then_some("partial"),
+            ));
+            c.action(json!({"type":"close","attempt":1}));
+            if phase == "login" {
+                c.state("disconnected", "timeout", None);
+                c.event(oracle::local(
+                    &c.profile,
+                    "backoff",
+                    "retry_scheduled",
+                    Some(5000),
+                ));
+                c.arm("retry", deadline + 5000);
+                c.v["expected_state"] = json!("backoff");
+            } else {
+                c.state(
+                    "blocked",
+                    if phase == "setup" {
+                        "setup_failed"
+                    } else {
+                        "profile_unknown"
+                    },
+                    None,
+                );
+            }
+            out.push(c.finish());
+        }
+    }
+    for suffix in ["partial", "pending\r"] {
+        let mut c = Case::new(&format!("restart-flush-{}", suffix.len()), "rbn");
+        c.begin();
+        c.login("login:");
+        c.input(1, suffix);
+        c.tick();
+        c.step(2, json!({"type":"restart"}));
+        c.event(oracle::line(
+            "rbn",
+            suffix.trim_end_matches('\r').as_bytes(),
+            if suffix.ends_with('\r') { "cr" } else { "none" },
+            (!suffix.ends_with('\r')).then_some("partial"),
+        ));
+        c.cancel("identity");
+        c.action(json!({"type":"close","attempt":1}));
+        c.state("disconnected", "cancelled", None);
+        c.state("connecting", "started", None);
+        c.action(json!({"type":"connect","attempt":2}));
+        c.arm("connect", 30002);
+        c.tick();
+        out.push(c.finish());
+    }
+    let mut c = Case::new("application-recording-replay-multiple-connections", "rbn");
+    c.v["class"] = json!("Application");
+    c.v["provenance"]["derived_from"] = json!("QGDXC-REC-0004 QGDXC-REC-0005 QGDXC-SES-0011");
+    c.begin();
+    c.login("login:");
+    let prompt = "Q1ABC de RELAY 1-Nov-2026 18:32Z >";
+    c.ready("rbn", prompt);
+    c.step(200, json!({"type":"cancel"}));
+    c.cancel("stable_ready");
+    c.action(json!({"type":"close","attempt":1}));
+    c.state("disconnected", "cancelled", None);
+    c.tick();
+    c.attempt = 2;
+    c.step(500, json!({"type":"start"}));
+    c.state("connecting", "started", None);
+    c.action(json!({"type":"connect","attempt":2}));
+    c.arm("connect", 30500);
+    c.step(
+        500,
+        json!({"type":"transport","attempt":2,"outcome":"connected"}),
+    );
+    c.cancel("connect");
+    c.state("await_login", "connected", None);
+    c.arm("login", 30500);
+    c.input(500, "login:");
+    c.content("login:", "login_prompt", "none");
+    c.cancel("login");
+    c.arm("pacing", 1000);
+    c.tick();
+    c.step(1000, json!({"type":"tick"}));
+    c.output("Q1ABC");
+    c.state("await_identity", "login_sent", None);
+    c.arm("identity", 31000);
+    c.input(1100, prompt);
+    let e = c.content(prompt, "ready_prompt", "none");
+    c.cancel("identity");
+    c.state("setup", "identified", Some(&e));
+    c.state("ready", "setup_complete", Some(&e));
+    c.arm("stable_ready", 601100);
+    c.tick();
+    c.step(1200, json!({"type":"cancel"}));
+    c.cancel("stable_ready");
+    c.action(json!({"type":"close","attempt":2}));
+    c.state("disconnected", "cancelled", None);
     c.tick();
     out.push(c.finish());
     out

@@ -3,7 +3,7 @@
 
 The library has zero runtime and development dependencies. CLI argument handling,
 base64, event serialization, framing, and protocol parsing use first-party Rust.
-The CLI and repository tooling share serde_json. The CLI uses ctrlc for portable
+The CLI and repository tooling share serde_json. Repository tooling also imports the first-party CLI recording adapter to check application recording/replay vectors without sockets. The CLI uses ctrlc for portable
 OS signal registration, avoiding first-party unsafe signal handlers.
 
 Every registry package below is an explicit decision. Versions are locked in

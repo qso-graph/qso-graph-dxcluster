@@ -226,6 +226,23 @@ fn without_steps(v: &[Value]) -> Vec<Value> {
         .collect()
 }
 pub fn check(v: &Value) -> Result<(), String> {
+    if let Some(error) = v["expected_config_error"].as_str() {
+        if v["steps"] != json!([])
+            || v["expected_events"] != json!([])
+            || v["expected_actions"] != json!([])
+            || v.get("expected_state").is_some()
+        {
+            return Err("invalid configuration-rejection vector".into());
+        }
+        return match config(v) {
+            Err(actual) if actual == error => Ok(()),
+            Err(actual) => Err(format!(
+                "configuration error {actual:?}, expected {error:?}"
+            )),
+            Ok(_) => Err("invalid configuration admitted".into()),
+        };
+    }
+
     let (e, a, state) = execute(v)?;
     if e.as_slice()
         != v["expected_events"]
@@ -261,6 +278,9 @@ pub fn check(v: &Value) -> Result<(), String> {
     }
     if state.as_deref() != v["expected_state"].as_str() {
         return Err("final state differs".into());
+    }
+    if v["class"] == "Application" {
+        application_roundtrip(v, &a, &e)?;
     }
     let mut split = v.clone();
     let mut steps = vec![];
@@ -319,6 +339,87 @@ pub fn all() -> Result<(), String> {
         "{} vectors: complete event/action/state traces and byte-split invariance",
         ids.len()
     );
+    Ok(())
+}
+
+fn application_roundtrip(v: &Value, actions: &[Value], expected: &[Value]) -> Result<(), String> {
+    use qso_graph_dxcluster_cli::recording::{Recorder, Records, Replay, replay_config};
+    let mut recorder = Recorder::new(Vec::<u8>::new(), true).map_err(|e| e.to_string())?;
+    recorder
+        .note(
+            0.0,
+            &format!(
+                "qg-dxc configuration: {}",
+                json!({"call":v["config"]["identity"],"profile":v["profile"]})
+            ),
+        )
+        .map_err(|e| e.to_string())?;
+    let mut open = false;
+    for (index, step) in v["steps"].as_array().unwrap().iter().enumerate() {
+        let t = step["elapsed_ms"].as_u64().unwrap() as f64 / 1000.0;
+        if step["type"] == "transport" && step["outcome"] == "connected" {
+            recorder.open(t).map_err(|e| e.to_string())?;
+            open = true;
+        }
+        if step["type"] == "input" && open {
+            let b = crate::oracle::unb64(step["b64"].as_str().unwrap())?;
+            recorder.wire(t, "in", &b).map_err(|e| e.to_string())?;
+        }
+        for wrapped in actions.iter().filter(|a| a["step"] == index) {
+            let a = &wrapped["action"];
+            if a["type"] == "output" {
+                let b = crate::oracle::unb64(a["b64"].as_str().unwrap())?;
+                recorder.wire(t, "out", &b).map_err(|e| e.to_string())?;
+            }
+            if a["type"] == "close" && open {
+                recorder.close(t, "cancelled").map_err(|e| e.to_string())?;
+                open = false;
+            }
+        }
+        if step["type"] == "transport"
+            && ["eof", "error"].iter().any(|s| step["outcome"] == *s)
+            && open
+        {
+            recorder
+                .close(
+                    t,
+                    if step["outcome"] == "eof" {
+                        "eof"
+                    } else {
+                        "transport_error"
+                    },
+                )
+                .map_err(|e| e.to_string())?;
+            open = false;
+        }
+    }
+    if open {
+        return Err("application vector must close every recorded connection".into());
+    }
+    let bytes = recorder.into_inner();
+    let (call, profile, tokens) = replay_config(std::io::Cursor::new(&bytes))?;
+    let mut replay = Replay::new(call, profile, tokens)?;
+    let mut records = Records::new(std::io::Cursor::new(&bytes));
+    let mut actual = vec![];
+    while let Some(record) = records.next_record()? {
+        actual.extend(replay.record(&record)?);
+    }
+    actual.extend(replay.finish()?);
+    let actual: Vec<_> = actual
+        .into_iter()
+        .filter(|e| e.kind != "connection_state")
+        .map(json_event)
+        .collect();
+    let wanted: Vec<_> = expected
+        .iter()
+        .filter(|w| w["event"]["kind"] != "connection_state")
+        .map(|w| w["event"].clone())
+        .collect();
+    if actual != wanted {
+        return Err(
+            "application recording/replay content trace differs from independent oracle".into(),
+        );
+    }
     Ok(())
 }
 
