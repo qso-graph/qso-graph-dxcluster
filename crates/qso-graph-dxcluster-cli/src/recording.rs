@@ -173,27 +173,32 @@ pub struct Replay {
     engine: Session,
     last: u64,
     open: bool,
+    outbound: Vec<u8>,
 }
 impl Replay {
     pub fn new(call: String, profile: Profile, tokens: Vec<String>) -> Result<Self, String> {
         let config = Config::new("example.invalid".into(), 7300, call, profile);
         Ok(Self {
-            engine: Session::new(config, tokens, vec![0; 1024]).map_err(str::to_owned)?,
+            engine: Session::new(config, tokens, vec![0; 1024])
+                .map_err(str::to_owned)?
+                .with_recorded_transport(),
             last: 0,
             open: false,
+            outbound: vec![],
         })
     }
-    fn advance(&mut self, at: u64, equal: bool, events: &mut Vec<Event>) -> Result<(), String> {
+    fn advance(&mut self, at: u64, events: &mut Vec<Event>) -> Result<(), String> {
         if !self.open {
             return Ok(());
         }
-        while let Some((deadline, timer)) = self.engine.next_timer() {
-            if deadline > at || deadline == at && !equal && timer != Timer::StableReady {
-                break;
-            }
+        // QGDXC-REC-0004: only this nonterminating timer is synthetic. Output
+        // admission and termination follow records, even after delayed I/O.
+        if let Some(deadline) = self.engine.deadline(Timer::StableReady)
+            && deadline <= at
+        {
             events.extend(
                 self.engine
-                    .fire(timer, deadline)
+                    .fire(Timer::StableReady, deadline)
                     .map_err(str::to_owned)?
                     .events,
             );
@@ -202,7 +207,7 @@ impl Replay {
     }
     pub fn finish(&mut self) -> Result<Vec<Event>, String> {
         let mut events = vec![];
-        self.advance(self.last, true, &mut events)?;
+        self.advance(self.last, &mut events)?;
         Ok(events)
     }
     pub fn record(&mut self, v: &Value) -> Result<Vec<Event>, String> {
@@ -212,10 +217,11 @@ impl Replay {
         }
         let at = at as u64;
         let mut events = vec![];
-        self.advance(at, false, &mut events)?;
+        self.advance(at, &mut events)?;
         self.last = at;
         if v["conn"] == "open" {
             self.open = true;
+            self.outbound.clear();
             if self.engine.state != State::Connecting {
                 let b = if self.engine.attempt == 0 {
                     self.engine.start(at)
@@ -233,6 +239,7 @@ impl Replay {
             );
         } else if v["conn"] == "close" {
             self.open = false;
+            self.outbound.clear();
             let reason = REASONS
                 .iter()
                 .copied()
@@ -244,6 +251,22 @@ impl Replay {
                     .map_err(str::to_owned)?
                     .events,
             );
+        } else if v["dir"] == "out" {
+            for byte in unbase64(v["b64"].as_str().ok_or("wire bytes")?).map_err(str::to_owned)? {
+                if self.outbound.len() == 256 {
+                    return Err("outbound observation exceeds protocol line bound".into());
+                }
+                self.outbound.push(byte);
+                if byte == b'\n' {
+                    events.extend(
+                        self.engine
+                            .recorded_output(at, self.engine.attempt, &self.outbound)
+                            .map_err(str::to_owned)?
+                            .events,
+                    );
+                    self.outbound.clear();
+                }
+            }
         } else if v["dir"] == "in" {
             for byte in unbase64(v["b64"].as_str().ok_or("wire bytes")?).map_err(str::to_owned)? {
                 events.extend(
@@ -346,6 +369,108 @@ pub fn replay_config<R: BufRead>(reader: R) -> Result<(String, Profile, Vec<Stri
 #[cfg(test)]
 mod tests {
     use super::*;
+    fn wire(replay: &mut Replay, t: f64, dir: &str, bytes: &[u8]) -> Vec<Event> {
+        replay
+            .record(&json!({"t":t,"dir":dir,"b64":base64(bytes)}))
+            .unwrap()
+    }
+    #[test]
+    fn replay_uses_last_outbound_fragment_for_admission() {
+        // QGDXC-REC-0004 QGDXC-SES-0007
+        let mut replay = Replay::new("Q1ABC".into(), Profile::CcCluster, vec![]).unwrap();
+        replay.record(&json!({"t":0,"conn":"open"})).unwrap();
+        wire(&mut replay, 0.0, "in", b"login:");
+        wire(&mut replay, 0.0, "out", b"Q1ABC\r\n");
+        wire(
+            &mut replay,
+            0.1,
+            "in",
+            b"Q1ABC de Q2ABC 1-Nov-2026 1832Z CCC >",
+        );
+        wire(&mut replay, 1.0, "out", b"set/ve7");
+        wire(&mut replay, 4.0, "out", b"cc\r");
+        assert_eq!(replay.engine.deadline(Timer::Setup), None);
+        wire(&mut replay, 5.0, "out", b"\n");
+        assert_eq!(replay.engine.deadline(Timer::Setup), Some(35000));
+        let events = wire(
+            &mut replay,
+            33.0,
+            "in",
+            b"Enhanced Spots Enabled\nQ1ABC de Q2ABC 1-Nov-2026 1832Z CCC >",
+        );
+        assert!(events.iter().any(|e| e.get("state") == Some("ready")));
+        assert_eq!(replay.engine.state, State::Ready);
+    }
+    #[test]
+    fn replay_waits_for_delayed_login_completion() {
+        // QGDXC-REC-0004 QGDXC-SES-0007
+        let mut replay = Replay::new("Q1ABC".into(), Profile::Rbn, vec![]).unwrap();
+        replay.record(&json!({"t":0,"conn":"open"})).unwrap();
+        wire(&mut replay, 0.0, "in", b"login:");
+        wire(&mut replay, 1.0, "out", b"Q1ABC\r");
+        assert_eq!(replay.engine.deadline(Timer::Identity), None);
+        wire(&mut replay, 40.0, "out", b"\n");
+        assert_eq!(replay.engine.deadline(Timer::Identity), Some(70000));
+        wire(
+            &mut replay,
+            60.0,
+            "in",
+            b"Q1ABC de RELAY 1-Nov-2026 18:32Z >",
+        );
+        assert_eq!(replay.engine.state, State::Ready);
+    }
+    #[test]
+    fn replay_boundaries_own_attempts_and_delayed_termination() {
+        // QGDXC-REC-0004 QGDXC-REC-0005 QGDXC-SES-0009
+        for reason in ["timeout", "eof"] {
+            let mut replay = Replay::new(
+                "Q1ABC".into(),
+                Profile::Auto,
+                vec![
+                    "QGDXC0000000000000000".into(),
+                    "QGDXC0000000000000001".into(),
+                ],
+            )
+            .unwrap();
+            replay.record(&json!({"t":0,"conn":"open"})).unwrap();
+            let events = replay
+                .record(&json!({"t":39,"note":"delayed boundary"}))
+                .unwrap();
+            assert!(events.is_empty());
+            assert_eq!(replay.engine.attempt, 1);
+            assert_eq!(replay.engine.state, State::AwaitLogin);
+            let events = replay
+                .record(&json!({"t":40,"conn":"close","reason":reason}))
+                .unwrap();
+            assert!(events.iter().any(|e| e.get("reason") == Some(reason)));
+            assert!(!events.iter().any(|e| e.get("state") == Some("connecting")));
+            replay.record(&json!({"t":100,"conn":"open"})).unwrap();
+            assert_eq!(replay.engine.attempt, 2);
+            replay
+                .record(&json!({"t":140,"conn":"close","reason":reason}))
+                .unwrap();
+            replay.finish().unwrap();
+            assert_eq!(replay.engine.attempt, 2);
+        }
+    }
+    #[test]
+    fn replay_defers_received_termination_until_recorded_close() {
+        // QGDXC-REC-0004 QGDXC-SES-0014
+        let mut replay = Replay::new("Q1ABC".into(), Profile::Rbn, vec![]).unwrap();
+        replay.record(&json!({"t":0,"conn":"open"})).unwrap();
+        let events = wire(&mut replay, 0.0, "in", b"password:");
+        assert!(!events.iter().any(|e| e.kind == "connection_state"));
+        assert_eq!(replay.engine.state, State::AwaitLogin);
+        let events = replay
+            .record(&json!({"t":40,"conn":"close","reason":"password_unsupported"}))
+            .unwrap();
+        assert!(
+            events
+                .iter()
+                .any(|e| e.get("reason") == Some("password_unsupported"))
+        );
+        assert_eq!(replay.engine.state, State::Blocked);
+    }
     #[test]
     fn recording_boundaries_and_replay() {
         // QGDXC-REC-0001 QGDXC-REC-0002 QGDXC-REC-0003 QGDXC-REC-0004 QGDXC-REC-0005

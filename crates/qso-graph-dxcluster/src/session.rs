@@ -220,6 +220,7 @@ pub struct Session {
     terminal: Option<&'static str>,
     terminal_evidence: Option<Event>,
     flushing: bool,
+    recorded_transport: bool,
 }
 impl Session {
     pub fn new(
@@ -268,7 +269,37 @@ impl Session {
             terminal: None,
             terminal_evidence: None,
             flushing: false,
+            recorded_transport: false,
         })
+    }
+    /// Use QGDXC-REC-0004 transport observations. Select before starting;
+    /// the adapter supplies complete outbound lines and recorded boundaries.
+    pub fn with_recorded_transport(mut self) -> Self {
+        self.recorded_transport = true;
+        self
+    }
+    /// Observe a complete outbound line without transmitting received bytes.
+    /// Only the locally pending login or setup literal can admit output.
+    pub fn recorded_output(
+        &mut self,
+        now: u64,
+        attempt: u64,
+        bytes: &[u8],
+    ) -> Result<Batch, &'static str> {
+        self.at(now)?;
+        let mut b = Batch::default();
+        if !self.recorded_transport || attempt != self.attempt {
+            return Err("unexpected recorded output admission");
+        }
+        if self.terminal.is_none()
+            && self
+                .pending
+                .as_ref()
+                .is_some_and(|line| bytes.strip_suffix(b"\r\n") == Some(line.as_bytes()))
+        {
+            self.emit_output(&mut b)?;
+        }
+        Ok(b)
     }
     fn at(&mut self, now: u64) -> Result<(), &'static str> {
         if now < self.now || now > values::MAX_INTEGER {
@@ -458,6 +489,9 @@ impl Session {
         let status = e.get("status").map(str::to_owned);
         let text = e.get("text").unwrap_or("").to_owned();
         b.events.push(e.clone());
+        if self.recorded_transport && self.terminal.is_some() {
+            return Ok(());
+        }
         let raw = values::decode(&e.raw_line).0;
         if self.parser.context.password && status.as_deref() == Some("password_prompt") {
             self.end("password_unsupported", Some(&e), false, b)?;
@@ -563,7 +597,7 @@ impl Session {
         }
     }
     fn admit(&mut self, b: &mut Batch) -> Result<(), &'static str> {
-        if self.pending.is_none() {
+        if self.pending.is_none() || self.recorded_transport {
             return Ok(());
         }
         while self
@@ -584,13 +618,18 @@ impl Session {
             return Ok(());
         }
         self.cancel_timer(Timer::Pacing, b);
+        self.emit_output(b)
+    }
+    fn emit_output(&mut self, b: &mut Batch) -> Result<(), &'static str> {
         let mut bytes = self
             .pending
             .take()
             .ok_or("missing pending output")?
             .into_bytes();
         bytes.extend_from_slice(b"\r\n");
-        self.rate.push_back(self.now);
+        if !self.recorded_transport {
+            self.rate.push_back(self.now);
+        }
         b.actions.push(Action::Output {
             attempt: self.attempt,
             bytes,
@@ -640,6 +679,13 @@ impl Session {
     ) -> Result<(), &'static str> {
         if self.flushing {
             if reason != "cancelled" && self.terminal.is_none() {
+                self.terminal = Some(reason);
+                self.terminal_evidence = e.cloned();
+            }
+            return Ok(());
+        }
+        if self.recorded_transport && self.transport && !ended {
+            if self.terminal.is_none() {
                 self.terminal = Some(reason);
                 self.terminal_evidence = e.cloned();
             }
