@@ -7,8 +7,20 @@ use std::{
 };
 pub fn files(root: &Path) -> Result<Vec<PathBuf>, String> {
     let mut out = vec![];
+    collect_files(root, &mut out, &mut crate::input::Budget::new(), 0)?;
+    Ok(out)
+}
+fn collect_files(
+    root: &Path,
+    out: &mut Vec<PathBuf>,
+    budget: &mut crate::input::Budget,
+    depth: usize,
+) -> Result<(), String> {
+    if depth > 64 {
+        return Err("directory nesting exceeds 64 levels".into());
+    }
     if !root.exists() {
-        return Ok(out);
+        return Ok(());
     }
     for entry in fs::read_dir(root).map_err(|e| e.to_string())? {
         let e = entry.map_err(|e| e.to_string())?;
@@ -16,12 +28,13 @@ pub fn files(root: &Path) -> Result<Vec<PathBuf>, String> {
             return Err(format!("symlink not allowed: {}", e.path().display()));
         }
         if e.path().is_dir() {
-            out.extend(files(&e.path())?);
+            collect_files(&e.path(), out, budget, depth + 1)?;
         } else {
+            budget.charge(e.path().as_os_str().len() + 256)?;
             out.push(e.path());
         }
     }
-    Ok(out)
+    Ok(())
 }
 fn identifiers(s: &str) -> BTreeSet<String> {
     s.split(|c: char| !c.is_ascii_alphanumeric() && c != '-')
@@ -56,7 +69,7 @@ fn coverage_at(root: &Path, compiled: Option<&BTreeSet<String>>) -> Result<(), S
     let mut defined = std::collections::BTreeMap::new();
     for file in files(&root.join("spec"))? {
         if file.extension().is_some_and(|e| e == "md") {
-            for line in fs::read_to_string(file)
+            for line in crate::input::text(file)
                 .map_err(|e| e.to_string())?
                 .lines()
                 .filter(|l| l.starts_with("| `QGDXC-"))
@@ -75,18 +88,20 @@ fn coverage_at(root: &Path, compiled: Option<&BTreeSet<String>>) -> Result<(), S
         }
     }
     let manifest: Value = serde_json::from_str(
-        &fs::read_to_string(root.join("docs/coverage.json")).map_err(|e| e.to_string())?,
+        &crate::input::text(root.join("docs/coverage.json")).map_err(|e| e.to_string())?,
     )
     .map_err(|e| e.to_string())?;
     let mapped = manifest["requirements"]
         .as_object()
         .ok_or("coverage requirement map")?;
     let mut vectors = BTreeSet::new();
+    let mut vector_budget = crate::input::Budget::new();
     for file in files(&root.join("vectors"))? {
         if file.extension().is_some_and(|e| e == "ndjson") {
-            for line in fs::read_to_string(file).map_err(|e| e.to_string())?.lines() {
-                let v: Value = serde_json::from_str(line).map_err(|e| e.to_string())?;
+            for line in crate::input::lines(&file)? {
+                let v: Value = serde_json::from_str(&line?).map_err(|e| e.to_string())?;
                 let id = v["id"].as_str().ok_or("vector id")?;
+                vector_budget.charge(id.len() + 256)?;
                 if v["spec"] != "0.1.0"
                     || !v["steps"].is_array()
                     || !v["expected_events"].is_array()
@@ -97,7 +112,7 @@ fn coverage_at(root: &Path, compiled: Option<&BTreeSet<String>>) -> Result<(), S
             }
         }
     }
-    let notes = fs::read_to_string(root.join("docs/CONFORMANCE.md")).map_err(|e| e.to_string())?;
+    let notes = crate::input::text(root.join("docs/CONFORMANCE.md")).map_err(|e| e.to_string())?;
     let inspected: BTreeSet<_> = notes
         .lines()
         .filter(|l| l.starts_with("Inspection:"))
@@ -113,7 +128,7 @@ fn coverage_at(root: &Path, compiled: Option<&BTreeSet<String>>) -> Result<(), S
         for test in tests {
             let file = test["file"].as_str().ok_or("test file")?;
             let name = test["name"].as_str().ok_or("test name")?;
-            let source = fs::read_to_string(root.join(file)).map_err(|e| format!("{file}: {e}"))?;
+            let source = crate::input::text(root.join(file)).map_err(|e| format!("{file}: {e}"))?;
             if !named_tests(&source).contains(name)
                 || compiled.is_some_and(|names| !names.contains(name))
             {
@@ -165,18 +180,19 @@ fn coverage_at(root: &Path, compiled: Option<&BTreeSet<String>>) -> Result<(), S
 }
 pub fn coverage() -> Result<(), String> {
     // Compiler discovery excludes commented-out, inactive, and ordinary functions.
-    let output = std::process::Command::new("cargo")
-        .args([
-            "test",
-            "--workspace",
-            "--all-features",
-            "--locked",
-            "--",
-            "--list",
-        ])
-        .env("CARGO_NET_OFFLINE", "true")
-        .output()
-        .map_err(|e| e.to_string())?;
+    let output = crate::input::output(
+        std::process::Command::new("cargo")
+            .args([
+                "test",
+                "--workspace",
+                "--all-features",
+                "--locked",
+                "--",
+                "--list",
+            ])
+            .env("CARGO_NET_OFFLINE", "true"),
+    )
+    .map_err(|e| e.to_string())?;
     if !output.status.success() {
         return Err("cannot discover compiled tests".into());
     }
@@ -285,18 +301,19 @@ fn library_dependencies(metadata: &Value) -> Result<(), String> {
 fn dependency_policy(root: &Path) -> Result<(), String> {
     // Package declarations include optional, renamed, and target-specific
     // dependencies, even when the current host or features do not enable them.
-    let output = std::process::Command::new("cargo")
-        .args([
-            "metadata",
-            "--locked",
-            "--offline",
-            "--format-version",
-            "1",
-            "--no-deps",
-        ])
-        .current_dir(root)
-        .output()
-        .map_err(|e| e.to_string())?;
+    let output = crate::input::output(
+        std::process::Command::new("cargo")
+            .args([
+                "metadata",
+                "--locked",
+                "--offline",
+                "--format-version",
+                "1",
+                "--no-deps",
+            ])
+            .current_dir(root),
+    )
+    .map_err(|e| e.to_string())?;
     if !output.status.success() {
         return Err(format!(
             "Cargo metadata failed: {}",
@@ -344,23 +361,24 @@ fn compiled_library_sources(root: &Path) -> Result<BTreeSet<PathBuf>, String> {
     let root = root.canonicalize().map_err(|e| e.to_string())?;
     let allowed = root.join("crates/qso-graph-dxcluster/src");
     let manifest = root.join("crates/qso-graph-dxcluster/Cargo.toml");
-    let output = std::process::Command::new("cargo")
-        .args([
-            "check",
-            "--locked",
-            "--offline",
-            "-p",
-            "qso-graph-dxcluster",
-            "--lib",
-            "--tests",
-            "--all-features",
-            "--message-format=json",
-            "--target-dir",
-        ])
-        .arg(root.join("target/policy-sources"))
-        .current_dir(&root)
-        .output()
-        .map_err(|e| e.to_string())?;
+    let output = crate::input::output(
+        std::process::Command::new("cargo")
+            .args([
+                "check",
+                "--locked",
+                "--offline",
+                "-p",
+                "qso-graph-dxcluster",
+                "--lib",
+                "--tests",
+                "--all-features",
+                "--message-format=json",
+                "--target-dir",
+            ])
+            .arg(root.join("target/policy-sources"))
+            .current_dir(&root),
+    )
+    .map_err(|e| e.to_string())?;
     if !output.status.success() {
         return Err(format!(
             "library source compilation failed: {}\n{}",
@@ -400,7 +418,7 @@ fn compiled_library_sources(root: &Path) -> Result<BTreeSet<PathBuf>, String> {
             .and_then(|s| s.strip_prefix("lib"))
             .ok_or("invalid library metadata artifact")?;
         let dep_info = metadata.with_file_name(format!("{stem}.d"));
-        let dependencies = fs::read_to_string(&dep_info)
+        let dependencies = crate::input::text(&dep_info)
             .map_err(|e| format!("cannot read {}: {e}", dep_info.display()))?;
         for path in dep_info_paths(&dependencies)? {
             if !path.extension().is_some_and(|e| e == "rs") {
@@ -425,7 +443,7 @@ pub fn policy() -> Result<(), String> {
     dependency_policy(Path::new("."))?;
     let sources = compiled_library_sources(Path::new("."))?;
     for source in &sources {
-        let text = fs::read_to_string(source).map_err(|e| e.to_string())?;
+        let text = crate::input::text(source).map_err(|e| e.to_string())?;
         if source_violation(&text, true) {
             return Err(format!("compiled source policy: {}", source.display()));
         }
@@ -469,7 +487,7 @@ pub fn policy() -> Result<(), String> {
                 return Err(format!("native source/build script: {}", file.display()));
             }
             if file.extension().is_some_and(|e| e == "rs") {
-                let s = fs::read_to_string(&file).map_err(|e| e.to_string())?;
+                let s = crate::input::text(&file).map_err(|e| e.to_string())?;
                 if source_violation(&s, library) || s.contains("#[path") {
                     return Err(format!("source policy: {}", file.display()));
                 }
@@ -483,7 +501,7 @@ pub fn policy() -> Result<(), String> {
             }
         }
     }
-    if fs::read_to_string("rust-toolchain.toml")
+    if crate::input::text("rust-toolchain.toml")
         .map_err(|e| e.to_string())?
         .contains("channel = \"1.99.1\"")
     {
@@ -589,7 +607,7 @@ fn evidence_captures() -> &'static BTreeSet<String> {
             .unwrap_or_default()
             .into_iter()
             .filter(|p| p.extension().is_some_and(|e| e == "md"))
-            .filter_map(|p| fs::read_to_string(p).ok())
+            .filter_map(|p| crate::input::text(p).ok())
             .flat_map(|s| {
                 s.split('`')
                     .filter(|s| s.ends_with(".ndjson") && !s.contains(['/', ' ', '\n']))
@@ -674,16 +692,14 @@ fn vector_sanitized(v: &Value) -> bool {
     visit(v, v["id"].as_str().unwrap_or(""), "")
 }
 fn public_paths() -> Result<Vec<PathBuf>, String> {
-    let output = std::process::Command::new("git")
-        .args([
-            "ls-files",
-            "--cached",
-            "--others",
-            "--exclude-standard",
-            "-z",
-        ])
-        .output()
-        .map_err(|e| e.to_string())?;
+    let output = crate::input::output(std::process::Command::new("git").args([
+        "ls-files",
+        "--cached",
+        "--others",
+        "--exclude-standard",
+        "-z",
+    ]))
+    .map_err(|e| e.to_string())?;
     if !output.status.success() {
         return Err("cannot enumerate public files".into());
     }
@@ -850,7 +866,19 @@ pub fn sanitization() -> Result<(), String> {
         return Err("planted digit-initial wire/structured fixture accepted".into());
     }
     for file in paths {
-        let s = fs::read_to_string(&file).map_err(|e| e.to_string())?;
+        if file.extension().is_some_and(|e| e == "ndjson") {
+            for (i, line) in crate::input::lines(&file)?.enumerate() {
+                if !public_file_sanitized(&file, &line?) {
+                    return Err(format!(
+                        "unsanitized identity/address in {}:{}",
+                        file.display(),
+                        i + 1
+                    ));
+                }
+            }
+            continue;
+        }
+        let s = crate::input::text(&file).map_err(|e| e.to_string())?;
         if !public_file_sanitized(&file, &s) {
             let line = s
                 .lines()
@@ -875,7 +903,7 @@ pub fn docs() -> Result<(), String> {
         "docs/CONFORMANCE.md",
         "docs/DEPENDENCIES.md",
     ] {
-        if !fs::read_to_string(path)
+        if !crate::input::text(path)
             .map_err(|e| e.to_string())?
             .contains("SPDX-License-Identifier: GPL-3.0-or-later")
         {
@@ -1034,7 +1062,8 @@ mod tests {
         .unwrap();
         fs::write(
             root.join("Cargo.lock"),
-            fs::read(Path::new(env!("CARGO_MANIFEST_DIR")).join("../Cargo.lock")).unwrap(),
+            crate::input::read(Path::new(env!("CARGO_MANIFEST_DIR")).join("../Cargo.lock"))
+                .unwrap(),
         )
         .unwrap();
         for declaration in [

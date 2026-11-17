@@ -650,7 +650,15 @@
         },
         {
           "file": "crates/qso-graph-dxcluster-cli/src/recording.rs",
-          "name": "replay_continues_beyond_1024_stable_connections"
+          "name": "replay_stream_looks_up_fragmented_tokens_only_in_the_current_connection"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/recording.rs",
+          "name": "replay_stream_missing_token_does_not_borrow_from_the_next_connection"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/recording.rs",
+          "name": "replay_stream_caps_lookahead_and_does_not_search_for_passive_profiles"
         }
       ],
       "vectors": [
@@ -691,6 +699,22 @@
         {
           "file": "crates/qso-graph-dxcluster/src/session.rs",
           "name": "reconnect_resource_storage_stays_flat"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/recording.rs",
+          "name": "replay_stream_looks_up_fragmented_tokens_only_in_the_current_connection"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/recording.rs",
+          "name": "replay_stream_missing_token_does_not_borrow_from_the_next_connection"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/recording.rs",
+          "name": "replay_stream_caps_lookahead_and_does_not_search_for_passive_profiles"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/bounded.rs",
+          "name": "physical_records_stop_reading_at_the_byte_cap"
         }
       ],
       "vectors": []
@@ -927,7 +951,7 @@
         },
         {
           "file": "crates/qso-graph-dxcluster-cli/src/recording.rs",
-          "name": "replay_continues_beyond_1024_stable_connections"
+          "name": "replay_stream_looks_up_fragmented_tokens_only_in_the_current_connection"
         },
         {
           "file": "xtask/src/runner.rs",

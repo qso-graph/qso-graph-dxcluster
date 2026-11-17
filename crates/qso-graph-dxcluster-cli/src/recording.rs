@@ -4,7 +4,7 @@ use qso_graph_dxcluster::{
     *,
 };
 use serde_json::{Value, json};
-use std::io::{self, BufRead, Read, Write};
+use std::io::{self, BufRead, Write};
 
 pub struct Recorder<W: Write> {
     writer: W,
@@ -92,6 +92,7 @@ pub struct Records<R: BufRead> {
     open: bool,
     pub line: usize,
     done: bool,
+    bytes: usize,
 }
 impl<R: BufRead> Records<R> {
     pub fn new(reader: R) -> Self {
@@ -101,28 +102,25 @@ impl<R: BufRead> Records<R> {
             open: false,
             line: 0,
             done: false,
+            bytes: 0,
         }
     }
     pub fn next_record(&mut self) -> Result<Option<Value>, String> {
+        self.next_record_bounded(crate::bounded::RECORD_BYTES)
+    }
+    fn next_record_bounded(&mut self, limit: usize) -> Result<Option<Value>, String> {
         if self.done {
             return Ok(None);
         }
-        let mut buf = Vec::new();
-        let n = std::io::Read::by_ref(&mut self.reader)
-            .take(1_048_577)
-            .read_until(b'\n', &mut buf)
-            .map_err(|e| e.to_string())?;
-        if n == 0 {
+        let Some(buf) = crate::bounded::line(&mut self.reader, limit)? else {
             self.done = true;
             if self.open {
                 return Err("recording ends without a close boundary".into());
             }
             return Ok(None);
-        }
+        };
         self.line += 1;
-        if n > 1_048_576 {
-            return Err(format!("record {} exceeds 1 MiB", self.line));
-        }
+        self.bytes = buf.len();
         let v: Value = serde_json::from_slice(&buf)
             .map_err(|_| format!("invalid JSON at record {}", self.line))?;
         let obj = v.as_object().ok_or("record must be an object")?;
@@ -169,45 +167,40 @@ impl<R: BufRead> Records<R> {
 }
 /// Replay drives the same Session as live input. Generated actions are consumed
 /// locally; an outbound record is an observation and is never transmitted.
-pub struct Replay {
+struct Replay {
     engine: Session,
-    tokens: std::vec::IntoIter<String>,
     last: u64,
     open: bool,
     outbound: Vec<u8>,
 }
 impl Replay {
-    pub fn new(call: String, profile: Profile, tokens: Vec<String>) -> Result<Self, String> {
-        Self::new_with_retention(call, profile, tokens, false)
+    #[cfg(test)]
+    fn new(call: String, profile: Profile) -> Result<Self, String> {
+        Self::new_with_retention(call, profile, false)
     }
     /// Apply the caller's explicit QGDXC-SEC-0005 retention choice to replay.
-    pub fn new_with_retention(
-        call: String,
-        profile: Profile,
-        tokens: Vec<String>,
-        retain: bool,
-    ) -> Result<Self, String> {
+    fn new_with_retention(call: String, profile: Profile, retain: bool) -> Result<Self, String> {
         let mut config = Config::new("example.invalid".into(), 7300, call, profile);
         config.retain_third_party_data = retain;
         Ok(Self {
             engine: Session::new(config)
                 .map_err(str::to_owned)?
                 .with_recorded_transport(),
-            tokens: tokens.into_iter(),
             last: 0,
             open: false,
             outbound: vec![],
         })
     }
-    fn supply(&mut self, b: qso_graph_dxcluster::Batch) -> Result<Vec<Event>, String> {
+    fn supply(
+        &mut self,
+        b: qso_graph_dxcluster::Batch,
+        token: &mut impl FnMut() -> Result<String, String>,
+    ) -> Result<Vec<Event>, String> {
         let mut events = b.events;
         for action in b.actions {
             let b = match action {
                 qso_graph_dxcluster::Action::ReadinessToken { attempt } => {
-                    let token = self
-                        .tokens
-                        .next()
-                        .ok_or("missing recorded readiness token")?;
+                    let token = token()?;
                     self.engine.readiness_token(self.last, attempt, token)
                 }
                 qso_graph_dxcluster::Action::RetryJitter { .. } => {
@@ -216,7 +209,7 @@ impl Replay {
                 _ => continue,
             }
             .map_err(str::to_owned)?;
-            events.extend(self.supply(b)?);
+            events.extend(self.supply(b, token)?);
         }
         Ok(events)
     }
@@ -243,7 +236,15 @@ impl Replay {
         self.advance(self.last, &mut events)?;
         Ok(events)
     }
-    pub fn record(&mut self, v: &Value) -> Result<Vec<Event>, String> {
+    #[cfg(test)]
+    fn record(&mut self, v: &Value) -> Result<Vec<Event>, String> {
+        self.record_with_token(v, &mut || Err("missing recorded readiness token".into()))
+    }
+    fn record_with_token(
+        &mut self,
+        v: &Value,
+        token: &mut impl FnMut() -> Result<String, String>,
+    ) -> Result<Vec<Event>, String> {
         let at = (v["t"].as_f64().ok_or("record time")? * 1000.0).floor();
         if at > qso_graph_dxcluster::values::MAX_INTEGER as f64 {
             return Err("elapsed time exceeds exact millisecond range".into());
@@ -262,7 +263,7 @@ impl Replay {
                     self.engine.start(at)
                 }
                 .map_err(str::to_owned)?;
-                events.extend(self.supply(b)?);
+                events.extend(self.supply(b, token)?);
             }
             events.extend(
                 self.engine
@@ -282,7 +283,7 @@ impl Replay {
                 .engine
                 .transport_end(at, self.engine.attempt, reason)
                 .map_err(str::to_owned)?;
-            events.extend(self.supply(b)?);
+            events.extend(self.supply(b, token)?);
         } else if v["dir"] == "out" {
             for byte in unbase64(v["b64"].as_str().ok_or("wire bytes")?).map_err(str::to_owned)? {
                 if self.outbound.len() == 256 {
@@ -312,136 +313,284 @@ impl Replay {
         Ok(events)
     }
 }
-/// Inspect local configuration observations before replay. This never turns an
-/// outbound record or observer note into received identity evidence.
-pub fn replay_config<R: BufRead>(reader: R) -> Result<(String, Profile, Vec<String>), String> {
-    let mut records = Records::new(reader);
-    let mut call = None;
-    let mut profile = Profile::Auto;
-    let mut tokens = Vec::<Option<String>>::new();
-    let mut first_out = false;
-    let mut outbound = Vec::<u8>::new();
-    while let Some(v) = records.next_record()? {
-        if v["conn"] == "open" {
-            tokens.push(None);
-            first_out = true;
-            outbound.clear();
+/// QGDXC-REC-0004 and QGDXC-SEC-0001: bounded, single-pass replay.
+/// The lookahead budget includes encoded record bytes and a per-record charge.
+const LOOKAHEAD_BYTES: usize = crate::bounded::RECORD_BYTES;
+struct Lookahead<R: BufRead> {
+    records: Records<R>,
+    pending: std::collections::VecDeque<(usize, Value)>,
+    bytes: usize,
+}
+impl<R: BufRead> Lookahead<R> {
+    fn read_ahead(&mut self) -> Result<Option<Value>, String> {
+        // Restrict the physical read too, so a large next record cannot overshoot
+        // the remaining budget. Restore the normal per-record cap afterward.
+        let remaining = LOOKAHEAD_BYTES.saturating_sub(self.bytes + 256);
+        let v = self.records.next_record_bounded(remaining)?;
+        if let Some(v) = &v {
+            self.bytes += self.records.bytes + 256;
+            self.pending.push_back((self.records.line, v.clone()));
         }
-        if let Some(note) = v["note"]
-            .as_str()
-            .and_then(|n| n.strip_prefix("qg-dxc configuration: "))
-        {
-            let c: Value =
-                serde_json::from_str(note).map_err(|_| "invalid recorded configuration")?;
-            let identity = c["call"]
-                .as_str()
-                .filter(|s| qso_graph_dxcluster::values::login(s))
-                .ok_or("recorded identity")?;
-            call = Some(identity.to_owned());
-            profile = Profile::parse(c["profile"].as_str().ok_or("recorded profile")?)
-                .ok_or("recorded profile")?;
+        Ok(v)
+    }
+    fn next(&mut self) -> Result<Option<(usize, Value)>, String> {
+        if let Some((line, v)) = self.pending.pop_front() {
+            // Drop all accounting when the queue drains; encoded length is not
+            // needed during draining because no lookahead occurs until an open.
+            if self.pending.is_empty() {
+                self.bytes = 0;
+            }
+            return Ok(Some((line, v)));
         }
-        if v["dir"] == "out" {
-            let b = unbase64(v["b64"].as_str().ok_or("outbound observation")?)
-                .map_err(str::to_owned)?;
-            for byte in b {
-                if byte != b'\n' {
+        Ok(self.records.next_record()?.map(|v| (self.records.line, v)))
+    }
+    fn token(&mut self) -> Result<String, String> {
+        let mut outbound = Vec::new();
+        let mut index = 0;
+        loop {
+            let v = if let Some((_, v)) = self.pending.get(index) {
+                v.clone()
+            } else {
+                self.read_ahead()
+                    .map_err(|e| {
+                        format!(
+                            "readiness token not found within current connection lookahead: {e}"
+                        )
+                    })?
+                    .ok_or("missing recorded readiness token before end of connection")?
+            };
+            index += 1;
+            if v["conn"] == "close" || v["conn"] == "open" {
+                return Err("missing recorded readiness token before end of connection".into());
+            }
+            if v["dir"] != "out" {
+                continue;
+            }
+            for byte in unbase64(v["b64"].as_str().ok_or("wire bytes")?).map_err(str::to_owned)? {
+                if byte == b'\n' {
+                    if let Ok(line) = std::str::from_utf8(&outbound)
+                        && let Some(token) = line.trim_end_matches('\r').strip_prefix("echo ")
+                        && qso_graph_dxcluster::values::token(token)
+                    {
+                        return Ok(token.into());
+                    }
+                    outbound.clear();
+                } else {
                     if outbound.len() == 256 {
                         return Err("outbound observation exceeds protocol line bound".into());
                     }
                     outbound.push(byte);
-                    continue;
                 }
-                if let Ok(text) = std::str::from_utf8(&outbound) {
-                    let text = text.trim_end_matches('\r');
-                    if first_out {
-                        if qso_graph_dxcluster::values::login(text) && call.is_none() {
-                            call = Some(text.into());
-                        }
-                        first_out = false;
+            }
+        }
+    }
+}
+/// Owns the forward-only recording reader and current session. Notes keep their
+/// physical record numbers even when configuration or token discovery looks ahead.
+pub struct ReplayStream<R: BufRead> {
+    source: Lookahead<R>,
+    replay: Replay,
+}
+impl<R: BufRead> ReplayStream<R> {
+    pub fn new(reader: R, retain: bool) -> Result<Self, String> {
+        let mut source = Lookahead {
+            records: Records::new(reader),
+            pending: Default::default(),
+            bytes: 0,
+        };
+        let mut call = "Q0NONE".to_owned();
+        let mut profile = Profile::Auto;
+        let mut outbound = Vec::new();
+        // Configuration is local metadata, never received identity evidence.
+        // Legacy recordings infer the call only from the first outbound line.
+        while let Some(v) = source
+            .read_ahead()
+            .map_err(|e| format!("configuration lookahead: {e}"))?
+        {
+            if let Some(note) = v["note"]
+                .as_str()
+                .and_then(|n| n.strip_prefix("qg-dxc configuration: "))
+            {
+                let c: Value =
+                    serde_json::from_str(note).map_err(|_| "invalid recorded configuration")?;
+                call = c["call"]
+                    .as_str()
+                    .filter(|s| qso_graph_dxcluster::values::login(s))
+                    .ok_or("recorded identity")?
+                    .into();
+                profile = Profile::parse(c["profile"].as_str().ok_or("recorded profile")?)
+                    .ok_or("recorded profile")?;
+                break;
+            }
+            if v["conn"] == "close" {
+                break;
+            }
+            if v["dir"] == "out" {
+                let b = unbase64(v["b64"].as_str().ok_or("outbound observation")?)
+                    .map_err(str::to_owned)?;
+                let mut complete = false;
+                for byte in b {
+                    if byte == b'\n' {
+                        complete = true;
+                        break;
                     }
-                    if let Some(token) = text
-                        .strip_prefix("echo ")
-                        .filter(|s| qso_graph_dxcluster::values::token(s))
-                        && let Some(slot) = tokens.last_mut()
+                    if outbound.len() == 256 {
+                        return Err("outbound observation exceeds protocol line bound".into());
+                    }
+                    outbound.push(byte);
+                }
+                if complete {
+                    if let Ok(line) = std::str::from_utf8(&outbound)
+                        && qso_graph_dxcluster::values::login(line.trim_end_matches('\r'))
                     {
-                        *slot = Some(token.into());
+                        call = line.trim_end_matches('\r').into();
                     }
-                }
-                outbound.clear();
-            }
-        }
-    }
-    let mut reserved = std::collections::BTreeSet::new();
-    for token in tokens.iter().flatten() {
-        if !reserved.insert(token.clone()) {
-            return Err("repeated readiness token in recording".into());
-        }
-    }
-    let mut next = 0u64;
-    let mut resolved = vec![];
-    for token in tokens {
-        resolved.push(if let Some(token) = token {
-            token
-        } else {
-            loop {
-                let token = format!("QGDXC{:016X}", u64::MAX - next);
-                next += 1;
-                if reserved.insert(token.clone()) {
-                    break token;
+                    break;
                 }
             }
-        });
+        }
+        Ok(Self {
+            source,
+            replay: Replay::new_with_retention(call, profile, retain)?,
+        })
     }
-    Ok((call.unwrap_or_else(|| "Q0NONE".into()), profile, resolved))
+    pub fn next_record(&mut self) -> Result<Option<(usize, Value, Vec<Event>)>, String> {
+        let Some((line, v)) = self.source.next()? else {
+            return Ok(None);
+        };
+        let attempt = self.replay.engine.attempt + u64::from(v["conn"] == "open");
+        let source = &mut self.source;
+        let events = self
+            .replay
+            .record_with_token(&v, &mut || source.token())
+            .map_err(|e| format!("connection {} at record {line}: {e}", attempt))?;
+        Ok(Some((line, v, events)))
+    }
+    pub fn finish(&mut self) -> Result<Vec<Event>, String> {
+        self.replay.finish()
+    }
 }
 #[cfg(test)]
 mod tests {
     use super::*;
+    fn configured(profile: &str) -> Recorder<Vec<u8>> {
+        let mut r = Recorder::new(Vec::new(), true).unwrap();
+        r.note(
+            0.0,
+            &format!("qg-dxc configuration: {{\"call\":\"Q1ABC\",\"profile\":\"{profile}\"}}"),
+        )
+        .unwrap();
+        r
+    }
+    #[test]
+    fn replay_stream_looks_up_fragmented_tokens_only_in_the_current_connection() {
+        // QGDXC-REC-0004 QGDXC-REC-0005 QGDXC-SEC-0001
+        let mut r = configured("auto");
+        for (i, token) in ["QGDXC0000000000000001", "QGDXC0000000000000002"]
+            .iter()
+            .enumerate()
+        {
+            let t = i as f64 * 100.0;
+            r.open(t).unwrap();
+            r.wire(t, "out", b"Q1ABC\r\n").unwrap();
+            r.note(t, "observer note").unwrap();
+            r.wire(t, "out", format!("echo {}", &token[..8]).as_bytes())
+                .unwrap();
+            r.wire(t, "out", format!("{}\r", &token[8..]).as_bytes())
+                .unwrap();
+            r.wire(t, "out", b"\n").unwrap();
+            r.close(t, "cancelled").unwrap();
+        }
+        let mut replay = ReplayStream::new(std::io::Cursor::new(r.writer), false).unwrap();
+        assert_eq!(
+            replay.source.records.line, 1,
+            "no whole-file configuration pass"
+        );
+        let mut lines = 0;
+        let mut tokens = 0;
+        while let Some((line, v, _)) = replay.next_record().unwrap() {
+            lines += 1;
+            assert_eq!(line, lines);
+            if v["conn"] == "open" {
+                tokens += 1;
+                assert_eq!(replay.replay.engine.attempt, tokens);
+                assert!(replay.source.bytes <= LOOKAHEAD_BYTES);
+                assert!(
+                    replay
+                        .source
+                        .pending
+                        .iter()
+                        .all(|(_, v)| v["conn"].is_null())
+                );
+            }
+        }
+        assert_eq!(tokens, 2);
+        assert!(replay.source.pending.is_empty());
+        assert_eq!(replay.source.bytes, 0);
+    }
+    #[test]
+    fn replay_stream_missing_token_does_not_borrow_from_the_next_connection() {
+        // QGDXC-REC-0004 QGDXC-SEC-0001
+        let mut r = configured("auto");
+        r.open(0.0).unwrap();
+        r.close(0.0, "cancelled").unwrap();
+        r.open(0.0).unwrap();
+        r.wire(0.0, "out", b"echo QGDXC0000000000000002\r\n")
+            .unwrap();
+        r.close(0.0, "cancelled").unwrap();
+        let mut replay = ReplayStream::new(std::io::Cursor::new(r.writer), false).unwrap();
+        replay.next_record().unwrap();
+        let e = replay.next_record().unwrap_err();
+        assert!(e.contains("connection 1 at record 2"), "{e}");
+        assert!(e.contains("missing recorded readiness token"), "{e}");
+        assert_eq!(replay.source.records.line, 3);
+    }
+    #[test]
+    fn replay_stream_caps_lookahead_and_does_not_search_for_passive_profiles() {
+        // QGDXC-REC-0004 QGDXC-SEC-0001
+        for profile in ["auto", "rbn", "arcluster", "cccluster"] {
+            let mut r = configured(profile);
+            r.open(0.0).unwrap();
+            for _ in 0..32 {
+                r.note(0.0, &"x".repeat(65536)).unwrap();
+            }
+            r.wire(0.0, "out", b"echo QGDXC0000000000000001\r\n")
+                .unwrap();
+            r.close(0.0, "cancelled").unwrap();
+            let mut replay = ReplayStream::new(std::io::Cursor::new(r.writer), false).unwrap();
+            replay.next_record().unwrap();
+            if profile == "auto" {
+                let e = replay.next_record().unwrap_err();
+                assert!(e.contains("readiness token not found"), "{e}");
+                assert!(e.contains("byte limit"), "{e}");
+                assert!(replay.source.bytes <= LOOKAHEAD_BYTES);
+            } else {
+                replay.next_record().unwrap();
+                assert_eq!(replay.source.records.line, 2);
+                assert!(replay.source.pending.is_empty());
+                assert_eq!(replay.source.bytes, 0);
+                while replay.next_record().unwrap().is_some() {}
+            }
+        }
+        // Configuration discovery has the same cap, even without any connection.
+        let mut r = Recorder::new(Vec::new(), true).unwrap();
+        for _ in 0..32 {
+            r.note(0.0, &"x".repeat(65536)).unwrap();
+        }
+        let e = ReplayStream::new(std::io::Cursor::new(r.writer), false)
+            .err()
+            .unwrap();
+        assert!(e.contains("configuration lookahead"), "{e}");
+    }
     fn wire(replay: &mut Replay, t: f64, dir: &str, bytes: &[u8]) -> Vec<Event> {
         replay
             .record(&json!({"t":t,"dir":dir,"b64":base64(bytes)}))
             .unwrap()
     }
     #[test]
-    fn replay_continues_beyond_1024_stable_connections() {
-        // QGDXC-REC-0004 QGDXC-SES-0010
-        let mut recorder = Recorder::new(Vec::new(), true).unwrap();
-        recorder
-            .note(
-                0.0,
-                "qg-dxc configuration: {\"call\":\"Q1ABC\",\"profile\":\"auto\"}",
-            )
-            .unwrap();
-        for attempt in 0..4096 {
-            let t = f64::from(attempt) * 606.0;
-            recorder.open(t).unwrap();
-            recorder.wire(t, "in", b"Please enter your call: ").unwrap();
-            recorder.wire(t, "out", b"Q1ABC\r\n").unwrap();
-            recorder
-                .wire(t, "in", b"Q1ABC de RELAY 1-Nov-2026 18:32Z >")
-                .unwrap();
-            recorder.close(t + 601.0, "eof").unwrap();
-        }
-        let (call, profile, tokens) =
-            replay_config(std::io::Cursor::new(&recorder.writer)).unwrap();
-        assert_eq!(tokens.len(), 4096);
-        let mut replay = Replay::new(call, profile, tokens).unwrap();
-        let mut records = Records::new(std::io::Cursor::new(&recorder.writer));
-        let mut ready = 0;
-        while let Some(record) = records.next_record().unwrap() {
-            for event in replay.record(&record).unwrap() {
-                ready += usize::from(event.get("state") == Some("ready"));
-                assert_ne!(event.get("reason"), Some("retry_exhausted"));
-            }
-        }
-        assert_eq!(ready, 4096);
-        assert_eq!(replay.engine.attempt, 4096);
-    }
-    #[test]
     fn replay_preserves_automatic_retry_history_through_exhaustion() {
         // QGDXC-REC-0004 QGDXC-SES-0010
-        let mut replay = Replay::new("Q1ABC".into(), Profile::Rbn, vec![]).unwrap();
+        let mut replay = Replay::new("Q1ABC".into(), Profile::Rbn).unwrap();
         let mut at = 0;
         let mut actual = vec![];
         let mut expected = vec![];
@@ -484,7 +633,7 @@ mod tests {
     #[test]
     fn replay_uses_last_outbound_fragment_for_admission() {
         // QGDXC-REC-0004 QGDXC-SES-0007
-        let mut replay = Replay::new("Q1ABC".into(), Profile::CcCluster, vec![]).unwrap();
+        let mut replay = Replay::new("Q1ABC".into(), Profile::CcCluster).unwrap();
         replay.record(&json!({"t":0,"conn":"open"})).unwrap();
         wire(&mut replay, 0.0, "in", b"login:");
         wire(&mut replay, 0.0, "out", b"Q1ABC\r\n");
@@ -511,7 +660,7 @@ mod tests {
     #[test]
     fn replay_waits_for_delayed_login_completion() {
         // QGDXC-REC-0004 QGDXC-SES-0007
-        let mut replay = Replay::new("Q1ABC".into(), Profile::Rbn, vec![]).unwrap();
+        let mut replay = Replay::new("Q1ABC".into(), Profile::Rbn).unwrap();
         replay.record(&json!({"t":0,"conn":"open"})).unwrap();
         wire(&mut replay, 0.0, "in", b"login:");
         wire(&mut replay, 1.0, "out", b"Q1ABC\r");
@@ -530,15 +679,7 @@ mod tests {
     fn replay_boundaries_own_attempts_and_delayed_termination() {
         // QGDXC-REC-0004 QGDXC-REC-0005 QGDXC-SES-0009
         for reason in ["timeout", "eof"] {
-            let mut replay = Replay::new(
-                "Q1ABC".into(),
-                Profile::Auto,
-                vec![
-                    "QGDXC0000000000000000".into(),
-                    "QGDXC0000000000000001".into(),
-                ],
-            )
-            .unwrap();
+            let mut replay = Replay::new("Q1ABC".into(), Profile::Rbn).unwrap();
             replay.record(&json!({"t":0,"conn":"open"})).unwrap();
             let events = replay
                 .record(&json!({"t":39,"note":"delayed boundary"}))
@@ -563,7 +704,7 @@ mod tests {
     #[test]
     fn replay_defers_received_termination_until_recorded_close() {
         // QGDXC-REC-0004 QGDXC-SES-0014
-        let mut replay = Replay::new("Q1ABC".into(), Profile::Rbn, vec![]).unwrap();
+        let mut replay = Replay::new("Q1ABC".into(), Profile::Rbn).unwrap();
         replay.record(&json!({"t":0,"conn":"open"})).unwrap();
         let events = wire(&mut replay, 0.0, "in", b"password:");
         assert!(!events.iter().any(|e| e.kind == "connection_state"));
@@ -583,6 +724,11 @@ mod tests {
         // QGDXC-REC-0001 QGDXC-REC-0002 QGDXC-REC-0003 QGDXC-REC-0004 QGDXC-REC-0005
         assert!(Recorder::new(Vec::new(), false).is_err());
         let mut r = Recorder::new(Vec::new(), true).unwrap();
+        r.note(
+            0.0,
+            "qg-dxc configuration: {\"call\":\"Q1ABC\",\"profile\":\"rbn\"}",
+        )
+        .unwrap();
         for t in [0.0, 100.0] {
             r.open(t).unwrap();
             r.wire(t, "in", b"call:").unwrap();
@@ -593,23 +739,10 @@ mod tests {
                 .unwrap();
             r.close(t + 1.0, "eof").unwrap();
         }
-        let (identity, profile, tokens) = replay_config(std::io::Cursor::new(&r.writer)).unwrap();
-        assert_eq!(identity, "Q1ABC");
-        assert_eq!(profile, Profile::Auto);
-        assert_eq!(tokens.len(), 2);
-        let mut rows = Records::new(std::io::Cursor::new(r.writer));
-        let mut replay = Replay::new(
-            "Q1ABC".into(),
-            Profile::Auto,
-            vec![
-                "QGDXC0000000000000000".into(),
-                "QGDXC0000000000000001".into(),
-            ],
-        )
-        .unwrap();
+        let mut replay = ReplayStream::new(std::io::Cursor::new(r.writer), false).unwrap();
         let mut events = vec![];
-        while let Some(v) = rows.next_record().unwrap() {
-            events.extend(replay.record(&v).unwrap());
+        while let Some((_, _, batch)) = replay.next_record().unwrap() {
+            events.extend(batch);
         }
         assert_eq!(
             events

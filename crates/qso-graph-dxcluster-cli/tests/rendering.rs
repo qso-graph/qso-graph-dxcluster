@@ -24,6 +24,7 @@ fn replay_redacts_notes_and_events_in_both_output_formats() {
         json!({"t":0,"note":note}),
         json!({"t":0,"note":cc11}),
         json!({"t":0,"note":format!("observer: {cc11}")}),
+        json!({"t":0,"note":"qg-dxc configuration: {\"call\":\"Q1ABC\",\"profile\":\"rbn\"}"}),
         json!({"t":0,"conn":"open"}),
         json!({"t":0,"dir":"in","b64":base64(wire.as_bytes())}),
         json!({"t":0,"conn":"close","reason":"eof"}),

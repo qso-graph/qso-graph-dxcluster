@@ -2,6 +2,7 @@
 #![forbid(unsafe_code)]
 mod checks;
 mod generate;
+mod input;
 mod oracle;
 mod runner;
 mod scenarios;

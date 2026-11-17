@@ -16,7 +16,7 @@ fn on_path(name: &str) -> bool {
 pub fn verify() -> Result<(), String> {
     fs::create_dir_all("target/verify").map_err(|e| e.to_string())?;
     let locks = ["Cargo.lock", "fuzz/Cargo.lock"];
-    let before = locks.map(fs::read);
+    let before = locks.map(crate::input::read);
     let steps: [(&str, &[&str]); 13] = [
         ("fetch", &["xtask", "fetch"]),
         ("fmt", &["fmt", "--all", "--check"]),
@@ -82,9 +82,7 @@ pub fn verify() -> Result<(), String> {
         };
         if status == "FAIL" {
             eprintln!("{name}: see {path}");
-            let log = fs::read_to_string(&path).unwrap_or_default();
-            let lines: Vec<_> = log.lines().collect();
-            eprintln!("{}", lines[lines.len().saturating_sub(20)..].join("\n"));
+            eprintln!("{}", crate::input::tail(&path).unwrap_or_default());
         }
         results.push((
             name.to_owned(),
@@ -92,10 +90,8 @@ pub fn verify() -> Result<(), String> {
             format!("{:.2}s", start.elapsed().as_secs_f64()),
         ));
     }
-    let nightly_available = Command::new("rustup")
-        .args(["toolchain", "list"])
-        .output()
-        .is_ok_and(|o| {
+    let nightly_available =
+        crate::input::output(Command::new("rustup").args(["toolchain", "list"])).is_ok_and(|o| {
             o.status.success()
                 && String::from_utf8_lossy(&o.stdout)
                     .lines()
@@ -200,7 +196,7 @@ pub fn verify() -> Result<(), String> {
         ));
     }
     let unchanged = locks.iter().zip(before.iter()).all(|(path, before)| {
-        before.as_ref().ok() == fs::read(path).as_ref().ok() && before.is_ok()
+        before.as_ref().ok() == crate::input::read(path).as_ref().ok() && before.is_ok()
     });
     results.push((
         "lockfiles unchanged".into(),
@@ -221,12 +217,9 @@ pub fn verify() -> Result<(), String> {
 }
 
 fn fuzz_version_pinned() -> bool {
-    Command::new("cargo")
-        .args(["fuzz", "--version"])
-        .output()
-        .is_ok_and(|o| {
-            o.status.success() && String::from_utf8_lossy(&o.stdout).trim() == "cargo-fuzz 0.13.2"
-        })
+    crate::input::output(Command::new("cargo").args(["fuzz", "--version"])).is_ok_and(|o| {
+        o.status.success() && String::from_utf8_lossy(&o.stdout).trim() == "cargo-fuzz 0.13.2"
+    })
 }
 fn advisory_db() -> Result<std::path::PathBuf, String> {
     std::env::var_os("CARGO_HOME")
@@ -239,9 +232,7 @@ fn advisory_db() -> Result<std::path::PathBuf, String> {
         .ok_or("set CARGO_HOME for the advisory database".into())
 }
 fn audit_command(file: &Path, offline: bool) -> Result<Command, String> {
-    let version = Command::new("cargo")
-        .args(["audit", "--version"])
-        .output()
+    let version = crate::input::output(Command::new("cargo").args(["audit", "--version"]))
         .map_err(|e| e.to_string())?;
     if !version.status.success()
         || !String::from_utf8_lossy(&version.stdout)
@@ -300,12 +291,10 @@ pub fn audit() -> Result<(), String> {
     }
     fs::create_dir_all("target/verify").map_err(|e| e.to_string())?;
     let planted = Path::new("target/verify/vulnerable.lock");
-    let mut lock = fs::read_to_string("Cargo.lock").map_err(|e| e.to_string())?;
+    let mut lock = crate::input::text("Cargo.lock").map_err(|e| e.to_string())?;
     lock.push_str("\n[[package]]\nname = \"time\"\nversion = \"0.1.43\"\nsource = \"registry+https://github.com/rust-lang/crates.io-index\"\n");
     fs::write(planted, lock).map_err(|e| e.to_string())?;
-    let result = audit_command(planted, true)?
-        .arg("--json")
-        .output()
+    let result = crate::input::output(audit_command(planted, true)?.arg("--json"))
         .map_err(|e| e.to_string());
     fs::remove_file(planted).map_err(|e| e.to_string())?;
     let result = result?;

@@ -412,17 +412,19 @@ pub fn all() -> Result<(), String> {
         .filter_map(Result::ok)
         .map(|p| p.path())
         .filter(|p| p.extension().is_some_and(|s| s == "ndjson"))
+        .take(1025)
         .collect();
+    if paths.len() > 1024 {
+        return Err("vector file limit exceeded".into());
+    }
     paths.sort();
     let mut ids = std::collections::BTreeSet::new();
+    let mut budget = crate::input::Budget::new();
     for path in paths {
-        for (i, line) in std::fs::read_to_string(&path)
-            .map_err(|e| e.to_string())?
-            .lines()
-            .enumerate()
-        {
-            let v: Value = serde_json::from_str(line).map_err(|e| e.to_string())?;
+        for (i, line) in crate::input::lines(&path)?.enumerate() {
+            let v: Value = serde_json::from_str(&line?).map_err(|e| e.to_string())?;
             let id = v["id"].as_str().ok_or("vector id")?;
+            budget.charge(id.len() + 256)?;
             if !ids.insert(id.to_owned()) {
                 return Err("duplicate vector id".into());
             }
@@ -443,7 +445,7 @@ pub fn all() -> Result<(), String> {
 }
 
 fn application_roundtrip(v: &Value, actions: &[Value], expected: &[Value]) -> Result<(), String> {
-    use qso_graph_dxcluster_cli::recording::{Recorder, Records, Replay, replay_config};
+    use qso_graph_dxcluster_cli::recording::{Recorder, ReplayStream};
     let mut recorder = Recorder::new(Vec::<u8>::new(), true).map_err(|e| e.to_string())?;
     recorder
         .note(
@@ -497,12 +499,10 @@ fn application_roundtrip(v: &Value, actions: &[Value], expected: &[Value]) -> Re
         return Err("application vector must close every recorded connection".into());
     }
     let bytes = recorder.into_inner();
-    let (call, profile, tokens) = replay_config(std::io::Cursor::new(&bytes))?;
-    let mut replay = Replay::new(call, profile, tokens)?;
-    let mut records = Records::new(std::io::Cursor::new(&bytes));
+    let mut replay = ReplayStream::new(std::io::Cursor::new(&bytes), false)?;
     let mut actual = vec![];
-    while let Some(record) = records.next_record()? {
-        actual.extend(replay.record(&record)?);
+    while let Some((_, _, events)) = replay.next_record()? {
+        actual.extend(events);
     }
     actual.extend(replay.finish()?);
     let actual: Vec<_> = actual.into_iter().map(json_event).collect();

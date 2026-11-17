@@ -231,6 +231,58 @@ pub fn default_privacy(e: &mut Value, _p: &str, retain: bool) {
         e["raw_line"] = json!(oracle::b64(&encoded));
     }
 }
+// Stream capture records and protocol lines independently. A capture may be
+// arbitrarily long; only a bounded sample is retained by the caller.
+fn visit_capture(
+    path: &Path,
+    mut visit: impl FnMut(&[u8], &str, usize, usize) -> Result<(), String>,
+) -> Result<(), String> {
+    let mut line = Vec::new();
+    let mut first = 0;
+    let mut last = 0;
+    let mut cr = false;
+    for (index, record) in crate::input::lines(path)?.enumerate() {
+        let v: Value = serde_json::from_str(&record?).map_err(|e| e.to_string())?;
+        if v["dir"] != "in" {
+            continue;
+        }
+        let bytes = oracle::unb64(v["b64"].as_str().ok_or("capture byte member")?)?;
+        for byte in bytes {
+            if cr {
+                visit(
+                    &line,
+                    if byte == b'\n' { "crlf" } else { "cr" },
+                    first,
+                    last,
+                )?;
+                line.clear();
+                cr = false;
+                if byte == b'\n' {
+                    continue;
+                }
+            }
+            if line.is_empty() {
+                first = index + 1;
+            }
+            if byte == b'\r' {
+                cr = true;
+            } else if byte == b'\n' {
+                visit(&line, "lf", first, last)?;
+                line.clear();
+            } else {
+                if line.len() == 65536 {
+                    return Err("capture protocol line exceeds 65536 bytes".into());
+                }
+                line.push(byte);
+                last = index + 1;
+            }
+        }
+    }
+    if cr || !line.is_empty() {
+        visit(&line, if cr { "cr" } else { "none" }, first, last)?;
+    }
+    Ok(())
+}
 pub fn generate(captures: Option<&Path>) -> Result<(), String> {
     let mut vectors = synthetic();
     if let Some(dir) = captures {
@@ -239,9 +291,14 @@ pub fn generate(captures: Option<&Path>) -> Result<(), String> {
             .filter_map(Result::ok)
             .map(|e| e.path())
             .filter(|p| p.extension().is_some_and(|e| e == "ndjson"))
+            .take(65)
             .collect();
+        if paths.len() > 64 {
+            return Err("capture file limit exceeded".into());
+        }
         paths.sort();
         let mut captured = vec![];
+        let mut selected_bytes = 0usize;
         let mut names = BTreeSet::new();
         for path in paths {
             let name = path.file_name().unwrap().to_string_lossy().into_owned();
@@ -255,42 +312,8 @@ pub fn generate(captures: Option<&Path>) -> Result<(), String> {
             } else {
                 "rbn"
             };
-            let mut bytes = vec![];
-            let mut records = vec![];
-            for (i, line) in fs::read_to_string(&path)
-                .map_err(|e| e.to_string())?
-                .lines()
-                .enumerate()
-            {
-                let r: Value = serde_json::from_str(line).map_err(|e| e.to_string())?;
-                if r["dir"] != "in" {
-                    continue;
-                }
-                let b = oracle::unb64(r["b64"].as_str().ok_or("capture byte member")?)?;
-                records.extend(std::iter::repeat_n(i + 1, b.len()));
-                bytes.extend(b);
-            }
-            let mut at = 0;
             let mut counts = BTreeMap::<String, usize>::new();
-            while at < bytes.len() {
-                let start = at;
-                while at < bytes.len() && !matches!(bytes[at], b'\r' | b'\n') {
-                    at += 1;
-                }
-                let end = at;
-                let ending = if bytes.get(at..at + 2) == Some(b"\r\n") {
-                    at += 2;
-                    "crlf"
-                } else if bytes.get(at) == Some(&b'\r') {
-                    at += 1;
-                    "cr"
-                } else if bytes.get(at) == Some(&b'\n') {
-                    at += 1;
-                    "lf"
-                } else {
-                    "none"
-                };
-                let content = &bytes[start..end];
+            visit_capture(&path, |content, ending, first, last| {
                 let text = String::from_utf8_lossy(content);
                 if ![
                     "DX de ",
@@ -303,7 +326,7 @@ pub fn generate(captures: Option<&Path>) -> Result<(), String> {
                 .iter()
                 .any(|s| text.starts_with(s))
                 {
-                    continue;
+                    return Ok(());
                 }
                 let category = if text.starts_with("DX de ") {
                     let words: Vec<_> = text.split_ascii_whitespace().collect();
@@ -321,11 +344,18 @@ pub fn generate(captures: Option<&Path>) -> Result<(), String> {
                         .take(8)
                         .collect()
                 };
+                if counts.len() >= 256 && !counts.contains_key(&category) {
+                    return Err("capture category limit exceeded".into());
+                }
                 let count = counts.entry(category).or_default();
                 if *count >= 24 {
-                    continue;
+                    return Ok(());
                 }
                 *count += 1;
+                selected_bytes += content.len() + name.len() + 256;
+                if selected_bytes > qso_graph_dxcluster_cli::bounded::TEXT_BYTES {
+                    return Err("capture sample exceeds 8 MiB limit".into());
+                }
                 collect_names(&text, &mut names);
                 for (a, b) in role_ranges(&text, profile) {
                     names.insert(text[a..b].to_owned());
@@ -345,18 +375,18 @@ pub fn generate(captures: Option<&Path>) -> Result<(), String> {
                         }
                     }
                 }
-                let provenance = (
-                    records.get(start).copied().unwrap_or(1),
-                    records.get(end.saturating_sub(1)).copied().unwrap_or(1),
-                );
+                if captured.len() >= 4096 || names.len() > 65536 {
+                    return Err("capture selection limit exceeded".into());
+                }
                 captured.push((
                     name.clone(),
                     profile.to_owned(),
-                    provenance,
+                    (first, last),
                     text.into_owned(),
-                    ending,
+                    ending.to_owned(),
                 ));
-            }
+                Ok(())
+            })?;
         }
         let mapping: BTreeMap<_, _> = names
             .into_iter()
@@ -397,7 +427,7 @@ pub fn generate(captures: Option<&Path>) -> Result<(), String> {
             safe.push_str(&public_token(&sanitized[at..]));
             sanitized = safe;
             // Remove all literal IPs and precise CC Cluster slots before publication.
-            let mut event = oracle::line(&p, sanitized.as_bytes(), ending, None);
+            let mut event = oracle::line(&p, sanitized.as_bytes(), &ending, None);
             default_privacy(&mut event, &p, false);
             let redacted = oracle::unb64(event["raw_line"].as_str().unwrap())?;
             if redacted.is_empty() {
@@ -408,7 +438,7 @@ pub fn generate(captures: Option<&Path>) -> Result<(), String> {
                 &format!("captured-{i:04}"),
                 &p,
                 sanitized.as_bytes(),
-                ending,
+                &ending,
                 None,
             );
             v["provenance"] = json!({"capture":name,"records":(first..=last).collect::<Vec<_>>(),"sanitization":["Deterministic sorted token map to Q-prefix identities, including node tokens","IP literals removed; sensitive CC11 slots emptied before publication","SPDX-License-Identifier: GPL-3.0-or-later"]});
@@ -767,4 +797,60 @@ fn extra_vectors() -> Vec<Value> {
         ));
     }
     out
+}
+
+#[cfg(test)]
+mod input_tests {
+    use super::*;
+    #[test]
+    fn capture_input_streams_fragments_and_caps_records_and_protocol_lines() {
+        // QGDXC-SEC-0001 QGDXC-VEC-0005
+        use std::io::Write;
+        let path =
+            Path::new("target").join(format!("capture-bounds-{}.ndjson", std::process::id()));
+        fs::create_dir_all("target").unwrap();
+        let record = |b: &[u8]| format!("{}\n", json!({"dir":"in", "b64":oracle::b64(b)}));
+        fs::write(
+            &path,
+            [
+                record(b"DX de Q1"),
+                record(b"ABC: 1 Q2ABC 0000Z"),
+                record(b"\r"),
+                record(b"\nWX de Q1ABC: fine\n"),
+            ]
+            .concat(),
+        )
+        .unwrap();
+        let mut seen = Vec::new();
+        visit_capture(&path, |b, ending, first, last| {
+            seen.push((b.to_vec(), ending.to_owned(), first, last));
+            Ok(())
+        })
+        .unwrap();
+        assert_eq!(
+            seen,
+            vec![
+                (b"DX de Q1ABC: 1 Q2ABC 0000Z".to_vec(), "crlf".into(), 1, 2),
+                (b"WX de Q1ABC: fine".to_vec(), "lf".into(), 4, 4),
+            ]
+        );
+        let mut file = fs::File::create(&path).unwrap();
+        for _ in 0..65 {
+            file.write_all(record(&vec![b'x'; 1024]).as_bytes())
+                .unwrap();
+        }
+        drop(file);
+        let e = visit_capture(&path, |_, _, _, _| Ok(())).unwrap_err();
+        assert!(e.contains("protocol line exceeds"), "{e}");
+        let mut file = fs::File::create(&path).unwrap();
+        std::io::copy(
+            &mut std::io::Read::take(std::io::repeat(b'x'), 1_048_577),
+            &mut file,
+        )
+        .unwrap();
+        drop(file);
+        let e = visit_capture(&path, |_, _, _, _| Ok(())).unwrap_err();
+        assert!(e.contains("physical record exceeds"), "{e}");
+        fs::remove_file(path).unwrap();
+    }
 }

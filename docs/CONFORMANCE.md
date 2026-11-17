@@ -71,7 +71,10 @@ help/version text outside the shared privacy and escaping paths.
 
 The recording tests cover QGDXC-REC-0004 with fragmented, delayed outbound
 completion, a reply at 33 seconds after setup admission at 5 seconds, delayed
-close boundaries, and readiness tokens reserved only at recorded opens.
+close boundaries, and fragmented token observations confined to the current
+connection. The QGDXC-REC-0004 stream tests check lazy token lookup, byte-budget
+failure, missing-token errors, preserved note numbers, and absence of lookahead
+for profiles that do not request tokens.
 The CLI's controlled connector tests cover QGDXC-SES-0009 without network I/O:
 a nonresponding first address consumes its share before a working alternative
 connects. Additional cases cover the minimum address budget, remaining deadline,
@@ -122,6 +125,17 @@ sequence. The engine storage test runs 8,192 attempts and checks unchanged
 retained token/rate capacities and reset parser state. Caller-owned token sets
 check uniqueness separately. The CLI entropy test exercises fresh OS randomness,
 repeated random values, the maximum attempt number, jitter bounds, rejection
-sampling, and source errors. The replay test covers 4,096 recorded connections.
+sampling, and source errors. On Linux, the replay memory regression streams
+500,000 RBN open/close pairs through the CLI under a 64 MiB address-space ceiling;
+the fixture is written incrementally and output is discarded. It failed with an
+allocation error before the bounded replay change and passes after it.
 The vector runner resolves resource requests from the explicit per-attempt
 inputs before comparing the abstract action trace (QGDXC-VEC-0006).
+
+The QGDXC-SEC-0001 input audit also covers the CLI and verification tools.
+Capture import streams physical records and protocol lines, retaining only a
+bounded sample and identity map. Vector validation, coverage, and sanitization
+stream NDJSON. Other repository text and captured command output use fixed byte
+caps; diagnostic display seeks to a bounded log tail. Tests reject oversized
+physical records, protocol lines, text files, indexes, and command output, and
+check fragmented capture provenance.

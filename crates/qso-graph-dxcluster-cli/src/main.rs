@@ -2,7 +2,7 @@
 #![forbid(unsafe_code)]
 use qso_graph_dxcluster::{model::escape, *};
 use qso_graph_dxcluster_cli::recording;
-use recording::{Recorder, Records, Replay};
+use recording::{Recorder, ReplayStream};
 mod output;
 use output::Output;
 use std::{
@@ -80,18 +80,15 @@ fn run(retention: &mut bool) -> Result<u8, String> {
             return Err("usage: qg-dxc replay <file> [--json] [--retain-third-party-data]".into());
         }
         *retention = args[2..].iter().any(|a| a == "--retain-third-party-data");
-        let mut records = Records::new(BufReader::new(
-            File::open(&args[1]).map_err(|e| e.to_string())?,
-        ));
-        let (identity, profile, tokens) = recording::replay_config(BufReader::new(
-            File::open(&args[1]).map_err(|e| e.to_string())?,
-        ))?;
-        let mut replay = Replay::new_with_retention(identity, profile, tokens, *retention)?;
-        while let Some(v) = records.next_record()? {
+        let mut replay = ReplayStream::new(
+            BufReader::new(File::open(&args[1]).map_err(|e| e.to_string())?),
+            *retention,
+        )?;
+        while let Some((line, v, events)) = replay.next_record()? {
             if let Some(note) = v["note"].as_str() {
-                eprintln!("note {}: {}", records.line, terminal_text(note, *retention));
+                eprintln!("note {line}: {}", terminal_text(note, *retention));
             }
-            for event in replay.record(&v)? {
+            for event in events {
                 render(&event, json, *retention).map_err(|e| e.to_string())?;
             }
         }
