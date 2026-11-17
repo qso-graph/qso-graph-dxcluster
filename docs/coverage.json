@@ -788,6 +788,10 @@
         {
           "file": "xtask/src/checks.rs",
           "name": "sanitization_rejects_digit_initial_calls_and_identity_field_mutations"
+        },
+        {
+          "file": "xtask/src/checks.rs",
+          "name": "sanitization_rejects_punctuated_addresses_in_prose_and_decoded_fixtures"
         }
       ],
       "vectors": []

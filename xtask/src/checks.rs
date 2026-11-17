@@ -540,7 +540,54 @@ fn likely_call(s: &str) -> bool {
         && b[i..].iter().all(u8::is_ascii_alphanumeric)
         && b[i..].iter().any(u8::is_ascii_alphabetic)
 }
+fn addresses_sanitized(s: &str) -> bool {
+    fn permitted_literal(s: &str) -> bool {
+        match s.parse::<std::net::IpAddr>() {
+            Ok(std::net::IpAddr::V4(ip)) => {
+                let o = ip.octets();
+                o[..3] == [192, 0, 2] || o[..3] == [198, 51, 100] || o[..3] == [203, 0, 113]
+            }
+            Ok(std::net::IpAddr::V6(ip)) => ip.segments()[..2] == [0x2001, 0xdb8],
+            Err(_) => true,
+        }
+    }
+    // DNS labels and IPv4 have different boundaries from IPv6. Colons,
+    // slashes, brackets, and prose punctuation delimit a host component.
+    for host in s.split(|c: char| !(c.is_ascii_alphanumeric() || matches!(c, '.' | '-' | '_'))) {
+        // A final dot can be sentence punctuation or the DNS root label.
+        let host = host.trim_matches('.');
+        if [".local", ".lan", ".internal"].iter().any(|suffix| {
+            host.get(host.len().saturating_sub(suffix.len())..)
+                .is_some_and(|tail| tail.eq_ignore_ascii_case(suffix))
+                && host.len() > suffix.len()
+        }) || !permitted_literal(host)
+        {
+            return false;
+        }
+    }
+    for token in
+        s.split(|c: char| !(c.is_ascii_alphanumeric() || matches!(c, ':' | '.' | '-' | '_')))
+    {
+        let token = token.trim_matches('.');
+        if !permitted_literal(token)
+            // A colon adjacent to a literal can also be prose punctuation.
+            || token.strip_suffix(':').is_some_and(|s| !permitted_literal(s))
+            || token.strip_prefix(':').is_some_and(|s| !permitted_literal(s))
+            // A dot after IPv6 is punctuation; embedded IPv4 dots remain
+            // eligible too. Bound candidate work by the longest IP spelling.
+            || token.char_indices().take_while(|(i, _)| *i <= 45)
+                .filter(|(_, c)| *c == '.')
+                .any(|(end, _)| !permitted_literal(&token[..end]))
+        {
+            return false;
+        }
+    }
+    true
+}
 fn text_sanitized(s: &str) -> bool {
+    if !addresses_sanitized(s) {
+        return false;
+    }
     for t in s.split(|c: char| {
         !c.is_ascii_alphanumeric()
             && c != ':'
@@ -553,10 +600,6 @@ fn text_sanitized(s: &str) -> bool {
     }) {
         if t.split_once('@')
             .is_some_and(|(a, b)| !a.is_empty() && b.contains('.'))
-            || [".local", ".lan", ".internal"].iter().any(|suffix| {
-                t.strip_suffix(suffix)
-                    .is_some_and(|prefix| !prefix.is_empty())
-            })
         {
             return false;
         }
@@ -573,28 +616,6 @@ fn text_sanitized(s: &str) -> bool {
             }
             if likely_call(sub) {
                 return false;
-            }
-        }
-        // Check the complete IPv6 token and endpoint host components.
-        for literal in std::iter::once(t).chain(t.split(['/', ':'])) {
-            if [".local", ".lan", ".internal"].iter().any(|suffix| {
-                literal
-                    .strip_suffix(suffix)
-                    .is_some_and(|prefix| !prefix.is_empty())
-            }) {
-                return false;
-            }
-            if let Ok(ip) = literal.parse::<std::net::IpAddr>() {
-                let doc = match ip {
-                    std::net::IpAddr::V4(ip) => {
-                        let o = ip.octets();
-                        o[..3] == [192, 0, 2] || o[..3] == [198, 51, 100] || o[..3] == [203, 0, 113]
-                    }
-                    std::net::IpAddr::V6(ip) => ip.segments()[..2] == [0x2001, 0xdb8],
-                };
-                if !doc {
-                    return false;
-                }
             }
         }
     }
@@ -826,7 +847,8 @@ fn public_file_sanitized(file: &Path, source: &str) -> bool {
         text_sanitized(
             &unescape_source(&line)
                 .replace("matches(\"::\")", "matches(\"colon\")")
-                .replace("contains(\"::\")", "contains(\"colon\")"),
+                .replace("contains(\"::\")", "contains(\"colon\")")
+                .replace("contains(\":::\")", "contains(\"colon\")"),
         )
     })
 }
@@ -1168,6 +1190,67 @@ mod tests {
         assert!(!vector_sanitized(&lexical));
         lexical["expected_events"][0]["event"]["fields"]["call"] = serde_json::json!("123");
         assert!(!vector_sanitized(&lexical));
+    }
+    #[test]
+    fn sanitization_rejects_punctuated_addresses_in_prose_and_decoded_fixtures() {
+        // QGDXC-SEC-0006
+        let addresses = [
+            ["10", "20", "30", "40"].join("."),
+            ["fd00", "1234", "", "1"].join(":"),
+            [
+                ["", "", "ffff", ""].join(":"),
+                ["10", "20", "30", "40"].join("."),
+            ]
+            .concat(),
+            ["node", "internal"].join("."),
+            ["node", "LOCAL"].join("."),
+            ["node", "lan"].join("."),
+        ];
+        for address in addresses {
+            for (before, after) in [
+                ("", "."),
+                ("", ","),
+                ("(", ")"),
+                ("", ":"),
+                ("\"", "\""),
+                ("[", "]"),
+                ("('", ".'),"),
+                ("tcp://", ".:7300/path"),
+            ] {
+                let prose = format!("Connect to {before}{address}{after}");
+                assert!(
+                    !public_file_sanitized(Path::new("README.md"), &prose),
+                    "accepted prose: {prose}"
+                );
+                let encoded = crate::oracle::b64(prose.as_bytes());
+                for key in ["b64", "raw_line"] {
+                    let fixture = serde_json::json!({key: encoded});
+                    assert!(
+                        !public_file_sanitized(
+                            Path::new("vectors/planted.ndjson"),
+                            &fixture.to_string()
+                        ),
+                        "accepted decoded {key}: {prose}"
+                    );
+                    let source = format!("let fixture = json!({fixture});");
+                    assert!(!public_file_sanitized(
+                        Path::new("xtask/src/runner.rs"),
+                        &source
+                    ));
+                }
+            }
+        }
+        for safe in [
+            "Connect to example.invalid.",
+            "Connect to (192.0.2.1).",
+            "Connect to [2001:db8::1]:7300.",
+            "See docs/CONFORMANCE.md.",
+        ] {
+            assert!(
+                public_file_sanitized(Path::new("README.md"), safe),
+                "{safe}"
+            );
+        }
     }
     #[test]
     fn checks_reject_mutations() {

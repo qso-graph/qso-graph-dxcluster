@@ -147,3 +147,9 @@ numbers. The same case failed with an allocation error before the change.
 Unit tests exercise the provenance cap, ignored notes and empty input records,
 and contributors to LF, CR, CRLF, and unterminated frames. Retained provenance
 is charged against the capture sample budget.
+
+The QGDXC-SEC-0006 scanner tests plant punctuated IPv4, IPv6, mapped IPv4,
+and private DNS names in README prose, decoded vector byte members, and inline
+encoded fixtures. They cover absolute DNS spelling, case variations, endpoint
+ports, quotes, brackets, and sentence punctuation while retaining permitted
+documentation addresses and example names.
