@@ -131,7 +131,7 @@ fn failures_latch_flush_and_cancel() {
     // QGDXC-SES-0003 QGDXC-SES-0012 QGDXC-SES-0013 QGDXC-SES-0014 QGDXC-DSP-0003 QGDXC-DSP-0009
     for (bytes, reason) in [
         (b"Password:".as_slice(), "password_unsupported"),
-        (b"Sorry Q1ABC is an invalid callsign", "refused"),
+        (b"Sorry Q1ABC is an invalid callsign\r", "refused"),
     ] {
         let mut s = session(Profile::Auto);
         s.start(0).unwrap();
@@ -304,4 +304,95 @@ fn delayed_transport_admission_controls_pacing_and_reply_deadlines() {
     let b = s.fire(Timer::Pacing, 6200).unwrap();
     assert_eq!(outputs(&b), ["set/nobeep\r\n"]);
     assert_eq!(s.deadline(Timer::Setup), Some(11200));
+}
+
+#[test]
+fn relayed_and_incomplete_status_text_cannot_end_sessions() {
+    // QGDXC-SES-0012 QGDXC-DSP-0003 QGDXC-EVT-0010
+    for body in [
+        "Reconnected as Q1ABC at <ip>, this instance is disconnected",
+        "Sorry Q1ABC is an invalid callsign",
+        "password:",
+        "login:",
+    ] {
+        for (prefix, kind) in [
+            ("To ALL de Q2ABC: ", "announcement"),
+            ("Q1ABC de Q2ABC: ", "talk"),
+            ("WX de Q2ABC: ", "announcement"),
+            ("WWV de Q2ABC <23>: ", "wwv"),
+            ("WCY de Q2ABC <23>: ", "wcy"),
+        ] {
+            let mut s = session(Profile::DxSpider);
+            begin(&mut s);
+            input(&mut s, 0, b"\n");
+            let b = input(&mut s, 1, format!("{prefix}{body}\n").as_bytes());
+            assert_eq!(s.state, State::AwaitIdentity, "{prefix}{body}");
+            assert_eq!(b.events.len(), 1);
+            assert_eq!(b.events[0].kind, kind);
+            assert!(b.actions.is_empty());
+        }
+    }
+    let notice = "Reconnected as Q1ABC at <ip>, this instance is disconnected";
+    let mut s = session(Profile::DxSpider);
+    s.config.line_limit = 256;
+    // Rebuild to apply the frame bound to the parser.
+    let mut s = Session::new(s.config, vec!["QGDXC0000000000000000".into()], vec![0]).unwrap();
+    begin(&mut s);
+    input(&mut s, 0, b"\n");
+    let prefix = format!("{notice}{}", " ".repeat(256 - notice.len()));
+    let b = input(&mut s, 1, format!("{prefix}extra\n").as_bytes());
+    assert_eq!(s.state, State::AwaitIdentity);
+    assert_eq!(b.events[0].kind, "unrecognized_line");
+    assert_eq!(b.events[0].raw_status, "truncated");
+    assert!(b.actions.is_empty());
+    input(&mut s, 2, notice.as_bytes());
+    let b = s.transport_end(3, 1, "eof").unwrap();
+    assert_eq!(s.state, State::Backoff);
+    assert!(
+        !b.events
+            .iter()
+            .any(|e| e.get("reason") == Some("displaced"))
+    );
+}
+#[test]
+fn setup_errors_require_complete_classified_status() {
+    // QGDXC-SES-0007 QGDXC-SES-0012
+    for (line, kind, reason) in [
+        ("To ALL de Q2ABC: Q setup rejected", "announcement", None),
+        ("Q1ABC de Q2ABC: Q setup rejected", "talk", None),
+        ("WWV de Q2ABC <23>: Q setup rejected", "wwv", None),
+        ("WCY de Q2ABC <23>: Q setup rejected", "wcy", None),
+        ("Q setup rejected", "prompt_status", Some("setup_failed")),
+    ] {
+        let mut s = session(Profile::DxSpider);
+        s.config.supported_setup_errors = vec!["Q setup rejected".into(), line.into()];
+        begin(&mut s);
+        input(&mut s, 0, b"\n");
+        input(&mut s, 100, b"Q1ABC de Q2ABC 1-Nov-2026 1832Z dxspider >");
+        s.fire(Timer::Pacing, 1000).unwrap();
+        let b = input(&mut s, 1100, format!("{line}\n").as_bytes());
+        assert_eq!(b.events[0].kind, kind);
+        assert_eq!(
+            s.state,
+            if reason.is_some() {
+                State::Blocked
+            } else {
+                State::Setup
+            }
+        );
+    }
+    let mut s = session(Profile::CcCluster);
+    s.config.supported_setup_errors = vec!["Q setup rejected".into()];
+    begin(&mut s);
+    input(&mut s, 0, b"\n");
+    input(&mut s, 100, b"Q1ABC de Q2ABC 1-Nov-2026 1832Z CCC >");
+    s.fire(Timer::Pacing, 1000).unwrap();
+    input(&mut s, 1100, b"Q setup rejected");
+    let b = s.transport_end(1200, 1, "eof").unwrap();
+    assert_eq!(s.state, State::Backoff);
+    assert!(
+        !b.events
+            .iter()
+            .any(|e| e.get("reason") == Some("setup_failed"))
+    );
 }

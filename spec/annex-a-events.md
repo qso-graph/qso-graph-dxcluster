@@ -60,7 +60,7 @@ new server wire format.
 | `talk` | `from_call`, `to_call`, `text` | No command or reply action implied |
 | `wwv` | `from_call`, `hour`, `text` | `sfi`, `a`, `k` integers and `forecast` text when explicitly parsed |
 | `wcy` | `from_call`, `hour`, `text` | `k`, `expected_k`, `a`, `r`, `sfi` integers; `sa`, `gmf`, `au` text when explicitly parsed |
-| `prompt_status` | `status`, `text` | `status`: `login_prompt`, `server_identity`, `ready_prompt`, `setup_reply`, `notice`, or `password_prompt`; optional `native` object |
+| `prompt_status` | `status`, `text` | `status`: `login_prompt`, `server_identity`, `ready_prompt`, `setup_reply`, `setup_error`, `notice`, or `password_prompt`; optional `native` object |
 | `unrecognized_line` | `reason`, `text` | Core framing reasons, `before_identification`, `unsupported_layout`, or `privacy_withheld` under `QGDXC-SEC-0005`; dispatch follows `QGDXC-EVT-0010`; `text` is empty when evidence is withheld |
 
 `hour` is an integer 0–23. Weather and propagation values report what the node
@@ -95,9 +95,9 @@ Results remain subject to `QGDXC-SEC-0005`.
 
 | Order | Recognition | Content result |
 |---|---|---|
-| 1 | Framer-designated blank, partial, or overlong frame (except an annex-defined terminal notice discovered during end-of-input finalization under `QGDXC-SES-0014`) | `unrecognized_line` with the framing reason; no semantic parsing |
+| 1 | Framer-designated blank, partial, or overlong frame | `unrecognized_line` with the framing reason; no semantic parsing |
 | 2 | Applicable password/login prompt, then annex-defined refusal/displacement notice | `prompt_status` with `password_prompt`, `login_prompt`, or `notice`, respectively |
-| 3 | Complete annex identity signature, full ready prompt, or current expected setup acknowledgment/token-only reply | `prompt_status` with `server_identity`, `ready_prompt`, or `setup_reply`, respectively; a prompt that also identifies the profile uses `ready_prompt` |
+| 3 | Complete annex identity signature, full ready prompt, or current expected setup acknowledgment/token-only reply or configured setup error | `prompt_status` with `server_identity`, `ready_prompt`, `setup_reply`, or `setup_error`, respectively; a prompt that also identifies the profile uses `ready_prompt` |
 | 4 | In `auto` with no identified profile, literal prefix `DX de ` or `CC11^` at frame start | `unrecognized_line`/`before_identification`; evidence follows `QGDXC-EVT-0001`; no delivery service is inferred from the comment or spotter suffix |
 | 5 | Literal prefix `DX de ` at frame start | Core/annex spot parse; failure is `unrecognized_line`/`malformed` |
 | 6 | Literal prefix `CC11^` | Selected annex's enhanced-layout parse or its specified failure |
@@ -106,7 +106,8 @@ Results remain subject to `QGDXC-SEC-0005`.
 | 9 | Selected annex's unsupported-layout recognizers, including AR-Cluster history rows under `QGDXC-ARC-0005` | Annex-defined result under the cited requirement |
 | 10 | Any remaining frame | `unrecognized_line`/`unknown` |
 
-Only specified identity signatures are `server_identity`. Unmatched banners,
+Reserved message prefixes and supported talk headers are excluded from rows 2
+and 3. Only specified identity signatures are `server_identity`. Unmatched banners,
 MOTD, version text, name/location requests, paging text, and unsolicited or
 out-of-step setup acknowledgments take the final fallback. For example, the
 DXSpider `running DXSpider` version banner is `unrecognized_line`/`unknown`;

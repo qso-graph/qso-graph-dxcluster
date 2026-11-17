@@ -373,6 +373,12 @@ impl Session {
             State::AwaitIdentity | State::Setup | State::Ready
         );
         c.identity_context = self.state == State::AwaitIdentity;
+        if expected.is_none() {
+            c.setup_errors.clear();
+        } else if c.expected_reply != expected {
+            c.setup_errors
+                .clone_from(&self.config.supported_setup_errors);
+        }
         c.expected_reply = expected;
     }
     fn begin(&mut self, b: &mut Batch) -> Result<(), &'static str> {
@@ -492,12 +498,18 @@ impl Session {
         if self.recorded_transport && self.terminal.is_some() {
             return Ok(());
         }
+        // Only complete parser-classified statuses can affect the session.
+        if e.kind != "prompt_status" || e.raw_status == "truncated" {
+            return Ok(());
+        }
         let raw = values::decode(&e.raw_line).0;
         if self.parser.context.password && status.as_deref() == Some("password_prompt") {
             self.end("password_unsupported", Some(&e), false, b)?;
             return Ok(());
         }
-        if let Some(reason) = parser::notice(&text, &self.parser.context) {
+        if status.as_deref() == Some("notice")
+            && let Some(reason) = parser::notice(&text, &self.parser.context)
+        {
             self.end(reason, Some(&e), false, b)?;
             return Ok(());
         }
@@ -548,12 +560,7 @@ impl Session {
                 if text == self.reply() && status.as_deref() == Some("setup_reply") {
                     self.ack = true;
                 }
-                if self
-                    .config
-                    .supported_setup_errors
-                    .iter()
-                    .any(|supported| supported == &text)
-                {
+                if status.as_deref() == Some("setup_error") {
                     self.end("setup_failed", Some(&e), false, b)?;
                 } else if status.as_deref() == Some("ready_prompt") && self.ack {
                     self.cancel_timer(Timer::Setup, b);

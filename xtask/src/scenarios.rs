@@ -125,6 +125,7 @@ impl Case {
 pub fn vectors() -> Vec<Value> {
     let mut cases = extra();
     cases.push(overlong_banner());
+    cases.extend(inert_status_text());
     cases.extend(stricter_pacing());
     let prompts = [
         ("arcluster", "Q1ABC de Q2ABC 1-Nov 1832Z arc6>"),
@@ -468,10 +469,10 @@ fn extra() -> Vec<Value> {
             }
             "flush-refusal" => {
                 let text = "Sorry Q1ABC is an invalid callsign";
-                c.input(1, text);
+                c.input(1, &format!("{text}\r"));
                 c.tick();
                 c.step(2, json!({"type":"transport","attempt":1,"outcome":"eof"}));
-                let e = c.content(text, "notice", "none");
+                let e = c.content(text, "notice", "cr");
                 c.cancel("identity");
                 c.state("blocked", "refused", Some(&e));
                 c.tick();
@@ -739,8 +740,7 @@ fn mutations(cases: &[Value]) -> Vec<Value> {
     c.output("set/ve7cc");
     c.arm("setup", 6000);
     c.input(1100, "Q setup rejected\n");
-    let e = oracle::line("cccluster", b"Q setup rejected", "lf", None);
-    c.event(e.clone());
+    let e = c.content("Q setup rejected", "setup_error", "lf");
     c.cancel("setup");
     c.action(json!({"type":"close","attempt":1}));
     c.state("blocked", "setup_failed", Some(&e));
@@ -897,6 +897,49 @@ fn application_and_validation() -> Vec<Value> {
     c.cancel("stable_ready");
     c.action(json!({"type":"close","attempt":2}));
     c.state("disconnected", "cancelled", None);
+    c.tick();
+    out.push(c.finish());
+    out
+}
+
+fn inert_status_text() -> Vec<Value> {
+    let mut out = vec![];
+    for (label, body) in [
+        (
+            "displacement",
+            "Reconnected as Q1ABC at <ip>, this instance is disconnected",
+        ),
+        ("refusal", "Sorry Q1ABC is an invalid callsign"),
+    ] {
+        for (kind, prefix) in [
+            ("announcement", "To ALL de Q2ABC: "),
+            ("talk", "Q1ABC de Q2ABC: "),
+        ] {
+            let mut c = Case::new(&format!("relayed-{label}-{kind}"), "dxspider");
+            c.v["provenance"]["derived_from"] = json!("QGDXC-SES-0012 QGDXC-DSP-0003");
+            c.begin();
+            c.login("login:");
+            let line = format!("{prefix}{body}");
+            c.input(1, &format!("{line}\n"));
+            c.event(oracle::line("dxspider", line.as_bytes(), "lf", None));
+            c.tick();
+            out.push(c.finish());
+        }
+    }
+    let mut c = Case::new("truncated-displacement-prefix", "dxspider");
+    c.v["config"]["line_limit"] = json!(256);
+    c.v["provenance"]["derived_from"] = json!("QGDXC-SES-0012 QGDXC-DSP-0003 QGDXC-FRM-0003");
+    c.begin();
+    c.login("login:");
+    let notice = "Reconnected as Q1ABC at <ip>, this instance is disconnected";
+    let prefix = format!("{notice}{}", " ".repeat(256 - notice.len()));
+    c.input(1, &format!("{prefix}extra\n"));
+    c.event(oracle::line(
+        "dxspider",
+        prefix.as_bytes(),
+        "none",
+        Some("line_too_long"),
+    ));
     c.tick();
     out.push(c.finish());
     out

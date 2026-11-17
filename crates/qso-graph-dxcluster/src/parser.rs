@@ -17,6 +17,7 @@ pub struct Context {
     pub ar_banner: bool,
     pub custom_prompt: Option<String>,
     pub expected_reply: Option<String>,
+    pub setup_errors: Vec<String>,
     pub retain_third_party_data: bool,
 }
 impl Context {
@@ -31,6 +32,7 @@ impl Context {
             ar_banner: false,
             custom_prompt: None,
             expected_reply: None,
+            setup_errors: Vec::new(),
             retain_third_party_data: false,
         }
     }
@@ -91,6 +93,9 @@ impl Parser {
             return false;
         }
         let (s, _) = v::decode(b);
+        if message_prefix(&s, &self.context) {
+            return false;
+        }
         if self.context.password && boundary(&s, "password:") {
             return true;
         }
@@ -224,6 +229,24 @@ pub fn notice(s: &str, c: &Context) -> Option<&'static str> {
     }
     None
 }
+// Reserved message layouts cannot act as session prompts or setup replies.
+fn message_prefix(s: &str, c: &Context) -> bool {
+    [
+        "DX de ",
+        "CC11^",
+        "To ALL de ",
+        "WX de ",
+        "WWV de ",
+        "WCY de ",
+    ]
+    .iter()
+    .any(|prefix| s.starts_with(prefix))
+        || c.profile == Profile::DxSpider
+            && s.split_once(':').is_some_and(|(header, _)| {
+                let h: Vec<_> = header.split_ascii_whitespace().collect();
+                h.len() == 3 && h[1] == "de"
+            })
+}
 pub fn parse_frame(frame: Frame, c: &Context, received_at: Option<&str>) -> Event {
     let (text, encoding) = v::decode(&frame.bytes);
     let mut e = Event::new(c.profile, "unrecognized_line");
@@ -237,14 +260,11 @@ pub fn parse_frame(frame: Frame, c: &Context, received_at: Option<&str>) -> Even
     };
     e.received_at = received_at.map(str::to_owned);
     let s = text.as_str();
-    let terminal_fragment = frame.reason == Some("partial") && notice(s, c).is_some();
-    let mut reason = if terminal_fragment {
-        None
-    } else {
-        frame.reason
-    };
+    let mut reason = frame.reason;
     if reason.is_none() {
-        let status = if c.password && boundary(s, "password:") {
+        let status = if message_prefix(s, c) {
+            None
+        } else if c.password && boundary(s, "password:") {
             Some("password_prompt")
         } else if c.login && (boundary(s, "login:") || boundary(s, "call:")) {
             Some("login_prompt")
@@ -256,6 +276,8 @@ pub fn parse_frame(frame: Frame, c: &Context, received_at: Option<&str>) -> Even
             Some("server_identity")
         } else if c.expected_reply.as_deref() == Some(s) {
             Some("setup_reply")
+        } else if c.setup_errors.iter().any(|error| error == s) {
+            Some("setup_error")
         } else {
             None
         };

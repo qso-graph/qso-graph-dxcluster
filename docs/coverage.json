@@ -124,9 +124,19 @@
         {
           "file": "crates/qso-graph-dxcluster/tests/session.rs",
           "name": "failures_latch_flush_and_cancel"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster/tests/session.rs",
+          "name": "relayed_and_incomplete_status_text_cannot_end_sessions"
         }
       ],
-      "vectors": []
+      "vectors": [
+        "relayed-displacement-announcement",
+        "relayed-displacement-talk",
+        "relayed-refusal-announcement",
+        "relayed-refusal-talk",
+        "truncated-displacement-prefix"
+      ]
     },
     "QGDXC-DSP-0004": {
       "tests": [
@@ -752,6 +762,10 @@
         {
           "file": "crates/qso-graph-dxcluster-cli/src/main.rs",
           "name": "address_budget_redistributes_unused_time_and_honors_cancellation"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster/tests/session.rs",
+          "name": "setup_errors_require_complete_classified_status"
         }
       ],
       "vectors": []
@@ -825,9 +839,19 @@
         {
           "file": "crates/qso-graph-dxcluster/tests/session.rs",
           "name": "failures_latch_flush_and_cancel"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster/tests/session.rs",
+          "name": "relayed_and_incomplete_status_text_cannot_end_sessions"
         }
       ],
-      "vectors": []
+      "vectors": [
+        "relayed-displacement-announcement",
+        "relayed-displacement-talk",
+        "relayed-refusal-announcement",
+        "relayed-refusal-talk",
+        "truncated-displacement-prefix"
+      ]
     },
     "QGDXC-SES-0013": {
       "tests": [
