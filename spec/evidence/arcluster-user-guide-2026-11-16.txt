@@ -1,0 +1,10 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+Source: https://arcluster.org/user-guide/
+Retrieved: 2026-11-16; rendered text excerpt, original L-numbers retained.
+
+L24: ## Before you connect
+L25:
+L26: This guide covers AR-Cluster Server 6.6.247.0 Stable. If your sysop has enabled a listener password, enter it when prompted after your callsign.
+L27:
+L28: This manual describes AR-Cluster 6.6 commands for logging programs, DX cluster clients and Telnet terminals. Your node’s feeds, saved settings and access policies determine what is available. Use `HELP` for command help and `SHOW VERSION` when reporting a problem to the sysop.
+L29: Use your own callsign and a permitted SSID. A node or peer callsign is reserved for its node connection. Coordinate your client profiles to avoid duplicate logins, and wait for any stated retry interval before reconnecting.

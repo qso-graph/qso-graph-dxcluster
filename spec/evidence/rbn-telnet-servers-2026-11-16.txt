@@ -1,0 +1,14 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+Source: https://www.reversebeacon.net/pages/Telnet+servers+30
+Retrieved: 2026-11-16; rendered text excerpt, original L-numbers retained.
+
+L63: ### Telnet servers
+L64:
+L65: RBN spots are available via telnet protocol at the following addresses:
+L66: telnet.reversebeacon.net port 7000, for CW and RTTY spots
+L67:
+L68: telnet.reversebeacon.net port 7001, for FT8 spots
+L69:
+L70: These nodes run stripped down relay servers specifically designed for maximum throughput. They have no filtering features.
+L71:
+L72: Our intent is that "retail" DX clusters should connect via telnet to one these nodes, and that end-users should connect to the "retail" nodes.
