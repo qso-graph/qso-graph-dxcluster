@@ -17,11 +17,22 @@ impl Drop for Process {
         let _ = self.0.wait();
     }
 }
-fn wait_for(timeout: Duration, mut predicate: impl FnMut() -> bool) {
+fn wait_for(timeout: Duration, mut predicate: impl FnMut() -> bool) -> bool {
     let deadline = Instant::now() + timeout;
     while !predicate() {
-        assert!(Instant::now() < deadline, "condition timed out");
+        if Instant::now() >= deadline {
+            return false;
+        }
         thread::sleep(Duration::from_millis(10));
+    }
+    true
+}
+// On a timeout, say which step stalled and what the child reported.
+fn expect(step: &str, done: bool, child: &mut Process, stderr: &std::path::Path) {
+    if !done {
+        let status = child.0.try_wait().ok().flatten();
+        let log = fs::read_to_string(stderr).unwrap_or_default();
+        panic!("{step} timed out; child status {status:?}; child stderr:\n{log}");
     }
 }
 
@@ -31,10 +42,9 @@ fn stalled_pipe_cancellation_closes_and_records_before_bounded_exit() {
     let listener = TcpListener::bind(("localhost", 0)).unwrap();
     listener.set_nonblocking(true).unwrap();
     let address = listener.local_addr().unwrap();
-    let recording = std::env::current_dir().unwrap().join(format!(
-        "../../target/stalled-output-{}.ndjson",
-        std::process::id()
-    ));
+    let scratch = std::path::Path::new(env!("CARGO_TARGET_TMPDIR"));
+    let recording = scratch.join(format!("stalled-output-{}.ndjson", std::process::id()));
+    let stderr = scratch.join(format!("stalled-output-{}.stderr", std::process::id()));
     let _ = fs::remove_file(&recording);
     let mut child = Process(
         Command::new(env!("CARGO_BIN_EXE_qg-dxc"))
@@ -52,12 +62,12 @@ fn stalled_pipe_cancellation_closes_and_records_before_bounded_exit() {
             ])
             .arg(&recording)
             .stdout(Stdio::piped()) // Keep the reader open without consuming it.
-            .stderr(Stdio::null())
+            .stderr(fs::File::create(&stderr).unwrap())
             .spawn()
             .unwrap(),
     );
     let mut accepted = None;
-    wait_for(Duration::from_secs(5), || match listener.accept() {
+    let done = wait_for(Duration::from_secs(5), || match listener.accept() {
         Ok((socket, _)) => {
             accepted = Some(socket);
             true
@@ -65,6 +75,7 @@ fn stalled_pipe_cancellation_closes_and_records_before_bounded_exit() {
         Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => false,
         Err(e) => panic!("accept: {e}"),
     });
+    expect("accept", done, &mut child, &stderr);
     let mut socket = accepted.unwrap();
     socket
         .set_read_timeout(Some(Duration::from_secs(3)))
@@ -80,7 +91,7 @@ fn stalled_pipe_cancellation_closes_and_records_before_bounded_exit() {
     let line = format!("Q {}\n", "Q".repeat(900));
     let feed = line.repeat(512);
     let mut sent = 0;
-    wait_for(Duration::from_secs(5), || {
+    let done = wait_for(Duration::from_secs(5), || {
         match socket.write(&feed.as_bytes()[sent..]) {
             Ok(n) => sent += n,
             Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {}
@@ -88,8 +99,9 @@ fn stalled_pipe_cancellation_closes_and_records_before_bounded_exit() {
         }
         sent == feed.len()
     });
+    expect("feed", done, &mut child, &stderr);
     // Prove that the child has actually reached a blocked pipe write.
-    wait_for(Duration::from_secs(5), || {
+    let done = wait_for(Duration::from_secs(5), || {
         fs::read_dir(format!("/proc/{}/task", child.0.id()))
             .unwrap()
             .filter_map(Result::ok)
@@ -98,15 +110,17 @@ fn stalled_pipe_cancellation_closes_and_records_before_bounded_exit() {
                     .is_ok_and(|state| state.trim() == "pipe_write")
             })
     });
+    expect("pipe_write", done, &mut child, &stderr);
     // Once the queue fills, recording stops admitting wire input too.
     let mut previous = 0;
-    wait_for(Duration::from_secs(5), || {
+    let done = wait_for(Duration::from_secs(5), || {
         let length = fs::metadata(&recording).unwrap().len();
         let stable = length == previous && length > 0;
         previous = length;
         thread::sleep(Duration::from_millis(100));
         stable && fs::metadata(&recording).unwrap().len() == length
     });
+    expect("recording stable", done, &mut child, &stderr);
     let input_count: usize = fs::read_to_string(&recording)
         .unwrap()
         .lines()
@@ -128,14 +142,15 @@ fn stalled_pipe_cancellation_closes_and_records_before_bounded_exit() {
             .unwrap()
             .success()
     );
-    wait_for(Duration::from_millis(750), || {
+    let done = wait_for(Duration::from_millis(750), || {
         let text = fs::read_to_string(&recording).unwrap();
         text.lines()
             .last()
             .and_then(|line| serde_json::from_str::<serde_json::Value>(line).ok())
             .is_some_and(|v| v["conn"] == "close" && v["reason"] == "cancelled")
     });
-    wait_for(Duration::from_millis(250), || {
+    expect("close recorded", done, &mut child, &stderr);
+    let done = wait_for(Duration::from_millis(250), || {
         match socket.read(&mut [0; 64]) {
             Ok(0) => true,
             Err(e) if e.kind() == std::io::ErrorKind::ConnectionReset => true,
@@ -144,11 +159,13 @@ fn stalled_pipe_cancellation_closes_and_records_before_bounded_exit() {
             Err(e) => panic!("closure: {e}"),
         }
     });
+    expect("socket closed", done, &mut child, &stderr);
     let mut status = None;
-    wait_for(Duration::from_secs(2), || {
+    let done = wait_for(Duration::from_secs(2), || {
         status = child.0.try_wait().unwrap();
         status.is_some()
     });
+    expect("exit", done, &mut child, &stderr);
     assert_eq!(status.unwrap().code(), Some(130));
     assert!(cancelled.elapsed() < Duration::from_millis(1750));
     // Validate the complete recording, including the final close boundary.
