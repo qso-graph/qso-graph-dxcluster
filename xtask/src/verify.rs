@@ -17,7 +17,8 @@ pub fn verify() -> Result<(), String> {
     fs::create_dir_all("target/verify").map_err(|e| e.to_string())?;
     let locks = ["Cargo.lock", "fuzz/Cargo.lock"];
     let before = locks.map(fs::read);
-    let steps: [(&str, &[&str]); 11] = [
+    let steps: [(&str, &[&str]); 13] = [
+        ("fetch", &["xtask", "fetch"]),
         ("fmt", &["fmt", "--all", "--check"]),
         (
             "clippy",
@@ -52,6 +53,7 @@ pub fn verify() -> Result<(), String> {
                 "sources",
             ],
         ),
+        ("cargo audit", &["xtask", "audit"]),
         ("cargo vet", &["xtask", "vet"]),
         ("docs", &["xtask", "docs"]),
         ("rustdoc", &["doc", "--workspace", "--no-deps", "--locked"]),
@@ -64,7 +66,10 @@ pub fn verify() -> Result<(), String> {
         let error = file.try_clone().map_err(|e| e.to_string())?;
         let result = Command::new("cargo")
             .args(args)
-            .env("CARGO_NET_OFFLINE", "true")
+            .env(
+                "CARGO_NET_OFFLINE",
+                if name == "fetch" { "false" } else { "true" },
+            )
             .env("RUSTDOCFLAGS", "-D warnings")
             .stdin(Stdio::null())
             .stdout(file)
@@ -96,7 +101,8 @@ pub fn verify() -> Result<(), String> {
                     .lines()
                     .any(|line| line.starts_with("nightly-2026-10-30-"))
         });
-    if on_path("cargo-fuzz") && nightly_available {
+    let supported_fuzz = cfg!(target_os = "linux");
+    if supported_fuzz && on_path("cargo-fuzz") && nightly_available && fuzz_version_pinned() {
         for (name, args) in [
             (
                 "fuzz fmt",
@@ -182,13 +188,15 @@ pub fn verify() -> Result<(), String> {
                 "1-second smoke".into(),
             ));
         }
-    } else if on_path("cargo-fuzz") {
-        results.push(("fuzz smoke".into(),"FAIL".into(),"blocker: nightly-2026-10-30 is not installed; verification does not download toolchains".into()));
     } else {
         results.push((
             "fuzz smoke".into(),
-            "SKIP".into(),
-            "blocker: cargo-fuzz absent from PATH; install cargo-fuzz 0.13.2".into(),
+            if supported_fuzz { "FAIL" } else { "SKIP" }.into(),
+            if supported_fuzz {
+                "blocker: Linux requires cargo-fuzz 0.13.2 and nightly-2026-10-30 with rustfmt/clippy".into()
+            } else {
+                "fuzz smokes run on Linux; this platform is unsupported by this gate".into()
+            },
         ));
     }
     let unchanged = locks.iter().zip(before.iter()).all(|(path, before)| {
@@ -210,4 +218,107 @@ pub fn verify() -> Result<(), String> {
     } else {
         Ok(())
     }
+}
+
+fn fuzz_version_pinned() -> bool {
+    Command::new("cargo")
+        .args(["fuzz", "--version"])
+        .output()
+        .is_ok_and(|o| {
+            o.status.success() && String::from_utf8_lossy(&o.stdout).trim() == "cargo-fuzz 0.13.2"
+        })
+}
+fn advisory_db() -> Result<std::path::PathBuf, String> {
+    std::env::var_os("CARGO_HOME")
+        .map(std::path::PathBuf::from)
+        .or_else(|| std::env::var_os("HOME").map(|p| std::path::PathBuf::from(p).join(".cargo")))
+        .or_else(|| {
+            std::env::var_os("USERPROFILE").map(|p| std::path::PathBuf::from(p).join(".cargo"))
+        })
+        .map(|p| p.join("advisory-db"))
+        .ok_or("set CARGO_HOME for the advisory database".into())
+}
+fn audit_command(file: &Path, offline: bool) -> Result<Command, String> {
+    let version = Command::new("cargo")
+        .args(["audit", "--version"])
+        .output()
+        .map_err(|e| e.to_string())?;
+    if !version.status.success()
+        || !String::from_utf8_lossy(&version.stdout)
+            .trim()
+            .ends_with(" 0.22.2")
+    {
+        return Err("install cargo-audit 0.22.2 with --locked".into());
+    }
+    let mut c = Command::new("cargo");
+    c.arg("audit")
+        .arg("--db")
+        .arg(advisory_db()?)
+        .arg("--file")
+        .arg(file)
+        .args(["--deny", "warnings"]);
+    if offline {
+        c.arg("--no-fetch").env("CARGO_NET_OFFLINE", "true");
+    }
+    Ok(c)
+}
+pub fn fetch() -> Result<(), String> {
+    for args in [
+        vec!["fetch", "--locked"],
+        vec!["fetch", "--locked", "--manifest-path", "fuzz/Cargo.toml"],
+    ] {
+        if !Command::new("cargo")
+            .args(args)
+            .env("CARGO_NET_OFFLINE", "false")
+            .status()
+            .map_err(|e| e.to_string())?
+            .success()
+        {
+            return Err("locked dependency fetch failed".into());
+        }
+    }
+    // cargo-audit fetches its database and registry metadata on this pass.
+    if !audit_command(Path::new("Cargo.lock"), false)?
+        .env("CARGO_NET_OFFLINE", "false")
+        .status()
+        .map_err(|e| e.to_string())?
+        .success()
+    {
+        return Err("advisory database preparation failed".into());
+    }
+    Ok(())
+}
+pub fn audit() -> Result<(), String> {
+    for path in ["Cargo.lock", "fuzz/Cargo.lock"] {
+        if !audit_command(Path::new(path), true)?
+            .status()
+            .map_err(|e| e.to_string())?
+            .success()
+        {
+            return Err(format!("audit failed: {path}"));
+        }
+    }
+    fs::create_dir_all("target/verify").map_err(|e| e.to_string())?;
+    let planted = Path::new("target/verify/vulnerable.lock");
+    let mut lock = fs::read_to_string("Cargo.lock").map_err(|e| e.to_string())?;
+    lock.push_str("\n[[package]]\nname = \"time\"\nversion = \"0.1.43\"\nsource = \"registry+https://github.com/rust-lang/crates.io-index\"\n");
+    fs::write(planted, lock).map_err(|e| e.to_string())?;
+    let result = audit_command(planted, true)?
+        .arg("--json")
+        .output()
+        .map_err(|e| e.to_string());
+    fs::remove_file(planted).map_err(|e| e.to_string())?;
+    let result = result?;
+    fs::write("target/verify/audit-planted.json", &result.stdout).map_err(|e| e.to_string())?;
+    let report: serde_json::Value =
+        serde_json::from_slice(&result.stdout).map_err(|e| e.to_string())?;
+    if result.status.success()
+        || !report["vulnerabilities"]["list"]
+            .as_array()
+            .is_some_and(|a| a.iter().any(|v| v["advisory"]["id"] == "RUSTSEC-2020-0071"))
+    {
+        return Err("audit failed to reject the planted vulnerable time package".into());
+    }
+    println!("both lockfiles audited offline; planted RUSTSEC-2020-0071 rejected and removed");
+    Ok(())
 }

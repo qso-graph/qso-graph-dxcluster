@@ -36,11 +36,16 @@ jobs:
             ~/.cargo/registry/cache
             target
           key: cargo-${{ runner.os }}-${{ hashFiles('rust-toolchain.toml', 'Cargo.lock') }}
-      - name: Prepare offline verification
+      - name: Pinned verification tools
         run: |
-          cargo fetch --locked
           cargo install cargo-deny --version 0.20.2 --locked --quiet
           cargo install cargo-vet --version 0.10.3 --locked --quiet
+          cargo install cargo-audit --version 0.22.2 --locked --quiet
+      - name: Pinned Linux fuzz tools
+        if: runner.os == 'Linux'
+        run: |
+          rustup toolchain install nightly-2026-10-30 --profile minimal --component rustfmt --component clippy
+          cargo install cargo-fuzz --version 0.13.2 --locked --quiet
       - name: Verify
         run: cargo xtask verify
       - name: Retain verification logs

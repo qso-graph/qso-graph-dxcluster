@@ -15,18 +15,20 @@ The command prints one pass/fail table, retains diagnostics in `target/verify/`,
 and returns nonzero if any check fails. It checks formatting, Clippy, workspace
 tests, complete vector traces and byte-split invariance, requirement coverage,
 published-data sanitization, source policy, cargo-deny, cargo-vet, documentation,
-fuzz smoke, and unchanged lockfiles. Verification sets Cargo offline and freezes
-the cargo-vet import store. Install and cache dependencies before verifying:
+fuzz smoke, and unchanged lockfiles. Its first row fetches both locked dependency
+graphs and the cargo-audit advisory database. Every subsequent row runs offline,
+including cargo-audit with --no-fetch --deny warnings and the frozen cargo-vet
+store. Install the pinned tools before verification:
 
 ```sh
-cargo fetch --locked
 cargo install cargo-deny --version 0.20.2 --locked
 cargo install cargo-vet --version 0.10.3 --locked
+cargo install cargo-audit --version 0.22.2 --locked
 ```
 
-If cargo-fuzz is absent, its row says SKIP and gives the installation command.
-All other missing verification tools fail their row. Fuzz targets and their
-build instructions are in [fuzz/README.md](fuzz/README.md).
+Linux requires the pinned fuzz tools in [fuzz/README.md](fuzz/README.md); missing
+prerequisites fail verification. Other platforms skip with a stated reason.
+CI installs those tools, then runs exactly `cargo xtask verify`.
 
 Regenerate evidence with a private capture directory supplied explicitly:
 

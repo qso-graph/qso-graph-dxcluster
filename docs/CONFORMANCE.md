@@ -8,6 +8,10 @@ third-party data retention, recording, and replay. Passwords are unsupported.
 The conformance claim is **draft review only** until the versioned suite and
 inspection review cover every applicable rule (QGDXC-VEC-0004).
 
+The [coverage manifest](coverage.json) maps requirements to existing named tests
+and vector IDs. Its scenario groups pin the committed suite; coverage rejects
+a missing case or a Test requirement supported only by inspection prose.
+
 The normative rules live only in spec/. This document records implementation
 locations, verification evidence, and limitations; it does not redefine them.
 
@@ -66,8 +70,9 @@ is not published, and raw recordings are never fixtures. Re-running generation
 against the same captures produces identical bytes.
 
 Caller integration: consume each returned Batch before admitting another byte;
-complete Close before a later Connect; dispatch timers at their logical times,
-with completion and cancellation before equal-time expiry except stable_ready;
+complete Close before a later Connect; deliver due live timers using current
+monotonic time and report actual output admission with Session::output_admitted;
+handle completion and cancellation before equal-time expiry except stable_ready;
 and preserve shared pacing history when replacing a Session for the same
 endpoint and canonical identity. The supplied CLI implements one active session.
 The vector harness follows the abstract ordering in QGDXC-VEC-0006. Its Application vector also writes conforming in-memory recording boundaries and checks replayed content against the same independent complete event oracles. Local configuration-rejection vectors request no connection or output.

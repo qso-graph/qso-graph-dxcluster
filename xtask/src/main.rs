@@ -20,6 +20,8 @@ fn main() {
         Some("sanitization") => checks::sanitization(),
         Some("policy") => checks::policy(),
         Some("docs") => checks::docs(),
+        Some("fetch") => verify::fetch(),
+        Some("audit") => verify::audit(),
         Some("verify") => verify::verify(),
         Some("vet") => checks::vet(),
         Some("seed-fuzz") => checks::seed_fuzz(),

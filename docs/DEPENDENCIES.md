@@ -42,7 +42,10 @@ The excluded fuzz workspace is developer tooling and never enters the shipped
 dependency graph. Its runtime decision is documented in fuzz/README.md.
 Cargo-deny checks crates.io sources, license compatibility, and native build
 helper bans. Verification runs cargo-vet with --locked --frozen, using only the
-committed import store; no audit server is contacted during verification.
+committed import store; no audit server is contacted after the fetch row. Cargo-audit 0.22.2 checks
+both lockfiles with --no-fetch --deny warnings against the advisory database
+prepared by that row. A temporary vulnerable lockfile proves advisory rejection
+without adding a project dependency.
 
 The tooling-only libFuzzer exception is isolated by the excluded workspace.
 These exact additional registry packages are reviewed decisions, not completed audits:
