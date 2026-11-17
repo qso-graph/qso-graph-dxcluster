@@ -129,6 +129,39 @@ fn run() -> Result<(), String> {
         .transpose()?;
     connect(config, recorder, json)
 }
+// QGDXC-SES-0009: each dial returns before the next address is attempted.
+fn connect_addresses<A, T>(
+    addresses: &[A],
+    timeout: Duration,
+    mut elapsed: impl FnMut() -> Duration,
+    cancelled: impl Fn() -> bool,
+    mut dial: impl FnMut(&A, Duration) -> io::Result<T>,
+) -> io::Result<T> {
+    let mut last = io::Error::other("endpoint resolved to no addresses");
+    for (index, address) in addresses.iter().enumerate() {
+        if cancelled() {
+            return Err(io::Error::other("cancelled"));
+        }
+        let remaining = timeout.saturating_sub(elapsed());
+        if remaining.is_zero() {
+            break;
+        }
+        let left = u32::try_from(addresses.len() - index).unwrap_or(u32::MAX);
+        let budget = (remaining / left)
+            .max(Duration::from_secs(3))
+            .min(remaining);
+        let result = dial(address, budget);
+        if cancelled() {
+            return Err(io::Error::other("cancelled"));
+        }
+        match result {
+            Ok(stream) => return Ok(stream),
+            Err(error) => last = error,
+        }
+    }
+    Err(last)
+}
+
 enum SendError {
     Transport,
     Recording(String),
@@ -197,30 +230,18 @@ impl Live {
                     std::thread::spawn(move || {
                         let result = (|| {
                             let start = Instant::now();
-                            let addresses = (host.as_str(), port).to_socket_addrs()?;
-                            let mut last = io::Error::other("endpoint resolved to no addresses");
-                            for address in addresses {
-                                if stop.load(Ordering::Relaxed)
-                                    || worker_cancel.load(Ordering::Relaxed)
-                                {
-                                    return Err(io::Error::other("cancelled"));
-                                }
-                                let remaining = timeout.saturating_sub(start.elapsed());
-                                if remaining.is_zero() {
-                                    break;
-                                }
-                                match TcpStream::connect_timeout(&address, remaining) {
-                                    Ok(stream) => {
-                                        if worker_cancel.load(Ordering::Relaxed) {
-                                            drop(stream);
-                                            return Err(io::Error::other("cancelled"));
-                                        }
-                                        return Ok(stream);
-                                    }
-                                    Err(e) => last = e,
-                                }
-                            }
-                            Err(last)
+                            let addresses: Vec<_> =
+                                (host.as_str(), port).to_socket_addrs()?.collect();
+                            connect_addresses(
+                                &addresses,
+                                timeout,
+                                || start.elapsed(),
+                                || {
+                                    stop.load(Ordering::Relaxed)
+                                        || worker_cancel.load(Ordering::Relaxed)
+                                },
+                                TcpStream::connect_timeout,
+                            )
                         })();
                         let _ = tx.send(result);
                     });
@@ -461,6 +482,80 @@ fn connect(config: Config, recorder: Option<Recorder<File>>, json: bool) -> Resu
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn sequential_address_fallback_survives_a_blackhole() {
+        // QGDXC-SES-0007 QGDXC-SES-0009
+        let elapsed = std::cell::Cell::new(Duration::ZERO);
+        let mut calls = vec![];
+        let result = connect_addresses(
+            &[0, 1],
+            Duration::from_secs(30),
+            || elapsed.get(),
+            || false,
+            |address, budget| {
+                calls.push((*address, budget));
+                if *address == 0 {
+                    elapsed.set(elapsed.get() + budget);
+                    Err(io::Error::new(io::ErrorKind::TimedOut, "no answer"))
+                } else {
+                    Ok(*address)
+                }
+            },
+        )
+        .unwrap();
+        assert_eq!(result, 1);
+        assert_eq!(
+            calls,
+            [(0, Duration::from_secs(15)), (1, Duration::from_secs(15))]
+        );
+    }
+    #[test]
+    fn address_budgets_respect_minimum_and_overall_deadline() {
+        // QGDXC-SES-0007 QGDXC-SES-0009
+        let elapsed = std::cell::Cell::new(Duration::ZERO);
+        let mut budgets = vec![];
+        let result: io::Result<()> = connect_addresses(
+            &[0, 1, 2, 3],
+            Duration::from_secs(5),
+            || elapsed.get(),
+            || false,
+            |_, budget| {
+                budgets.push(budget);
+                elapsed.set(elapsed.get() + budget);
+                Err(io::Error::new(io::ErrorKind::TimedOut, "no answer"))
+            },
+        );
+        assert!(result.is_err());
+        assert_eq!(budgets, [Duration::from_secs(3), Duration::from_secs(2)]);
+    }
+    #[test]
+    fn address_budget_redistributes_unused_time_and_honors_cancellation() {
+        // QGDXC-SES-0009
+        let elapsed = std::cell::Cell::new(Duration::from_secs(3));
+        let cancelled = std::cell::Cell::new(false);
+        let mut calls = vec![];
+        let result = connect_addresses(
+            &[0, 1, 2],
+            Duration::from_secs(30),
+            || elapsed.get(),
+            || cancelled.get(),
+            |address, budget| {
+                calls.push((*address, budget));
+                if *address == 0 {
+                    elapsed.set(Duration::from_secs(4));
+                    Err(io::Error::other("refused"))
+                } else {
+                    cancelled.set(true);
+                    Ok(*address)
+                }
+            },
+        );
+        assert!(result.is_err());
+        assert_eq!(
+            calls,
+            [(0, Duration::from_secs(9)), (1, Duration::from_secs(13))]
+        );
+    }
     #[test]
     fn help_leads_with_purpose() {
         // QGDXC-IO-0002
