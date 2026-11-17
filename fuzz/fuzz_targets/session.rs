@@ -12,40 +12,39 @@ fuzz_target!(|data: &[u8]| {
         Profile::Rbn,
     ][data.first().copied().unwrap_or(0) as usize % 5];
     let config = Config::new("example.invalid".into(), 7300, "Q1ABC".into(), profile);
-    let mut session = Session::new(
-        config,
-        (0..256).map(|i| format!("QGDXC{i:016X}")).collect(),
-        vec![0; 256],
-    )
-    .unwrap();
+    let mut session = Session::new(config).unwrap();
     let mut now = 0;
     for b in data.iter().take(100000) {
-        match b {
-            0 => {
-                let _ = session.start(now);
-            }
-            1 if session.state == State::Connecting => {
-                let _ = session.connected(now, session.attempt);
-            }
-            2 => {
-                let _ = session.cancel(now);
-            }
-            3 => {
-                let _ = session.transport_end(now, session.attempt, "eof");
-            }
+        let batch = match b {
+            0 => session.start(now),
+            1 if session.state == State::Connecting => session.connected(now, session.attempt),
+            2 => session.cancel(now),
+            3 => session.transport_end(now, session.attempt, "eof"),
             4 => {
                 if let Some((at, t)) = session.next_timer()
                     && at >= now
                 {
                     now = at;
-                    let _ = session.fire(t, now);
+                    session.fire(t, now)
+                } else {
+                    Ok(Batch::default())
                 }
             }
-            5 => {
-                let _ = session.restart(now);
-            }
-            _ => {
-                let _ = session.input(now, session.attempt, *b, None);
+            5 => session.restart(now),
+            _ => session.input(now, session.attempt, *b, None),
+        };
+        if let Ok(batch) = batch {
+            for action in batch.actions {
+                match action {
+                    Action::ReadinessToken { attempt } => {
+                        let _ =
+                            session.readiness_token(now, attempt, format!("QGDXC{attempt:016X}"));
+                    }
+                    Action::RetryJitter { maximum_ms } => {
+                        let _ = session.retry_jitter(now, u64::from(*b) % (maximum_ms + 1));
+                    }
+                    _ => {}
+                }
             }
         }
     }

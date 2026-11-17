@@ -132,3 +132,13 @@ notes = "SPDX-License-Identifier: GPL-3.0-or-later. Not audited yet: exact-versi
 version = "0.61.2"
 criteria = "safe-to-deploy"
 notes = "SPDX-License-Identifier: GPL-3.0-or-later. Not audited yet: exact-version review backlog for Rust-only JSON serialization or OS signal handling. No completed audit is claimed; see docs/DEPENDENCIES.md."
+
+[[exemptions.getrandom]]
+version = "0.4.3"
+criteria = "safe-to-deploy"
+notes = "SPDX-License-Identifier: GPL-3.0-or-later. Not audited yet: exact-version review backlog for CLI OS randomness; see docs/DEPENDENCIES.md."
+
+[[exemptions.r-efi]]
+version = "6.0.0"
+criteria = "safe-to-deploy"
+notes = "SPDX-License-Identifier: GPL-3.0-or-later. Not audited yet: target-specific Rust UEFI bindings for getrandom; see docs/DEPENDENCIES.md."

@@ -61,16 +61,41 @@ fn config(v: &Value) -> Result<Config, String> {
 fn json_event(e: Event) -> Value {
     serde_json::from_str(&e.json()).expect("event JSON")
 }
-fn trace(b: Batch, step: usize, at: u64, events: &mut Vec<Value>, actions: &mut Vec<Value>) {
+struct Inputs {
+    tokens: std::vec::IntoIter<String>,
+    jitter: std::vec::IntoIter<u64>,
+}
+fn trace(
+    engine: &mut Session,
+    inputs: &mut Inputs,
+    b: Batch,
+    step: usize,
+    at: u64,
+    events: &mut Vec<Value>,
+    actions: &mut Vec<Value>,
+) -> Result<(), String> {
     for e in b.events {
         events.push(json!({"step":step,"elapsed_ms":at,"event":json_event(e)}));
     }
     for a in b.actions {
-        actions.push(json!({"step":step,"elapsed_ms":at,"action":serde_json::from_str::<Value>(&a.json()).expect("action JSON")}));
+        let supplied = match a {
+            Action::ReadinessToken { attempt } => engine.readiness_token(at, attempt,
+                inputs.tokens.next().ok_or("missing readiness token for connection attempt")?),
+            Action::RetryJitter { .. } => engine.retry_jitter(at,
+                inputs.jitter.next().ok_or("missing retry jitter")?),
+            a => {
+                actions.push(json!({"step":step,"elapsed_ms":at,"action":serde_json::from_str::<Value>(&a.json()).expect("action JSON")}));
+                continue;
+            }
+        }.map_err(str::to_owned)?;
+        trace(engine, inputs, supplied, step, at, events, actions)?;
     }
+    Ok(())
 }
+
 fn pump(
     s: &mut Session,
+    inputs: &mut Inputs,
     at: u64,
     equal: bool,
     step: usize,
@@ -82,7 +107,7 @@ fn pump(
             break;
         }
         let b = s.fire(t, d).map_err(str::to_owned)?;
-        trace(b, step, d, events, actions);
+        trace(s, inputs, b, step, d, events, actions)?;
     }
     Ok(())
 }
@@ -96,7 +121,7 @@ pub fn execute(v: &Value) -> Result<Trace, String> {
     }
     let cfg = config(v)?;
     let session = v["class"] != "Event parser";
-    let tokens = v["tokens"]
+    let tokens: Vec<String> = v["tokens"]
         .as_array()
         .ok_or("tokens")?
         .iter()
@@ -113,7 +138,21 @@ pub fn execute(v: &Value) -> Result<Trace, String> {
     ctx.retain_third_party_data = cfg.retain_third_party_data;
     ctx.custom_prompt = cfg.custom_prompt.clone();
     let mut parser = Parser::new(ctx, cfg.line_limit).map_err(str::to_owned)?;
-    let mut engine = Session::new(cfg, tokens, jitter).map_err(str::to_owned)?;
+    let mut unique = tokens.clone();
+    unique.sort();
+    unique.dedup();
+    if unique.len() != tokens.len()
+        || tokens
+            .iter()
+            .any(|t| !qso_graph_dxcluster::values::token(t))
+    {
+        return Err("invalid or repeated readiness tokens".into());
+    }
+    let mut inputs = Inputs {
+        tokens: tokens.into_iter(),
+        jitter: jitter.into_iter(),
+    };
+    let mut engine = Session::new(cfg).map_err(str::to_owned)?;
     let mut events = vec![];
     let mut actions = vec![];
     let mut last = 0;
@@ -169,13 +208,29 @@ pub fn execute(v: &Value) -> Result<Trace, String> {
             return Err("equal-time group must end with tick".into());
         }
         if session {
-            pump(&mut engine, at, false, i, &mut events, &mut actions)?;
+            pump(
+                &mut engine,
+                &mut inputs,
+                at,
+                false,
+                i,
+                &mut events,
+                &mut actions,
+            )?;
             let b = match kind {
                 "start" => engine.start(at),
                 "restart" => engine.restart(at),
                 "cancel" => engine.cancel(at),
                 "tick" => {
-                    pump(&mut engine, at, true, i, &mut events, &mut actions)?;
+                    pump(
+                        &mut engine,
+                        &mut inputs,
+                        at,
+                        true,
+                        i,
+                        &mut events,
+                        &mut actions,
+                    )?;
                     continue;
                 }
                 "transport" => {
@@ -203,14 +258,30 @@ pub fn execute(v: &Value) -> Result<Trace, String> {
                                 s["received_at"].as_str(),
                             )
                             .map_err(str::to_owned)?;
-                        trace(b, i, at, &mut events, &mut actions);
+                        trace(
+                            &mut engine,
+                            &mut inputs,
+                            b,
+                            i,
+                            at,
+                            &mut events,
+                            &mut actions,
+                        )?;
                     }
                     continue;
                 }
                 _ => return Err("invalid step".into()),
             }
             .map_err(str::to_owned)?;
-            trace(b, i, at, &mut events, &mut actions);
+            trace(
+                &mut engine,
+                &mut inputs,
+                b,
+                i,
+                at,
+                &mut events,
+                &mut actions,
+            )?;
         } else {
             let batch = match kind {
                 "input" => {
@@ -447,6 +518,45 @@ fn application_roundtrip(v: &Value, actions: &[Value], expected: &[Value]) -> Re
 #[cfg(test)]
 mod tests {
     use serde_json::json;
+    #[test]
+    fn vector_attempt_requests_require_explicit_resources() {
+        // QGDXC-VEC-0006 QGDXC-DSP-0004 QGDXC-SES-0010
+        let v = json!({
+            "class": "Session engine", "profile": "auto", "config": {"identity": "Q1ABC"},
+            "tokens": ["QGDXC0000000000000001", "QGDXC0000000000000002"], "jitter_ms": [5],
+            "steps": [
+                {"type": "start", "elapsed_ms": 0}, {"type": "tick", "elapsed_ms": 0},
+                {"type": "transport", "elapsed_ms": 1, "attempt": 1, "outcome": "error"},
+                {"type": "tick", "elapsed_ms": 1}, {"type": "tick", "elapsed_ms": 5006}
+            ]
+        });
+        let (_, actions, _) = super::execute(&v).unwrap();
+        let connects: Vec<_> = actions
+            .iter()
+            .filter(|a| a["action"]["type"] == "connect")
+            .collect();
+        assert_eq!(connects.len(), 2);
+        assert_eq!(connects[1]["elapsed_ms"], 5006);
+        assert_eq!(connects[1]["action"]["attempt"], 2);
+        let mut missing_token = v.clone();
+        missing_token["tokens"].as_array_mut().unwrap().pop();
+        assert_eq!(
+            super::execute(&missing_token).unwrap_err(),
+            "missing readiness token for connection attempt"
+        );
+        let mut missing_jitter = v.clone();
+        missing_jitter["jitter_ms"] = json!([]);
+        assert_eq!(
+            super::execute(&missing_jitter).unwrap_err(),
+            "missing retry jitter"
+        );
+        let mut repeated = v.clone();
+        repeated["tokens"][1] = repeated["tokens"][0].clone();
+        assert!(super::execute(&repeated).is_err());
+        let mut excess = v;
+        excess["jitter_ms"] = json!([1001]);
+        assert!(super::execute(&excess).is_err());
+    }
     #[test]
     fn replay_gate_compares_connection_state_and_retry_delays() {
         // QGDXC-REC-0004 QGDXC-SES-0010

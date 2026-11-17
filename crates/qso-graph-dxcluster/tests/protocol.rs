@@ -32,7 +32,7 @@ fn exact_values_and_identity() {
     ] {
         assert!(!values::login(bad));
         let cfg = Config::new("example.invalid".into(), 7300, bad.into(), Profile::Auto);
-        assert!(Session::new(cfg, vec![], vec![]).is_err());
+        assert!(Session::new(cfg).is_err());
     }
     for (s, n) in [
         ("0.001", 1),

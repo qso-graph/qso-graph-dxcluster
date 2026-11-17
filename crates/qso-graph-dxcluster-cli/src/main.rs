@@ -240,6 +240,22 @@ impl Live {
         });
         for a in b.actions {
             match a {
+                Action::ReadinessToken { attempt } => {
+                    let token = readiness_token(attempt, os_random)?;
+                    let b = self
+                        .session
+                        .readiness_token(self.now(), attempt, token)
+                        .map_err(str::to_owned)?;
+                    self.batch(b)?;
+                }
+                Action::RetryJitter { maximum_ms } => {
+                    let jitter = retry_jitter(maximum_ms, os_random)?;
+                    let b = self
+                        .session
+                        .retry_jitter(self.now(), jitter)
+                        .map_err(str::to_owned)?;
+                    self.batch(b)?;
+                }
                 Action::Connect { .. } => {
                     if self.closing.is_some() {
                         self.deferred_connect = true;
@@ -366,21 +382,43 @@ impl Live {
         Ok(())
     }
 }
+fn os_random() -> Result<u64, String> {
+    getrandom::u64().map_err(|e| format!("OS randomness failed: {e}"))
+}
+// QGDXC-DSP-0004: the attempt occupies 53 bits, leaving 11 fresh OS-random
+// bits. Disjoint attempt ranges ensure uniqueness without retaining history.
+fn readiness_token(
+    attempt: u64,
+    random: impl FnOnce() -> Result<u64, String>,
+) -> Result<String, String> {
+    if attempt == 0 || attempt > qso_graph_dxcluster::values::MAX_INTEGER {
+        return Err("attempt limit".into());
+    }
+    let random = random()?;
+    Ok(format!("QGDXC{:016X}", (attempt << 11) | (random & 0x7ff)))
+}
+fn retry_jitter(
+    maximum_ms: u64,
+    mut random: impl FnMut() -> Result<u64, String>,
+) -> Result<u64, String> {
+    if maximum_ms > 60000 {
+        return Err("invalid jitter bound".into());
+    }
+    let range = maximum_ms + 1;
+    let threshold = range.wrapping_neg() % range;
+    loop {
+        let random = random()?;
+        if random >= threshold {
+            return Ok(random % range);
+        }
+    }
+}
 fn connect(config: Config, recorder: Option<Recorder<File>>, json: bool) -> Result<u8, String> {
     let stop = Arc::new(AtomicBool::new(false));
     let handler = stop.clone();
     ctrlc::set_handler(move || handler.store(true, Ordering::Relaxed))
         .map_err(|e| e.to_string())?;
-    // The clock supplies caller tokens, never network content. Attempt suffixes
-    // make tokens unique within this process, without requiring random I/O.
-    let seed = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map_err(|e| e.to_string())?
-        .as_nanos() as u64;
-    let tokens = (0..1024u64)
-        .map(|i| format!("QGDXC{:016X}", seed.wrapping_add(i)))
-        .collect();
-    let session = Session::new(config, tokens, vec![0; 1024]).map_err(str::to_owned)?;
+    let session = Session::new(config).map_err(str::to_owned)?;
     let mut live = Live {
         session,
         socket: None,
@@ -534,6 +572,40 @@ fn connect(config: Config, recorder: Option<Recorder<File>>, json: bool) -> Resu
 mod tests {
     use super::*;
     #[test]
+    fn fresh_os_entropy_and_unique_tokens_without_history() {
+        // QGDXC-DSP-0004 QGDXC-SES-0010
+        let mut tokens = std::collections::HashSet::new();
+        for attempt in (1..=4096).chain([qso_graph_dxcluster::values::MAX_INTEGER]) {
+            let token = readiness_token(attempt, os_random).unwrap();
+            assert!(qso_graph_dxcluster::values::token(&token));
+            assert!(tokens.insert(token));
+            let jitter = retry_jitter(1000, os_random).unwrap();
+            assert!(jitter <= 1000);
+        }
+        let mut calls = 0;
+        let mut repeated = std::collections::HashSet::new();
+        for attempt in 1..=4096 {
+            let token = readiness_token(attempt, || {
+                calls += 1;
+                Ok(7)
+            })
+            .unwrap();
+            assert!(repeated.insert(token));
+        }
+        assert_eq!(calls, 4096);
+        assert!(readiness_token(1, || Err("entropy unavailable".into())).is_err());
+        assert!(retry_jitter(1000, || Err("entropy unavailable".into())).is_err());
+        // Rejection sampling retries low values and includes both bounds.
+        let mut samples = [0, 3, 10].into_iter();
+        assert_eq!(
+            retry_jitter(10, || Ok(samples.next().unwrap())).unwrap(),
+            10
+        );
+        assert_eq!(retry_jitter(0, || Ok(0)).unwrap(), 0);
+        assert!(readiness_token(0, || Ok(0)).is_err());
+        assert!(retry_jitter(60001, || Ok(0)).is_err());
+    }
+    #[test]
     fn diagnostics_share_event_privacy_and_control_escaping() {
         // QGDXC-SEC-0003 QGDXC-SEC-0005: an adapter's error can contain
         // arbitrary text. The top-level error handler always uses this path.
@@ -589,8 +661,7 @@ mod tests {
         peer.set_read_timeout(Some(Duration::from_secs(1))).unwrap();
         let mut config = Config::new("Q".into(), 7300, "Q1ABC".into(), Profile::ArCluster);
         config.login_ms = 5000;
-        let mut session =
-            Session::new(config, vec!["QGDXC0000000000000001".into()], vec![0; 16]).unwrap();
+        let mut session = Session::new(config).unwrap();
         session.start(0).unwrap();
         session.connected(0, session.attempt).unwrap();
         let path = format!("../../target/stalled-timer-{}.ndjson", std::process::id());
@@ -605,7 +676,7 @@ mod tests {
             session,
             socket: Some(client),
             recorder: Some(recorder),
-            clock: Instant::now(),
+            clock: Instant::now() - Duration::from_millis(5000),
             json: false,
             output,
             receiver: None,

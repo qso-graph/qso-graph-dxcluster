@@ -164,15 +164,41 @@ impl Timer {
 }
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Action {
-    Connect { attempt: u64 },
-    Close { attempt: u64 },
-    Output { attempt: u64, bytes: Vec<u8> },
-    ArmTimer { timer: Timer, deadline_ms: u64 },
-    CancelTimer { timer: Timer },
+    /// Supply a fresh caller token with `Session::readiness_token` before continuing.
+    ReadinessToken {
+        attempt: u64,
+    },
+    /// Supply caller jitter with `Session::retry_jitter` before continuing.
+    RetryJitter {
+        maximum_ms: u64,
+    },
+    Connect {
+        attempt: u64,
+    },
+    Close {
+        attempt: u64,
+    },
+    Output {
+        attempt: u64,
+        bytes: Vec<u8>,
+    },
+    ArmTimer {
+        timer: Timer,
+        deadline_ms: u64,
+    },
+    CancelTimer {
+        timer: Timer,
+    },
 }
 impl Action {
     pub fn json(&self) -> String {
         match self {
+            Self::ReadinessToken { attempt } => {
+                format!("{{\"type\":\"readiness_token\",\"attempt\":{attempt}}}")
+            }
+            Self::RetryJitter { maximum_ms } => {
+                format!("{{\"type\":\"retry_jitter\",\"maximum_ms\":{maximum_ms}}}")
+            }
             Self::Connect { attempt } => format!("{{\"type\":\"connect\",\"attempt\":{attempt}}}"),
             Self::Close { attempt } => format!("{{\"type\":\"close\",\"attempt\":{attempt}}}"),
             Self::Output { attempt, bytes } => format!(
@@ -206,8 +232,8 @@ pub struct Session {
     parser: Parser,
     timers: [Option<u64>; 8],
     now: u64,
-    tokens: VecDeque<String>,
-    jitter: VecDeque<u64>,
+    needs_token: bool,
+    retry_base: Option<u64>,
     token: String,
     retries: usize,
     transport: bool,
@@ -223,24 +249,8 @@ pub struct Session {
     recorded_transport: bool,
 }
 impl Session {
-    pub fn new(
-        config: Config,
-        tokens: Vec<String>,
-        jitter: Vec<u64>,
-    ) -> Result<Self, &'static str> {
+    pub fn new(config: Config) -> Result<Self, &'static str> {
         config.validate()?;
-        if tokens.len() > 1024 || jitter.len() > 1024 || tokens.iter().any(|t| !values::token(t)) {
-            return Err("invalid or excessive readiness tokens/jitter");
-        }
-        let mut unique = tokens.clone();
-        unique.sort();
-        unique.dedup();
-        if unique.len() != tokens.len() {
-            return Err("readiness tokens must differ for every attempt");
-        }
-        if jitter.iter().any(|j| *j > 60000) {
-            return Err("jitter exceeds maximum");
-        }
         let mut context = Context::ready(config.profile);
         context.identity = config.call.clone();
         context.retain_third_party_data = config.retain_third_party_data;
@@ -255,8 +265,8 @@ impl Session {
             parser,
             timers: [None; 8],
             now: 0,
-            tokens: tokens.into(),
-            jitter: jitter.into(),
+            needs_token: false,
+            retry_base: None,
             token: String::new(),
             retries: 0,
             transport: false,
@@ -382,12 +392,40 @@ impl Session {
         c.expected_reply = expected;
     }
     fn begin(&mut self, b: &mut Batch) -> Result<(), &'static str> {
-        if matches!(self.config.profile, Profile::Auto | Profile::DxSpider) {
-            self.token = self
-                .tokens
-                .pop_front()
-                .ok_or("missing readiness token for connection attempt")?;
+        if self.attempt >= values::MAX_INTEGER {
+            return Err("attempt limit");
         }
+        if matches!(self.config.profile, Profile::Auto | Profile::DxSpider) {
+            self.needs_token = true;
+            b.actions.push(Action::ReadinessToken {
+                attempt: self.attempt + 1,
+            });
+            return Ok(());
+        }
+        self.begin_supplied(b)
+    }
+    /// Complete the QGDXC-DSP-0004 request. The caller owns token uniqueness
+    /// across attempts; the engine retains only the current token.
+    pub fn readiness_token(
+        &mut self,
+        now: u64,
+        attempt: u64,
+        token: String,
+    ) -> Result<Batch, &'static str> {
+        self.at(now)?;
+        if !self.needs_token || attempt != self.attempt + 1 {
+            return Err("unexpected readiness token");
+        }
+        if !values::token(&token) || token == self.token {
+            return Err("invalid or repeated readiness token");
+        }
+        self.token = token;
+        self.needs_token = false;
+        let mut b = Batch::default();
+        self.begin_supplied(&mut b)?;
+        Ok(b)
+    }
+    fn begin_supplied(&mut self, b: &mut Batch) -> Result<(), &'static str> {
         self.attempt = self
             .attempt
             .checked_add(1)
@@ -437,6 +475,8 @@ impl Session {
     }
     pub fn cancel(&mut self, now: u64) -> Result<Batch, &'static str> {
         self.at(now)?;
+        self.needs_token = false;
+        self.retry_base = None;
         let mut b = Batch::default();
         if !matches!(self.state, State::Disconnected | State::Blocked) {
             self.end("cancelled", None, false, &mut b)?;
@@ -760,14 +800,10 @@ impl Session {
                 self.change(State::Blocked, "retry_exhausted", None, None, b);
             } else {
                 let base = [5000, 10000, 20000, 40000, 80000, 160000, 300000, 300000][self.retries];
-                let jitter = self.jitter.pop_front().ok_or("missing retry jitter")?;
-                if jitter > base / 5 {
-                    return Err("retry jitter exceeds 20%");
-                }
-                self.retries += 1;
-                let delay = base + jitter;
-                self.change(State::Backoff, "retry_scheduled", None, Some(delay), b);
-                self.arm(Timer::Retry, self.now + delay, b);
+                self.retry_base = Some(base);
+                b.actions.push(Action::RetryJitter {
+                    maximum_ms: base / 5,
+                });
             }
         } else if reason == "cancelled" {
             self.terminal = None;
@@ -778,6 +814,22 @@ impl Session {
         }
         self.context();
         Ok(())
+    }
+    /// Complete the QGDXC-SES-0010 request with one caller-supplied value.
+    pub fn retry_jitter(&mut self, now: u64, jitter_ms: u64) -> Result<Batch, &'static str> {
+        self.at(now)?;
+        let base = self.retry_base.ok_or("unexpected retry jitter")?;
+        if jitter_ms > base / 5 {
+            return Err("retry jitter exceeds 20%");
+        }
+        self.retry_base = None;
+        self.retries += 1;
+        let delay = base + jitter_ms;
+        let mut b = Batch::default();
+        self.change(State::Backoff, "retry_scheduled", None, Some(delay), &mut b);
+        self.arm(Timer::Retry, self.now + delay, &mut b);
+        self.context();
+        Ok(b)
     }
     /// Report actual transport admission after consuming an Output action.
     /// Call before admitting more input. The abstract vector harness admits
@@ -820,5 +872,107 @@ impl Session {
             Timer::Pacing => self.admit(&mut b)?,
         }
         Ok(b)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn reconnect_resource_storage_stays_flat() {
+        // QGDXC-SES-0010 QGDXC-SEC-0001 QGDXC-DSP-0004
+        let config = Config::new(
+            "example.invalid".into(),
+            7300,
+            "Q1ABC".into(),
+            Profile::Auto,
+        );
+        let mut s = Session::new(config).unwrap();
+        let mut now = 0;
+        let mut request = s.start(now).unwrap();
+        let mut capacities = None;
+        let mut parser_reset = None;
+        for attempt in 1..=8192 {
+            assert_eq!(request.actions, [Action::ReadinessToken { attempt }]);
+            s.readiness_token(now, attempt, format!("QGDXC{attempt:016X}"))
+                .unwrap();
+            s.connected(now, attempt).unwrap();
+            for byte in b"Please enter your call: \nQ1ABC de RELAY 1-Nov-2026 18:32Z >" {
+                s.input(now, attempt, *byte, None).unwrap();
+            }
+            assert_eq!(s.state, State::Ready);
+            now = s.deadline(Timer::StableReady).unwrap();
+            s.fire(Timer::StableReady, now).unwrap();
+            let ended = s.transport_end(now, attempt, "eof").unwrap();
+            assert!(
+                ended
+                    .actions
+                    .contains(&Action::RetryJitter { maximum_ms: 1000 })
+            );
+            s.retry_jitter(now, 0).unwrap();
+            assert_eq!(s.deadline(Timer::Retry), Some(now + 5000));
+            now += 5000;
+            request = s.fire(Timer::Retry, now).unwrap();
+            // Check the engine's retained attempt-related allocations, rather
+            // than RSS or caller-owned traces/uniqueness sets. Framing and
+            // context are reconstructed at close, with identical reset state.
+            let retained = (s.token.capacity(), s.rate.capacity());
+            assert_eq!(*capacities.get_or_insert(retained), retained);
+            let reset = format!("{:?}", s.parser);
+            assert_eq!(parser_reset.get_or_insert(reset.clone()), &reset);
+            assert!(s.pending.is_none());
+            assert!(s.terminal_evidence.is_none());
+            assert!(s.retry_base.is_none());
+            assert_eq!(s.rate.len(), 1);
+        }
+    }
+
+    #[test]
+    fn attempt_resource_requests_validate_and_cancel() {
+        let mut s = Session::new(Config::new(
+            "example.invalid".into(),
+            7300,
+            "Q1ABC".into(),
+            Profile::Auto,
+        ))
+        .unwrap();
+        s.start(0).unwrap();
+        assert!(
+            s.readiness_token(0, 2, "QGDXC0000000000000001".into())
+                .is_err()
+        );
+        assert!(s.readiness_token(0, 1, "bad".into()).is_err());
+        assert!(s.retry_jitter(0, 0).is_err());
+        s.cancel(0).unwrap();
+        assert!(
+            s.readiness_token(0, 1, "QGDXC0000000000000001".into())
+                .is_err()
+        );
+        s.start(0).unwrap();
+        s.readiness_token(0, 1, "QGDXC0000000000000001".into())
+            .unwrap();
+        s.transport_end(1, 1, "transport_error").unwrap();
+        assert!(s.retry_jitter(1, 1001).is_err());
+        s.retry_jitter(1, 1000).unwrap();
+        assert_eq!(s.deadline(Timer::Retry), Some(6001));
+        s.fire(Timer::Retry, 6001).unwrap();
+        assert!(
+            s.readiness_token(6001, 2, "QGDXC0000000000000001".into())
+                .is_err()
+        );
+        s.cancel(6001).unwrap();
+        assert!(s.next_timer().is_none());
+        assert!(
+            s.readiness_token(6001, 2, "QGDXC0000000000000002".into())
+                .is_err()
+        );
+        s.start(6001).unwrap();
+        s.readiness_token(6001, 2, "QGDXC0000000000000002".into())
+            .unwrap();
+        s.transport_end(6001, 2, "eof").unwrap();
+        s.cancel(6001).unwrap();
+        assert!(s.retry_jitter(6001, 0).is_err());
+        assert!(s.next_timer().is_none());
     }
 }

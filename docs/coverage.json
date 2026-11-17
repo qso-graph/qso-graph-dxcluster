@@ -143,6 +143,22 @@
         {
           "file": "crates/qso-graph-dxcluster/tests/session.rs",
           "name": "dxspider_startup_and_custom_prompt"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster/tests/session.rs",
+          "name": "stable_reconnects_continue_beyond_1024_attempts"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster/src/session.rs",
+          "name": "reconnect_resource_storage_stays_flat"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/main.rs",
+          "name": "fresh_os_entropy_and_unique_tokens_without_history"
+        },
+        {
+          "file": "xtask/src/runner.rs",
+          "name": "vector_attempt_requests_require_explicit_resources"
         }
       ],
       "vectors": []
@@ -631,6 +647,10 @@
         {
           "file": "xtask/src/runner.rs",
           "name": "replay_gate_compares_connection_state_and_retry_delays"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/recording.rs",
+          "name": "replay_continues_beyond_1024_stable_connections"
         }
       ],
       "vectors": [
@@ -663,6 +683,14 @@
         {
           "file": "xtask/src/checks.rs",
           "name": "hostile_ip_runs_have_bounded_processing"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster/tests/session.rs",
+          "name": "stable_reconnects_continue_beyond_1024_attempts"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster/src/session.rs",
+          "name": "reconnect_resource_storage_stays_flat"
         }
       ],
       "vectors": []
@@ -884,6 +912,26 @@
         {
           "file": "xtask/src/runner.rs",
           "name": "replay_gate_compares_connection_state_and_retry_delays"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster/tests/session.rs",
+          "name": "stable_reconnects_continue_beyond_1024_attempts"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster/src/session.rs",
+          "name": "reconnect_resource_storage_stays_flat"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/main.rs",
+          "name": "fresh_os_entropy_and_unique_tokens_without_history"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/recording.rs",
+          "name": "replay_continues_beyond_1024_stable_connections"
+        },
+        {
+          "file": "xtask/src/runner.rs",
+          "name": "vector_attempt_requests_require_explicit_resources"
         }
       ],
       "vectors": [
@@ -1008,6 +1056,10 @@
         {
           "file": "xtask/src/runner.rs",
           "name": "stricter_pacing_vectors_apply_configuration"
+        },
+        {
+          "file": "xtask/src/runner.rs",
+          "name": "vector_attempt_requests_require_explicit_resources"
         }
       ],
       "vectors": [

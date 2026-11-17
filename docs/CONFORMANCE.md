@@ -115,3 +115,13 @@ UNCONFIRMED in Annexes B–E remain: charset guarantees, additional or translate
 notices, live custom prompts and complete DXSpider startup, additional AR-Cluster
 layouts, opaque CC Cluster slot meanings, and additional RBN layouts. No live
 network probing was used to resolve them.
+
+The QGDXC-SES-0010 and QGDXC-DSP-0004 reconnect tests run 4,096 stable-ready
+connections for each profile, including auto detection and the DXSpider echo
+sequence. The engine storage test runs 8,192 attempts and checks unchanged
+retained token/rate capacities and reset parser state. Caller-owned token sets
+check uniqueness separately. The CLI entropy test exercises fresh OS randomness,
+repeated random values, the maximum attempt number, jitter bounds, rejection
+sampling, and source errors. The replay test covers 4,096 recorded connections.
+The vector runner resolves resource requests from the explicit per-attempt
+inputs before comparing the abstract action trace (QGDXC-VEC-0006).

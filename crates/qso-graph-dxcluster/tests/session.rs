@@ -1,18 +1,96 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 use qso_graph_dxcluster::*;
-fn session(p: Profile) -> Session {
-    Session::new(
-        Config::new("example.invalid".into(), 7300, "q1abc".into(), p),
-        (0..32).map(|n| format!("QGDXC{n:016X}")).collect(),
-        vec![0; 32],
-    )
+fn session(p: Profile) -> TestSession {
+    TestSession::new(Config::new(
+        "example.invalid".into(),
+        7300,
+        "q1abc".into(),
+        p,
+    ))
     .unwrap()
 }
+
+// The test caller supplies each request immediately, without an entropy pool.
+struct TestSession(
+    qso_graph_dxcluster::Session,
+    std::collections::HashSet<String>,
+);
+impl std::ops::Deref for TestSession {
+    type Target = qso_graph_dxcluster::Session;
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+impl std::ops::DerefMut for TestSession {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
+}
+impl TestSession {
+    fn new(config: Config) -> Result<Self, &'static str> {
+        qso_graph_dxcluster::Session::new(config).map(|s| Self(s, Default::default()))
+    }
+    fn supply(&mut self, b: Batch) -> Result<Batch, &'static str> {
+        let mut out = Batch {
+            events: b.events,
+            actions: vec![],
+        };
+        for a in b.actions {
+            let supplied = match a {
+                Action::ReadinessToken { attempt } => {
+                    let token = format!("QGDXC{:016X}", attempt - 1);
+                    assert!(self.1.insert(token.clone()));
+                    self.0
+                        .readiness_token(self.0.current_time(), attempt, token)?
+                }
+                Action::RetryJitter { .. } => self.0.retry_jitter(self.0.current_time(), 0)?,
+                a => {
+                    out.actions.push(a);
+                    continue;
+                }
+            };
+            append(&mut out, self.supply(supplied)?);
+        }
+        Ok(out)
+    }
+    fn start(&mut self, now: u64) -> Result<Batch, &'static str> {
+        let b = self.0.start(now)?;
+        self.supply(b)
+    }
+    fn restart(&mut self, now: u64) -> Result<Batch, &'static str> {
+        let b = self.0.restart(now)?;
+        self.supply(b)
+    }
+    fn fire(&mut self, timer: Timer, now: u64) -> Result<Batch, &'static str> {
+        let b = self.0.fire(timer, now)?;
+        self.supply(b)
+    }
+    fn transport_end(
+        &mut self,
+        now: u64,
+        attempt: u64,
+        reason: &'static str,
+    ) -> Result<Batch, &'static str> {
+        let b = self.0.transport_end(now, attempt, reason)?;
+        self.supply(b)
+    }
+    fn input(
+        &mut self,
+        now: u64,
+        attempt: u64,
+        byte: u8,
+        received_at: Option<&str>,
+    ) -> Result<Batch, &'static str> {
+        let b = self.0.input(now, attempt, byte, received_at)?;
+        self.supply(b)
+    }
+}
+
 fn append(out: &mut Batch, mut b: Batch) {
     out.events.append(&mut b.events);
     out.actions.append(&mut b.actions);
 }
-fn input(s: &mut Session, t: u64, bytes: &[u8]) -> Batch {
+fn input(s: &mut TestSession, t: u64, bytes: &[u8]) -> Batch {
     let mut b = Batch::default();
     for byte in bytes {
         let attempt = s.attempt;
@@ -20,7 +98,7 @@ fn input(s: &mut Session, t: u64, bytes: &[u8]) -> Batch {
     }
     b
 }
-fn begin(s: &mut Session) -> Batch {
+fn begin(s: &mut TestSession) -> Batch {
     let mut b = s.start(0).unwrap();
     append(&mut b, s.connected(0, 1).unwrap());
     append(&mut b, input(s, 0, b"Please enter your call: "));
@@ -97,7 +175,7 @@ fn dxspider_startup_and_custom_prompt() {
     s.config.custom_prompt = Some("Q ready:>".into());
     // Reconstruct so context uses the caller's configured literal.
     let cfg = s.config.clone();
-    let mut s = Session::new(cfg, vec!["QGDXC0000000000000000".into()], vec![0]).unwrap();
+    let mut s = TestSession::new(cfg).unwrap();
     begin(&mut s);
     input(&mut s, 100, b"Capabilities: ve7cc rbn\nQ ready:>");
     for (i, (cmd, ack)) in [
@@ -336,7 +414,7 @@ fn relayed_and_incomplete_status_text_cannot_end_sessions() {
     let mut s = session(Profile::DxSpider);
     s.config.line_limit = 256;
     // Rebuild to apply the frame bound to the parser.
-    let mut s = Session::new(s.config, vec!["QGDXC0000000000000000".into()], vec![0]).unwrap();
+    let mut s = TestSession::new(s.config.clone()).unwrap();
     begin(&mut s);
     input(&mut s, 0, b"\n");
     let prefix = format!("{notice}{}", " ".repeat(256 - notice.len()));
@@ -395,4 +473,71 @@ fn setup_errors_require_complete_classified_status() {
             .iter()
             .any(|e| e.get("reason") == Some("setup_failed"))
     );
+}
+
+#[test]
+fn stable_reconnects_continue_beyond_1024_attempts() {
+    // QGDXC-SES-0010 QGDXC-SEC-0001
+    for profile in [
+        Profile::Auto,
+        Profile::DxSpider,
+        Profile::ArCluster,
+        Profile::CcCluster,
+        Profile::Rbn,
+    ] {
+        let mut s = TestSession::new(Config::new(
+            "example.invalid".into(),
+            7300,
+            "Q1ABC".into(),
+            profile,
+        ))
+        .unwrap();
+        s.start(0).unwrap();
+        let mut now = 0;
+        for attempt in 1..=4096 {
+            assert_eq!(s.attempt, attempt);
+            s.connected(now, attempt).unwrap();
+            input(&mut s, now, b"Please enter your call: ");
+            let prompt = match profile {
+                Profile::DxSpider => "Q1ABC de Q2ABC 1-Nov-2026 1832Z dxspider >",
+                Profile::ArCluster => "Q1ABC de Q2ABC 1-Nov 1832Z arc6>",
+                Profile::CcCluster => "Q1ABC de Q2ABC 1-Nov-2026 1832Z CCC >",
+                _ => "Q1ABC de RELAY 1-Nov-2026 18:32Z >",
+            };
+            input(&mut s, now + 100, prompt.as_bytes());
+            if profile == Profile::DxSpider {
+                for (i, ack) in [
+                    "Page Length is now 0 lines".to_owned(),
+                    "Beeps are now off".into(),
+                    "Echoing disabled".into(),
+                    "Operation successful".into(),
+                    format!("QGDXC{:016X}", attempt - 1),
+                ]
+                .iter()
+                .enumerate()
+                {
+                    let at = now + (i as u64 + 1) * 1000;
+                    let b = s.fire(Timer::Pacing, at).unwrap();
+                    if i == 4 {
+                        assert_eq!(outputs(&b), [format!("echo {ack}\r\n")]);
+                    }
+                    input(&mut s, at, format!("{ack}\n{prompt}").as_bytes());
+                }
+            } else if profile == Profile::CcCluster {
+                s.fire(Timer::Pacing, now + 1000).unwrap();
+                input(
+                    &mut s,
+                    now + 1000,
+                    format!("Enhanced Spots Enabled\n{prompt}").as_bytes(),
+                );
+            }
+            assert_eq!(s.state, State::Ready);
+            now = s.deadline(Timer::StableReady).unwrap();
+            s.fire(Timer::StableReady, now).unwrap();
+            s.transport_end(now, attempt, "eof").unwrap();
+            assert_eq!(s.deadline(Timer::Retry), Some(now + 5000));
+            now += 5000;
+            s.fire(Timer::Retry, now).unwrap();
+        }
+    }
 }

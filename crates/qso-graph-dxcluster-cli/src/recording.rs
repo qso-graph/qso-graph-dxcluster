@@ -171,6 +171,7 @@ impl<R: BufRead> Records<R> {
 /// locally; an outbound record is an observation and is never transmitted.
 pub struct Replay {
     engine: Session,
+    tokens: std::vec::IntoIter<String>,
     last: u64,
     open: bool,
     outbound: Vec<u8>,
@@ -189,13 +190,35 @@ impl Replay {
         let mut config = Config::new("example.invalid".into(), 7300, call, profile);
         config.retain_third_party_data = retain;
         Ok(Self {
-            engine: Session::new(config, tokens, vec![0; 1024])
+            engine: Session::new(config)
                 .map_err(str::to_owned)?
                 .with_recorded_transport(),
+            tokens: tokens.into_iter(),
             last: 0,
             open: false,
             outbound: vec![],
         })
+    }
+    fn supply(&mut self, b: qso_graph_dxcluster::Batch) -> Result<Vec<Event>, String> {
+        let mut events = b.events;
+        for action in b.actions {
+            let b = match action {
+                qso_graph_dxcluster::Action::ReadinessToken { attempt } => {
+                    let token = self
+                        .tokens
+                        .next()
+                        .ok_or("missing recorded readiness token")?;
+                    self.engine.readiness_token(self.last, attempt, token)
+                }
+                qso_graph_dxcluster::Action::RetryJitter { .. } => {
+                    self.engine.retry_jitter(self.last, 0)
+                }
+                _ => continue,
+            }
+            .map_err(str::to_owned)?;
+            events.extend(self.supply(b)?);
+        }
+        Ok(events)
     }
     fn advance(&mut self, at: u64, events: &mut Vec<Event>) -> Result<(), String> {
         if !self.open {
@@ -239,7 +262,7 @@ impl Replay {
                     self.engine.start(at)
                 }
                 .map_err(str::to_owned)?;
-                events.extend(b.events);
+                events.extend(self.supply(b)?);
             }
             events.extend(
                 self.engine
@@ -255,12 +278,11 @@ impl Replay {
                 .copied()
                 .find(|r| Some(*r) == v["reason"].as_str())
                 .ok_or("close reason")?;
-            events.extend(
-                self.engine
-                    .transport_end(at, self.engine.attempt, reason)
-                    .map_err(str::to_owned)?
-                    .events,
-            );
+            let b = self
+                .engine
+                .transport_end(at, self.engine.attempt, reason)
+                .map_err(str::to_owned)?;
+            events.extend(self.supply(b)?);
         } else if v["dir"] == "out" {
             for byte in unbase64(v["b64"].as_str().ok_or("wire bytes")?).map_err(str::to_owned)? {
                 if self.outbound.len() == 256 {
@@ -301,9 +323,6 @@ pub fn replay_config<R: BufRead>(reader: R) -> Result<(String, Profile, Vec<Stri
     let mut outbound = Vec::<u8>::new();
     while let Some(v) = records.next_record()? {
         if v["conn"] == "open" {
-            if tokens.len() == 1024 {
-                return Err("recording exceeds 1024 connections".into());
-            }
             tokens.push(None);
             first_out = true;
             outbound.clear();
@@ -383,6 +402,41 @@ mod tests {
         replay
             .record(&json!({"t":t,"dir":dir,"b64":base64(bytes)}))
             .unwrap()
+    }
+    #[test]
+    fn replay_continues_beyond_1024_stable_connections() {
+        // QGDXC-REC-0004 QGDXC-SES-0010
+        let mut recorder = Recorder::new(Vec::new(), true).unwrap();
+        recorder
+            .note(
+                0.0,
+                "qg-dxc configuration: {\"call\":\"Q1ABC\",\"profile\":\"auto\"}",
+            )
+            .unwrap();
+        for attempt in 0..4096 {
+            let t = f64::from(attempt) * 606.0;
+            recorder.open(t).unwrap();
+            recorder.wire(t, "in", b"Please enter your call: ").unwrap();
+            recorder.wire(t, "out", b"Q1ABC\r\n").unwrap();
+            recorder
+                .wire(t, "in", b"Q1ABC de RELAY 1-Nov-2026 18:32Z >")
+                .unwrap();
+            recorder.close(t + 601.0, "eof").unwrap();
+        }
+        let (call, profile, tokens) =
+            replay_config(std::io::Cursor::new(&recorder.writer)).unwrap();
+        assert_eq!(tokens.len(), 4096);
+        let mut replay = Replay::new(call, profile, tokens).unwrap();
+        let mut records = Records::new(std::io::Cursor::new(&recorder.writer));
+        let mut ready = 0;
+        while let Some(record) = records.next_record().unwrap() {
+            for event in replay.record(&record).unwrap() {
+                ready += usize::from(event.get("state") == Some("ready"));
+                assert_ne!(event.get("reason"), Some("retry_exhausted"));
+            }
+        }
+        assert_eq!(ready, 4096);
+        assert_eq!(replay.engine.attempt, 4096);
     }
     #[test]
     fn replay_preserves_automatic_retry_history_through_exhaustion() {

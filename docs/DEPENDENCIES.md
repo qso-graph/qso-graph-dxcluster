@@ -10,7 +10,10 @@ Planted manifest tests cover individual dependency tables, optional aliases,
 and target-specific normal, build, and development declarations. CLI argument handling,
 base64, event serialization, framing, and protocol parsing use first-party Rust.
 The CLI and repository tooling share serde_json. Repository tooling also imports the first-party CLI recording adapter to check application recording/replay vectors without sockets. The CLI uses ctrlc for portable
-OS signal registration, avoiding first-party unsafe signal handlers.
+OS signal registration, avoiding first-party unsafe signal handlers. The CLI uses
+getrandom for per-attempt OS randomness (QGDXC-DSP-0004 and QGDXC-SES-0010),
+avoiding first-party unsafe platform bindings. Its r-efi dependency supplies Rust
+UEFI bindings on that target; the shipped desktop targets do not use it.
 
 Every registry package below is an explicit decision. Versions are locked in
 Cargo.lock; exact-version cargo-vet exemptions mean **not audited yet**, not an
@@ -26,6 +29,7 @@ platform system libraries; they are Rust packages, not bundled native libraries.
 | cfg_aliases | 0.2.2 | Portable Ctrl-C handling and Rust OS bindings (CLI only) | Exact-version exemption; not audited yet |
 | ctrlc | 3.5.1 | Portable Ctrl-C handling and Rust OS bindings (CLI only) | Exact-version exemption; not audited yet |
 | dispatch2 | 0.3.1 | macOS Ctrl-C dispatch and Rust Objective-C bindings (CLI only) | Exact-version exemption; not audited yet |
+| getrandom | 0.4.3 | OS randomness for live readiness tokens and retry jitter (CLI only) | Exact-version exemption; not audited yet |
 | itoa | 1.0.19 | JSON numeric formatting and bounded input scanning | Exact-version exemption; not audited yet |
 | libc | 0.2.191 | Portable Ctrl-C handling and Rust OS bindings (CLI only) | Exact-version exemption; not audited yet |
 | memchr | 2.8.3 | JSON numeric formatting and bounded input scanning | Exact-version exemption; not audited yet |
@@ -34,6 +38,7 @@ platform system libraries; they are Rust packages, not bundled native libraries.
 | objc2-encode | 4.1.0 | macOS Ctrl-C dispatch and Rust Objective-C bindings (CLI only) | Exact-version exemption; not audited yet |
 | proc-macro2 | 1.0.107 | JSON value support and optional derive/build-time support in resolved graph | Exact-version exemption; not audited yet |
 | quote | 1.0.47 | JSON value support and optional derive/build-time support in resolved graph | Exact-version exemption; not audited yet |
+| r-efi | 6.0.0 | Target-specific UEFI bindings for getrandom | Exact-version exemption; not audited yet |
 | ryu | 1.0.23 | JSON numeric formatting and bounded input scanning | Exact-version exemption; not audited yet |
 | serde | 1.0.229 | JSON value support and optional derive/build-time support in resolved graph | Exact-version exemption; not audited yet |
 | serde_core | 1.0.229 | JSON value support and optional derive/build-time support in resolved graph | Exact-version exemption; not audited yet |
