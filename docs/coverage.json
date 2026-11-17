@@ -449,6 +449,14 @@
         {
           "file": "crates/qso-graph-dxcluster-cli/src/main.rs",
           "name": "help_leads_with_purpose"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/main.rs",
+          "name": "live_deadline_closes_transport_while_rendering_is_stalled"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/output.rs",
+          "name": "cancellation_during_a_stalled_drain_has_a_deadline"
         }
       ],
       "vectors": []
@@ -484,6 +492,10 @@
         {
           "file": "crates/qso-graph-dxcluster/tests/session.rs",
           "name": "retries_stability_and_restart"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/output.rs",
+          "name": "bounded_queue_resumes_without_losing_admitted_lines"
         }
       ],
       "vectors": []

@@ -3,6 +3,8 @@
 use qso_graph_dxcluster::{model::escape, *};
 use qso_graph_dxcluster_cli::recording;
 use recording::{Recorder, Records, Replay};
+mod output;
+use output::Output;
 use std::{
     fs::File,
     io::{self, BufReader, Read, Write},
@@ -17,15 +19,15 @@ use std::{
 const HELP: &str = "qg-dxc reads live DX spots for radio operators and application developers.\n\nUsage:\n  qg-dxc connect <host> <port> --call <CALL> [--profile auto|dxspider|arcluster|cccluster|rbn]\n                 [--record <file>] [--retain-third-party-data] [--json]\n  qg-dxc replay <file> [--json]\n\nReceive-only. Supply your own node and operator identity. No node directory or password support.\nRecording requires --retain-third-party-data. Replay never opens a socket.\n";
 fn main() -> std::process::ExitCode {
     match run() {
-        Ok(()) => std::process::ExitCode::SUCCESS,
+        Ok(code) => std::process::ExitCode::from(code),
         Err(e) => {
             eprintln!("qg-dxc: {}", escape(&e));
             std::process::ExitCode::FAILURE
         }
     }
 }
-fn render(event: &Event, json: bool) -> io::Result<()> {
-    let text = if json {
+fn rendered(event: &Event, json: bool) -> String {
+    if json {
         event.json()
     } else {
         let fields = event
@@ -40,18 +42,20 @@ fn render(event: &Event, json: bool) -> io::Result<()> {
             event.kind,
             escape(&fields)
         )
-    };
-    writeln!(io::stdout().lock(), "{text}")
+    }
 }
-fn run() -> Result<(), String> {
+fn render(event: &Event, json: bool) -> io::Result<()> {
+    writeln!(io::stdout().lock(), "{}", rendered(event, json))
+}
+fn run() -> Result<u8, String> {
     let args: Vec<String> = std::env::args().skip(1).collect();
     if args.is_empty() || args.iter().any(|a| a == "--help" || a == "-h") {
         print!("{HELP}");
-        return Ok(());
+        return Ok(0);
     }
     if args == ["--version"] {
         println!("qg-dxc 0.1.0");
-        return Ok(());
+        return Ok(0);
     }
     let json = args.iter().any(|a| a == "--json");
     if args[0] == "replay" {
@@ -76,7 +80,7 @@ fn run() -> Result<(), String> {
         for event in replay.finish()? {
             render(&event, json).map_err(|e| e.to_string())?;
         }
-        return Ok(());
+        return Ok(0);
     }
     if args[0] != "connect" || args.len() < 3 {
         return Err("use --help for connection and replay usage".into());
@@ -176,6 +180,7 @@ struct Live {
     recorder: Option<Recorder<File>>,
     clock: Instant,
     json: bool,
+    output: Output,
     receiver: Option<Connector>,
     closing: Option<Connector>,
     deferred_connect: bool,
@@ -207,9 +212,10 @@ impl Live {
             .and_then(|e| e.get("reason"))
             .unwrap_or("cancelled")
             .to_owned();
-        for e in b.events {
-            render(&e, self.json).map_err(|e| e.to_string())?;
-        }
+        let rendering = b
+            .events
+            .into_iter()
+            .try_for_each(|e| self.output.enqueue(rendered(&e, self.json)));
         for a in b.actions {
             match a {
                 Action::Connect { .. } => {
@@ -292,7 +298,7 @@ impl Live {
                 Action::ArmTimer { .. } | Action::CancelTimer { .. } => {}
             }
         }
-        Ok(())
+        rendering
     }
     fn send(&mut self, bytes: &[u8]) -> Result<(), SendError> {
         let socket = self.socket.as_mut().ok_or(SendError::Transport)?;
@@ -338,7 +344,7 @@ impl Live {
         Ok(())
     }
 }
-fn connect(config: Config, recorder: Option<Recorder<File>>, json: bool) -> Result<(), String> {
+fn connect(config: Config, recorder: Option<Recorder<File>>, json: bool) -> Result<u8, String> {
     let stop = Arc::new(AtomicBool::new(false));
     let handler = stop.clone();
     ctrlc::set_handler(move || handler.store(true, Ordering::Relaxed))
@@ -359,6 +365,7 @@ fn connect(config: Config, recorder: Option<Recorder<File>>, json: bool) -> Resu
         recorder,
         clock: Instant::now(),
         json,
+        output: Output::new(io::stdout()),
         receiver: None,
         closing: None,
         deferred_connect: false,
@@ -369,15 +376,16 @@ fn connect(config: Config, recorder: Option<Recorder<File>>, json: bool) -> Resu
     }
     let b = live.session.start(0).map_err(str::to_owned)?;
     live.batch(b)?;
-    let result = (|| {
+    let result: Result<(), String> = (|| {
         loop {
             let now = live.now();
-            live.timers(now, false)?;
             if live.stop.load(Ordering::Relaxed) {
                 let b = live.session.cancel(live.now()).map_err(str::to_owned)?;
                 live.batch(b)?;
                 break;
             }
+            live.output.flush()?;
+            live.timers(now, false)?;
             let closed = live
                 .closing
                 .as_ref()
@@ -426,9 +434,17 @@ fn connect(config: Config, recorder: Option<Recorder<File>>, json: bool) -> Resu
                     }
                 }
             }
-            if let Some(socket) = &mut live.socket {
-                let mut bytes = [0u8; 4096];
-                match socket.read(&mut bytes) {
+            // QGDXC-IO-0005: admit one byte at a time so a full render queue
+            // leaves subsequent input in the transport, with no hidden read-ahead.
+            for _ in 0..4096 {
+                if live.output.backpressured() || live.stop.load(Ordering::Relaxed) {
+                    break;
+                }
+                let Some(socket) = &mut live.socket else {
+                    break;
+                };
+                let mut byte = [0u8; 1];
+                match socket.read(&mut byte) {
                     Ok(0) => {
                         live.socket = None;
                         live.record_close("eof")?;
@@ -437,21 +453,20 @@ fn connect(config: Config, recorder: Option<Recorder<File>>, json: bool) -> Resu
                             .transport_end(live.now(), live.session.attempt, "eof")
                             .map_err(str::to_owned)?;
                         live.batch(b)?;
+                        break;
                     }
-                    Ok(n) => {
+                    Ok(_) => {
                         if let Some(r) = &mut live.recorder {
-                            r.wire(live.clock.elapsed().as_secs_f64(), "in", &bytes[..n])
+                            r.wire(live.clock.elapsed().as_secs_f64(), "in", &byte)
                                 .map_err(|e| format!("recording failed: {e}"))?;
                         }
-                        for byte in &bytes[..n] {
-                            let b = live
-                                .session
-                                .input(live.now(), live.session.attempt, *byte, None)
-                                .map_err(str::to_owned)?;
-                            live.batch(b)?;
-                        }
+                        let b = live
+                            .session
+                            .input(live.now(), live.session.attempt, byte[0], None)
+                            .map_err(str::to_owned)?;
+                        live.batch(b)?;
                     }
-                    Err(e) if e.kind() == io::ErrorKind::WouldBlock => {}
+                    Err(e) if e.kind() == io::ErrorKind::WouldBlock => break,
                     Err(_) => {
                         live.socket = None;
                         live.record_close("transport_error")?;
@@ -460,6 +475,7 @@ fn connect(config: Config, recorder: Option<Recorder<File>>, json: bool) -> Resu
                             .transport_end(live.now(), live.session.attempt, "transport_error")
                             .map_err(str::to_owned)?;
                         live.batch(b)?;
+                        break;
                     }
                 }
             }
@@ -477,11 +493,83 @@ fn connect(config: Config, recorder: Option<Recorder<File>>, json: bool) -> Resu
         }
         let _ = live.record_close("cancelled");
     }
-    result
+    // Finalize transport and recording before waiting for terminal output.
+    if let Some(socket) = live.socket.take() {
+        let _ = socket.shutdown(std::net::Shutdown::Both);
+    }
+    live.record_close("cancelled")?;
+    drop(live.recorder.take());
+    let stop = live.stop.clone();
+    let drained = live.output.finish(|| stop.load(Ordering::Relaxed));
+    if stop.load(Ordering::Relaxed) {
+        return Ok(130);
+    }
+    result?;
+    drained?;
+    Ok(0)
 }
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn live_deadline_closes_transport_while_rendering_is_stalled() {
+        // QGDXC-IO-0002 QGDXC-IO-0005 QGDXC-SES-0007
+        struct Paused(mpsc::Receiver<()>);
+        impl Write for Paused {
+            fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
+                self.0.recv().map_err(io::Error::other)?;
+                Ok(bytes.len())
+            }
+            fn flush(&mut self) -> io::Result<()> {
+                Ok(())
+            }
+        }
+        let listener = std::net::TcpListener::bind(("localhost", 0)).unwrap();
+        let client = TcpStream::connect(listener.local_addr().unwrap()).unwrap();
+        let (mut peer, _) = listener.accept().unwrap();
+        peer.set_read_timeout(Some(Duration::from_secs(1))).unwrap();
+        let mut config = Config::new("Q".into(), 7300, "Q1ABC".into(), Profile::ArCluster);
+        config.login_ms = 5000;
+        let mut session =
+            Session::new(config, vec!["QGDXC0000000000000001".into()], vec![0; 16]).unwrap();
+        session.start(0).unwrap();
+        session.connected(0, session.attempt).unwrap();
+        let path = format!("../../target/stalled-timer-{}.ndjson", std::process::id());
+        let mut recorder = Recorder::new(File::create(&path).unwrap(), true).unwrap();
+        recorder.open(0.0).unwrap();
+        let (resume, rx) = mpsc::channel();
+        let mut output = Output::new(Paused(rx));
+        while !output.backpressured() {
+            output.enqueue("Q".into()).unwrap();
+        }
+        let mut live = Live {
+            session,
+            socket: Some(client),
+            recorder: Some(recorder),
+            clock: Instant::now(),
+            json: false,
+            output,
+            receiver: None,
+            closing: None,
+            deferred_connect: false,
+            stop: Arc::new(AtomicBool::new(false)),
+        };
+        let started = Instant::now();
+        live.timers(5000, true).unwrap();
+        assert!(started.elapsed() < Duration::from_millis(500));
+        assert_eq!(live.session.state, State::Backoff);
+        assert!(live.socket.is_none());
+        assert_eq!(peer.read(&mut [0; 1]).unwrap(), 0);
+        let text = std::fs::read_to_string(&path).unwrap();
+        let last: serde_json::Value = serde_json::from_str(text.lines().last().unwrap()).unwrap();
+        assert_eq!(last["conn"], "close");
+        assert_eq!(last["reason"], "timeout");
+        // Disconnecting the test writer releases every subsequent write.
+        drop(resume);
+        assert!(live.output.finish(|| false).is_err());
+        drop(live.recorder);
+        std::fs::remove_file(path).unwrap();
+    }
     #[test]
     fn sequential_address_fallback_survives_a_blackhole() {
         // QGDXC-SES-0007 QGDXC-SES-0009

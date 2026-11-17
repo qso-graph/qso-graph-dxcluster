@@ -91,6 +91,17 @@ monotonic time and report actual output admission with Session::output_admitted;
 handle completion and cancellation before equal-time expiry except stable_ready;
 and preserve shared pacing history when replacing a Session for the same
 endpoint and canonical identity. The supplied CLI implements one active session.
+The CLI's live renderer uses a dedicated writer with a 64-line channel, a
+64-line pending reserve for batch and control events, and one line held by the
+writer (QGDXC-IO-0005). The session loop pauses socket reads when output is full;
+timers, cancellation, transport actions, and recording continue independently.
+The queue test checks bounds and complete ordered delivery after resumption. A
+controlled deadline test checks transport closure and recording under stalled
+rendering. On Linux, the stalled-pipe integration test confirms a blocked pipe
+write, paused input admission, recording finalization and socket closure before
+the writer drain, and exit status 130 with stdout still blocked. A separate test
+covers cancellation arriving during an existing drain (QGDXC-IO-0002).
+
 The vector harness follows the abstract ordering in QGDXC-VEC-0006. Its Application vector also writes conforming in-memory recording boundaries and checks replayed content against the same independent complete event oracles. Local configuration-rejection vectors request no connection or output.
 
 Live checks are intentionally absent. The evidence limitations marked
