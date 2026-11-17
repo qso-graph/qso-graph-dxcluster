@@ -306,12 +306,19 @@ fn likely_call(s: &str) -> bool {
     if s.starts_with(['Q', 'q']) || s.len() < 3 || s.len() > 64 {
         return false;
     }
+    // Rust hexadecimal literals are source syntax, not received identities.
+    if s.strip_prefix("0x")
+        .is_some_and(|n| !n.is_empty() && n.bytes().all(|b| b.is_ascii_hexdigit()))
+    {
+        return false;
+    }
     let b = s.as_bytes();
-    let mut i = 0;
+    let mut i = usize::from(b[0].is_ascii_digit());
+    let letters = i;
     while i < b.len() && b[i].is_ascii_alphabetic() {
         i += 1;
     }
-    if i == 0 || i > 3 {
+    if i == letters || i - letters > 3 {
         return false;
     }
     let start = i;
@@ -400,26 +407,79 @@ fn evidence_captures() -> &'static BTreeSet<String> {
             .collect()
     })
 }
-fn vector_sanitized(v: &Value) -> bool {
-    match v {
-        Value::Object(o) => o.iter().all(|(k, v)| {
-            if k == "capture" {
-                return v
-                    .as_str()
-                    .is_some_and(|s| s == "synthetic" || evidence_captures().contains(s));
-            }
-            if k == "b64" || k == "raw_line" {
-                return v.as_str().is_some_and(|s| {
-                    crate::oracle::unb64(s)
-                        .is_ok_and(|b| text_sanitized(&String::from_utf8_lossy(&b)))
-                });
-            }
-            vector_sanitized(v)
-        }),
-        Value::Array(a) => a.iter().all(vector_sanitized),
-        Value::String(s) => text_sanitized(s),
-        _ => true,
+fn identity_field(key: &str) -> bool {
+    matches!(
+        key,
+        "identity"
+            | "call"
+            | "spotter_call"
+            | "from_call"
+            | "to_call"
+            | "via_call"
+            | "origin"
+            | "slot_08"
+            | "slot_09"
+    )
+}
+fn fixture_identity(id: &str, key: &str, value: &str) -> bool {
+    if value.starts_with(['Q', 'q']) {
+        return true;
     }
+    // Opaque optional native identities can be absent on the wire.
+    if value.is_empty() && matches!(key, "origin" | "slot_08" | "slot_09") {
+        return true;
+    }
+    // Exact named lexical cases test QGDXC-DX-0002's received-token grammar.
+    // Neither an ID prefix nor a general exception to identity checks is used.
+    if matches!(key, "call" | "spotter_call")
+        && matches!(
+            (id, value),
+            ("lexical-0", "!") | ("lexical-1", "_") | ("lexical-2", "123") | ("lexical-3", "a")
+        )
+    {
+        return true;
+    }
+    // These exact documentation-IP roles test QGDXC-SEC-0005 with retention.
+    value == "192.0.2.1"
+        && matches!(
+            (id, key),
+            ("privacy-0-true", "spotter_call")
+                | ("privacy-1-true", "call")
+                | ("privacy-2-true", "to_call")
+                | ("privacy-3-true", "from_call")
+                | ("privacy-4-true", "from_call")
+                | ("cc11-ip-call-true", "call")
+        )
+}
+fn vector_sanitized(v: &Value) -> bool {
+    fn visit(v: &Value, id: &str, parent: &str) -> bool {
+        match v {
+            Value::Object(o) => o.iter().all(|(k, v)| {
+                if k == "capture" {
+                    return v
+                        .as_str()
+                        .is_some_and(|s| s == "synthetic" || evidence_captures().contains(s));
+                }
+                if k == "b64" || k == "raw_line" {
+                    return v.as_str().is_some_and(|s| {
+                        crate::oracle::unb64(s)
+                            .is_ok_and(|b| text_sanitized(&String::from_utf8_lossy(&b)))
+                    });
+                }
+                if identity_field(k)
+                    && (matches!(parent, "config" | "fields" | "native") || v.is_string())
+                    && !v.as_str().is_some_and(|s| fixture_identity(id, k, s))
+                {
+                    return false;
+                }
+                visit(v, id, k)
+            }),
+            Value::Array(a) => a.iter().all(|v| visit(v, id, parent)),
+            Value::String(s) => text_sanitized(s),
+            _ => true,
+        }
+    }
+    visit(v, v["id"].as_str().unwrap_or(""), "")
 }
 fn public_paths() -> Result<Vec<PathBuf>, String> {
     let output = std::process::Command::new("git")
@@ -475,6 +535,28 @@ fn unescape_source(s: &str) -> String {
 }
 fn inline_fixture_sanitized(source: &str) -> bool {
     let source = unescape_source(source);
+    for key in [
+        "identity",
+        "call",
+        "spotter_call",
+        "from_call",
+        "to_call",
+        "via_call",
+        "origin",
+        "slot_08",
+        "slot_09",
+    ] {
+        let marker = format!("\"{key}\"");
+        for rest in source.split(&marker).skip(1) {
+            if let Some(rest) = rest.trim_start().strip_prefix(':')
+                && let Some(rest) = rest.trim_start().strip_prefix('"')
+                && let Some((value, _)) = rest.split_once('"')
+                && !fixture_identity("", key, value)
+            {
+                return false;
+            }
+        }
+    }
     for key in ["b64", "raw_line"] {
         let marker = format!("\"{key}\"");
         for rest in source.split(&marker).skip(1) {
@@ -553,6 +635,7 @@ pub fn sanitization() -> Result<(), String> {
         }
         for planted in [
             ["W", "1", "ABC"].concat(),
+            ["4X", "1", "ABC"].concat(),
             ["contact", "example.invalid"].join("@"),
             ["node", "internal"].join("."),
         ] {
@@ -561,6 +644,18 @@ pub fn sanitization() -> Result<(), String> {
                 return Err(format!("inline planted fixture accepted: {path}"));
             }
         }
+    }
+    let planted = ["4X", "1", "ABC"].concat();
+    let wire = format!("DX de {planted}: 14025 Q2ABC CQ 1832Z");
+    let fixture = crate::generate::vector(
+        "planted-digit-initial",
+        "dxspider",
+        wire.as_bytes(),
+        "lf",
+        None,
+    );
+    if vector_sanitized(&fixture) {
+        return Err("planted digit-initial wire/structured fixture accepted".into());
     }
     for file in paths {
         let s = fs::read_to_string(&file).map_err(|e| e.to_string())?;
@@ -647,6 +742,84 @@ pub fn seed_fuzz() -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn sanitization_rejects_digit_initial_calls_and_identity_field_mutations() {
+        // QGDXC-SEC-0006
+        let planted = ["4X", "1", "ABC"].concat();
+        let line = format!("DX de {planted}: 14025 Q2ABC CQ 1832Z");
+        let v = crate::generate::vector(
+            "planted-digit-initial",
+            "dxspider",
+            line.as_bytes(),
+            "lf",
+            None,
+        );
+        // The generator independently changes both wire input and expected fields.
+        assert_eq!(
+            v["expected_events"][0]["event"]["fields"]["spotter_call"],
+            planted
+        );
+        assert!(!vector_sanitized(&v));
+        assert!(!text_sanitized(&planted));
+        for call in [
+            ["3D", "2", "ABC"].concat(),
+            ["3DA", "0", "ABC"].concat(),
+            planted.to_ascii_lowercase(),
+        ] {
+            assert!(!text_sanitized(&call));
+        }
+        let path = Path::new("crates/qso-graph-dxcluster-cli/src/recording.rs");
+        for key in [
+            "identity",
+            "call",
+            "spotter_call",
+            "from_call",
+            "to_call",
+            "via_call",
+            "origin",
+        ] {
+            for value in [&planted, "RELAY"] {
+                let source = format!("let fixture = json!({{\"{key}\":\"{value}\"}});");
+                assert!(!public_file_sanitized(path, &source));
+            }
+        }
+
+        let base = crate::generate::vector(
+            "identity-fields",
+            "dxspider",
+            b"DX de Q1ABC: 14025 Q2ABC CQ 1832Z",
+            "lf",
+            None,
+        );
+        assert!(vector_sanitized(&base));
+        for key in [
+            "identity",
+            "call",
+            "spotter_call",
+            "from_call",
+            "to_call",
+            "via_call",
+            "origin",
+            "slot_08",
+            "slot_09",
+        ] {
+            for bad in [&planted, "RELAY", "123"] {
+                let mut v = base.clone();
+                v["expected_events"][0]["event"]["fields"][key] = serde_json::json!(bad);
+                assert!(!vector_sanitized(&v), "accepted {key}");
+            }
+        }
+        for v in crate::scenarios::vectors() {
+            assert!(vector_sanitized(&v), "{}", v["id"]);
+        }
+        let mut lexical =
+            crate::generate::vector("lexical-0", "arcluster", b"DX de !: 1 ! 0000Z", "lf", None);
+        assert!(vector_sanitized(&lexical));
+        lexical["expected_events"][0]["event"]["fields"]["call"] = serde_json::json!(planted);
+        assert!(!vector_sanitized(&lexical));
+        lexical["expected_events"][0]["event"]["fields"]["call"] = serde_json::json!("123");
+        assert!(!vector_sanitized(&lexical));
+    }
     #[test]
     fn checks_reject_mutations() {
         // QGDXC-SEC-0004 QGDXC-SEC-0006

@@ -59,6 +59,22 @@ fn role_ranges(s: &str, p: &str) -> Vec<(usize, usize)> {
             }
         }
     }
+    if p == "cccluster" && s.starts_with("To ALL de ") {
+        let rest = &s[10..];
+        if let Some((header, _)) = rest.split_once(':') {
+            let mut ranges = vec![];
+            let mut offset = 10;
+            for token in header.split_inclusive(' ') {
+                let value = token.trim_matches([' ', '<', '>']);
+                if !value.is_empty() {
+                    let start = offset + token.find(value).unwrap();
+                    ranges.push((start, start + value.len()));
+                }
+                offset += token.len();
+            }
+            return ranges;
+        }
+    }
     if s.starts_with("CC11^") {
         let f: Vec<_> = s.split('^').collect();
         let positions = if p == "dxspider" && f.len() >= 20 {

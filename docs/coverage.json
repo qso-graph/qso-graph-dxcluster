@@ -679,6 +679,10 @@
         {
           "file": "xtask/src/checks.rs",
           "name": "checks_reject_mutations"
+        },
+        {
+          "file": "xtask/src/checks.rs",
+          "name": "sanitization_rejects_digit_initial_calls_and_identity_field_mutations"
         }
       ],
       "vectors": []
