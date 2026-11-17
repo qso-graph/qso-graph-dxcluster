@@ -1,0 +1,11 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+[package]
+name = "qso-graph-dxcluster"
+description = "Receive-only sans-I/O DX cluster and RBN session engine"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+[lints]
+workspace = true

@@ -75,7 +75,7 @@ configured supported recognizer or the core setup-failure outcome.
 
 | ID | Requirement | Verify |
 |---|---|---|
-| `QGDXC-DSP-0004` | Each new DXSpider login MUST execute the B.2 sequence once. The caller-generated token MUST consist of `QGDXC` plus 16 uppercase hexadecimal digits, be different for each attempt, and contain no escapes or whitespace. Readiness MUST require the exact token-only received line after the echo command, followed by the full ready prompt; an echoed `echo <token>` command line is insufficient. | Test |
+| `QGDXC-DSP-0004` | Each new DXSpider login MUST execute the B.2 sequence once. The caller-generated token MUST consist of `QGDXC` plus 16 uppercase hexadecimal digits, be different for each attempt, and contain no escapes or whitespace. The engine MUST request a caller-supplied token when each attempt starts, retaining only its current token, with no preallocated pool. Live adapters MUST obtain fresh OS randomness for each token and ensure uniqueness across attempts without retaining token history; deterministic harnesses MUST supply each token explicitly. Readiness MUST require the exact token-only received line after the echo command, followed by the full ready prompt; an echoed `echo <token>` command line is insufficient. | Test |
 
 The first three commands and echo are source-backed but were not exercised in
 these captures. `set/ve7cc` succeeds in capture `dxspider-wa9pie-2.ndjson`, records

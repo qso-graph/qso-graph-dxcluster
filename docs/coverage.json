@@ -1,0 +1,1727 @@
+{
+  "SPDX-License-Identifier": "GPL-3.0-or-later",
+  "requirements": {
+    "QGDXC-ARC-0001": {
+      "tests": [
+        {
+          "file": "crates/qso-graph-dxcluster/tests/session.rs",
+          "name": "passive_profiles_and_duplicate_login"
+        }
+      ],
+      "vectors": [
+        "overlong-ar-banner-no-profile-evidence"
+      ]
+    },
+    "QGDXC-ARC-0002": {
+      "tests": [
+        {
+          "file": "crates/qso-graph-dxcluster/tests/session.rs",
+          "name": "passive_profiles_and_duplicate_login"
+        }
+      ],
+      "vectors": []
+    },
+    "QGDXC-ARC-0003": {
+      "tests": [
+        {
+          "file": "crates/qso-graph-dxcluster/tests/protocol.rs",
+          "name": "common_spots_and_dispatch"
+        }
+      ],
+      "vectors": []
+    },
+    "QGDXC-ARC-0004": {
+      "tests": [
+        {
+          "file": "crates/qso-graph-dxcluster/tests/protocol.rs",
+          "name": "nonspot_layouts"
+        }
+      ],
+      "vectors": []
+    },
+    "QGDXC-ARC-0005": {
+      "tests": [
+        {
+          "file": "crates/qso-graph-dxcluster/tests/protocol.rs",
+          "name": "nonspot_layouts"
+        }
+      ],
+      "vectors": []
+    },
+    "QGDXC-CCC-0001": {
+      "tests": [
+        {
+          "file": "crates/qso-graph-dxcluster/tests/session.rs",
+          "name": "cc_paced_deadline"
+        }
+      ],
+      "vectors": []
+    },
+    "QGDXC-CCC-0002": {
+      "tests": [
+        {
+          "file": "crates/qso-graph-dxcluster/tests/session.rs",
+          "name": "cc_paced_deadline"
+        }
+      ],
+      "vectors": []
+    },
+    "QGDXC-CCC-0003": {
+      "tests": [
+        {
+          "file": "crates/qso-graph-dxcluster/tests/protocol.rs",
+          "name": "common_spots_and_dispatch"
+        }
+      ],
+      "vectors": []
+    },
+    "QGDXC-CCC-0004": {
+      "tests": [
+        {
+          "file": "crates/qso-graph-dxcluster/tests/protocol.rs",
+          "name": "enhanced_and_rbn"
+        }
+      ],
+      "vectors": []
+    },
+    "QGDXC-CCC-0005": {
+      "tests": [
+        {
+          "file": "crates/qso-graph-dxcluster/tests/protocol.rs",
+          "name": "nonspot_layouts"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster/tests/protocol.rs",
+          "name": "unsupported_cccluster_weather_and_propagation"
+        }
+      ],
+      "vectors": []
+    },
+    "QGDXC-DSP-0001": {
+      "tests": [
+        {
+          "file": "crates/qso-graph-dxcluster/tests/session.rs",
+          "name": "passive_profiles_and_duplicate_login"
+        }
+      ],
+      "vectors": []
+    },
+    "QGDXC-DSP-0002": {
+      "tests": [
+        {
+          "file": "crates/qso-graph-dxcluster/tests/session.rs",
+          "name": "dxspider_startup_and_custom_prompt"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster/tests/session.rs",
+          "name": "silence_uses_application_bytes_and_custom_context"
+        }
+      ],
+      "vectors": []
+    },
+    "QGDXC-DSP-0003": {
+      "tests": [
+        {
+          "file": "crates/qso-graph-dxcluster/tests/session.rs",
+          "name": "failures_latch_flush_and_cancel"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster/tests/session.rs",
+          "name": "relayed_and_incomplete_status_text_cannot_end_sessions"
+        }
+      ],
+      "vectors": [
+        "relayed-displacement-announcement",
+        "relayed-displacement-talk",
+        "relayed-refusal-announcement",
+        "relayed-refusal-talk",
+        "truncated-displacement-prefix"
+      ]
+    },
+    "QGDXC-DSP-0004": {
+      "tests": [
+        {
+          "file": "crates/qso-graph-dxcluster/tests/session.rs",
+          "name": "dxspider_startup_and_custom_prompt"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster/tests/session.rs",
+          "name": "stable_reconnects_continue_beyond_1024_attempts"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster/src/session.rs",
+          "name": "reconnect_resource_storage_stays_flat"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/main.rs",
+          "name": "fresh_os_entropy_and_unique_tokens_without_history"
+        },
+        {
+          "file": "xtask/src/runner.rs",
+          "name": "vector_attempt_requests_require_explicit_resources"
+        }
+      ],
+      "vectors": []
+    },
+    "QGDXC-DSP-0005": {
+      "tests": [
+        {
+          "file": "crates/qso-graph-dxcluster/tests/protocol.rs",
+          "name": "common_spots_and_dispatch"
+        }
+      ],
+      "vectors": []
+    },
+    "QGDXC-DSP-0006": {
+      "tests": [
+        {
+          "file": "crates/qso-graph-dxcluster/tests/protocol.rs",
+          "name": "enhanced_and_rbn"
+        }
+      ],
+      "vectors": []
+    },
+    "QGDXC-DSP-0007": {
+      "tests": [
+        {
+          "file": "crates/qso-graph-dxcluster/tests/protocol.rs",
+          "name": "common_spots_and_dispatch"
+        }
+      ],
+      "vectors": []
+    },
+    "QGDXC-DSP-0008": {
+      "tests": [
+        {
+          "file": "crates/qso-graph-dxcluster/tests/protocol.rs",
+          "name": "nonspot_layouts"
+        }
+      ],
+      "vectors": []
+    },
+    "QGDXC-DSP-0009": {
+      "tests": [
+        {
+          "file": "crates/qso-graph-dxcluster/tests/session.rs",
+          "name": "failures_latch_flush_and_cancel"
+        }
+      ],
+      "vectors": []
+    },
+    "QGDXC-DX-0001": {
+      "tests": [
+        {
+          "file": "crates/qso-graph-dxcluster/tests/protocol.rs",
+          "name": "common_spots_and_dispatch"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster/tests/protocol.rs",
+          "name": "live_spot_requires_space_after_colon"
+        }
+      ],
+      "vectors": [
+        "manual-missing-colon-space"
+      ]
+    },
+    "QGDXC-DX-0002": {
+      "tests": [
+        {
+          "file": "crates/qso-graph-dxcluster/tests/protocol.rs",
+          "name": "exact_values_and_identity"
+        }
+      ],
+      "vectors": []
+    },
+    "QGDXC-DX-0003": {
+      "tests": [
+        {
+          "file": "crates/qso-graph-dxcluster/tests/protocol.rs",
+          "name": "common_spots_and_dispatch"
+        }
+      ],
+      "vectors": []
+    },
+    "QGDXC-DX-0004": {
+      "tests": [
+        {
+          "file": "crates/qso-graph-dxcluster/tests/protocol.rs",
+          "name": "common_spots_and_dispatch"
+        }
+      ],
+      "vectors": []
+    },
+    "QGDXC-DX-0005": {
+      "tests": [
+        {
+          "file": "crates/qso-graph-dxcluster/tests/protocol.rs",
+          "name": "common_spots_and_dispatch"
+        }
+      ],
+      "vectors": []
+    },
+    "QGDXC-DX-0006": {
+      "tests": [
+        {
+          "file": "crates/qso-graph-dxcluster/tests/protocol.rs",
+          "name": "common_spots_and_dispatch"
+        }
+      ],
+      "vectors": []
+    },
+    "QGDXC-EVT-0001": {
+      "tests": [
+        {
+          "file": "crates/qso-graph-dxcluster/tests/protocol.rs",
+          "name": "common_spots_and_dispatch"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster/tests/protocol.rs",
+          "name": "arbitrary_bytes_and_receipt_times"
+        }
+      ],
+      "vectors": []
+    },
+    "QGDXC-EVT-0002": {
+      "tests": [
+        {
+          "file": "crates/qso-graph-dxcluster/tests/session.rs",
+          "name": "passive_profiles_and_duplicate_login"
+        }
+      ],
+      "vectors": []
+    },
+    "QGDXC-EVT-0003": {
+      "tests": [
+        {
+          "file": "crates/qso-graph-dxcluster/tests/protocol.rs",
+          "name": "common_spots_and_dispatch"
+        }
+      ],
+      "vectors": []
+    },
+    "QGDXC-EVT-0004": {
+      "tests": [
+        {
+          "file": "crates/qso-graph-dxcluster/tests/protocol.rs",
+          "name": "common_spots_and_dispatch"
+        }
+      ],
+      "vectors": []
+    },
+    "QGDXC-EVT-0005": {
+      "tests": [
+        {
+          "file": "crates/qso-graph-dxcluster/tests/protocol.rs",
+          "name": "exact_values_and_identity"
+        }
+      ],
+      "vectors": []
+    },
+    "QGDXC-EVT-0006": {
+      "tests": [
+        {
+          "file": "crates/qso-graph-dxcluster/tests/protocol.rs",
+          "name": "common_spots_and_dispatch"
+        }
+      ],
+      "vectors": []
+    },
+    "QGDXC-EVT-0007": {
+      "tests": [
+        {
+          "file": "crates/qso-graph-dxcluster/tests/protocol.rs",
+          "name": "enhanced_and_rbn"
+        }
+      ],
+      "vectors": []
+    },
+    "QGDXC-EVT-0008": {
+      "tests": [
+        {
+          "file": "crates/qso-graph-dxcluster/tests/protocol.rs",
+          "name": "nonspot_layouts"
+        }
+      ],
+      "vectors": []
+    },
+    "QGDXC-EVT-0009": {
+      "tests": [
+        {
+          "file": "crates/qso-graph-dxcluster/tests/protocol.rs",
+          "name": "exact_values_and_identity"
+        }
+      ],
+      "vectors": []
+    },
+    "QGDXC-EVT-0010": {
+      "tests": [
+        {
+          "file": "crates/qso-graph-dxcluster/tests/protocol.rs",
+          "name": "common_spots_and_dispatch"
+        }
+      ],
+      "vectors": [
+        "overlong-ar-banner-no-profile-evidence"
+      ]
+    },
+    "QGDXC-FRM-0001": {
+      "tests": [
+        {
+          "file": "crates/qso-graph-dxcluster/tests/protocol.rs",
+          "name": "delimiters_bounds_and_encoding"
+        }
+      ],
+      "vectors": []
+    },
+    "QGDXC-FRM-0002": {
+      "tests": [
+        {
+          "file": "crates/qso-graph-dxcluster/tests/protocol.rs",
+          "name": "delimiters_bounds_and_encoding"
+        }
+      ],
+      "vectors": []
+    },
+    "QGDXC-FRM-0003": {
+      "tests": [
+        {
+          "file": "crates/qso-graph-dxcluster/tests/protocol.rs",
+          "name": "delimiters_bounds_and_encoding"
+        }
+      ],
+      "vectors": []
+    },
+    "QGDXC-FRM-0004": {
+      "tests": [
+        {
+          "file": "crates/qso-graph-dxcluster/tests/session.rs",
+          "name": "passive_profiles_and_duplicate_login"
+        }
+      ],
+      "vectors": []
+    },
+    "QGDXC-FRM-0005": {
+      "tests": [
+        {
+          "file": "crates/qso-graph-dxcluster/tests/protocol.rs",
+          "name": "delimiters_bounds_and_encoding"
+        }
+      ],
+      "vectors": []
+    },
+    "QGDXC-FRM-0006": {
+      "tests": [
+        {
+          "file": "crates/qso-graph-dxcluster/tests/protocol.rs",
+          "name": "delimiters_bounds_and_encoding"
+        }
+      ],
+      "vectors": []
+    },
+    "QGDXC-FRM-0007": {
+      "tests": [
+        {
+          "file": "crates/qso-graph-dxcluster/tests/protocol.rs",
+          "name": "delimiters_bounds_and_encoding"
+        }
+      ],
+      "vectors": []
+    },
+    "QGDXC-FRM-0008": {
+      "tests": [
+        {
+          "file": "crates/qso-graph-dxcluster/tests/protocol.rs",
+          "name": "telnet_all_branches_and_bounds"
+        }
+      ],
+      "vectors": []
+    },
+    "QGDXC-GEN-0001": {
+      "tests": [],
+      "vectors": []
+    },
+    "QGDXC-GEN-0002": {
+      "tests": [],
+      "vectors": []
+    },
+    "QGDXC-GEN-0003": {
+      "tests": [],
+      "vectors": []
+    },
+    "QGDXC-GEN-0004": {
+      "tests": [],
+      "vectors": []
+    },
+    "QGDXC-GEN-0005": {
+      "tests": [],
+      "vectors": []
+    },
+    "QGDXC-IO-0001": {
+      "tests": [
+        {
+          "file": "xtask/src/checks.rs",
+          "name": "metadata_rejects_dependency_tables_on_every_target"
+        },
+        {
+          "file": "xtask/src/checks.rs",
+          "name": "source_policy_rejects_conditional_module_paths"
+        },
+        {
+          "file": "xtask/src/checks.rs",
+          "name": "dep_info_rejects_compiled_external_module_and_symlink"
+        },
+        {
+          "file": "xtask/src/checks.rs",
+          "name": "dep_info_reads_escaped_paths_and_ignores_phony_rules"
+        }
+      ],
+      "vectors": []
+    },
+    "QGDXC-IO-0002": {
+      "tests": [
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/main.rs",
+          "name": "help_leads_with_purpose"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/main.rs",
+          "name": "live_deadline_closes_transport_while_rendering_is_stalled"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/output.rs",
+          "name": "cancellation_during_a_stalled_drain_has_a_deadline"
+        }
+      ],
+      "vectors": []
+    },
+    "QGDXC-IO-0003": {
+      "tests": [
+        {
+          "file": "crates/qso-graph-dxcluster/tests/protocol.rs",
+          "name": "exact_values_and_identity"
+        }
+      ],
+      "vectors": []
+    },
+    "QGDXC-IO-0004": {
+      "tests": [
+        {
+          "file": "crates/qso-graph-dxcluster/tests/session.rs",
+          "name": "retries_stability_and_restart"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster/tests/session.rs",
+          "name": "silence_uses_application_bytes_and_custom_context"
+        }
+      ],
+      "vectors": []
+    },
+    "QGDXC-IO-0005": {
+      "tests": [
+        {
+          "file": "crates/qso-graph-dxcluster/tests/protocol.rs",
+          "name": "arbitrary_bytes_and_receipt_times"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster/tests/session.rs",
+          "name": "retries_stability_and_restart"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/output.rs",
+          "name": "bounded_queue_resumes_without_losing_admitted_lines"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/main.rs",
+          "name": "library_and_live_drain_one_mib_under_memory_ceiling",
+          "platform": "linux"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/recording.rs",
+          "name": "replay_drains_one_mib_under_memory_ceiling",
+          "platform": "linux"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster/tests/session.rs",
+          "name": "chunk_admission_drains_with_split_invariant_events_and_actions"
+        }
+      ],
+      "vectors": []
+    },
+    "QGDXC-IO-0006": {
+      "tests": [
+        {
+          "file": "crates/qso-graph-dxcluster/tests/protocol.rs",
+          "name": "exact_values_and_identity"
+        }
+      ],
+      "vectors": []
+    },
+    "QGDXC-RBN-0001": {
+      "tests": [
+        {
+          "file": "crates/qso-graph-dxcluster/tests/session.rs",
+          "name": "passive_profiles_and_duplicate_login"
+        }
+      ],
+      "vectors": []
+    },
+    "QGDXC-RBN-0002": {
+      "tests": [
+        {
+          "file": "crates/qso-graph-dxcluster/tests/protocol.rs",
+          "name": "common_spots_and_dispatch"
+        }
+      ],
+      "vectors": []
+    },
+    "QGDXC-RBN-0003": {
+      "tests": [
+        {
+          "file": "crates/qso-graph-dxcluster/tests/protocol.rs",
+          "name": "enhanced_and_rbn"
+        }
+      ],
+      "vectors": []
+    },
+    "QGDXC-RBN-0004": {
+      "tests": [
+        {
+          "file": "crates/qso-graph-dxcluster/tests/protocol.rs",
+          "name": "enhanced_and_rbn"
+        }
+      ],
+      "vectors": []
+    },
+    "QGDXC-RBN-0005": {
+      "tests": [
+        {
+          "file": "crates/qso-graph-dxcluster/tests/protocol.rs",
+          "name": "enhanced_and_rbn"
+        }
+      ],
+      "vectors": []
+    },
+    "QGDXC-REC-0001": {
+      "tests": [
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/recording.rs",
+          "name": "recording_boundaries_and_replay"
+        }
+      ],
+      "vectors": []
+    },
+    "QGDXC-REC-0002": {
+      "tests": [
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/recording.rs",
+          "name": "recording_boundaries_and_replay"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster-cli/tests/rendering.rs",
+          "name": "replay_redacts_notes_and_events_in_both_output_formats"
+        }
+      ],
+      "vectors": []
+    },
+    "QGDXC-REC-0003": {
+      "tests": [
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/recording.rs",
+          "name": "recording_boundaries_and_replay"
+        }
+      ],
+      "vectors": []
+    },
+    "QGDXC-REC-0004": {
+      "tests": [
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/recording.rs",
+          "name": "recording_boundaries_and_replay"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/recording.rs",
+          "name": "replay_uses_last_outbound_fragment_for_admission"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/recording.rs",
+          "name": "replay_waits_for_delayed_login_completion"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/recording.rs",
+          "name": "replay_boundaries_own_attempts_and_delayed_termination"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/recording.rs",
+          "name": "replay_defers_received_termination_until_recorded_close"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/recording.rs",
+          "name": "replay_preserves_automatic_retry_history_through_exhaustion"
+        },
+        {
+          "file": "xtask/src/runner.rs",
+          "name": "replay_gate_compares_connection_state_and_retry_delays"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/recording.rs",
+          "name": "replay_stream_looks_up_fragmented_tokens_only_in_the_current_connection"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/recording.rs",
+          "name": "replay_stream_missing_token_does_not_borrow_from_the_next_connection"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/recording.rs",
+          "name": "replay_stream_caps_lookahead_and_does_not_search_for_passive_profiles"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/recording.rs",
+          "name": "replay_drains_one_mib_under_memory_ceiling",
+          "platform": "linux"
+        }
+      ],
+      "vectors": [
+        "application-replay-retry-exhaustion"
+      ]
+    },
+    "QGDXC-REC-0005": {
+      "tests": [
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/recording.rs",
+          "name": "recording_boundaries_and_replay"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/recording.rs",
+          "name": "replay_boundaries_own_attempts_and_delayed_termination"
+        }
+      ],
+      "vectors": []
+    },
+    "QGDXC-SEC-0001": {
+      "tests": [
+        {
+          "file": "crates/qso-graph-dxcluster/tests/protocol.rs",
+          "name": "telnet_all_branches_and_bounds"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster/tests/protocol.rs",
+          "name": "arbitrary_bytes_and_receipt_times"
+        },
+        {
+          "file": "xtask/src/checks.rs",
+          "name": "hostile_ip_runs_have_bounded_processing"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster/tests/session.rs",
+          "name": "stable_reconnects_continue_beyond_1024_attempts"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster/src/session.rs",
+          "name": "reconnect_resource_storage_stays_flat"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/recording.rs",
+          "name": "replay_stream_looks_up_fragmented_tokens_only_in_the_current_connection"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/recording.rs",
+          "name": "replay_stream_missing_token_does_not_borrow_from_the_next_connection"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/recording.rs",
+          "name": "replay_stream_caps_lookahead_and_does_not_search_for_passive_profiles"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/bounded.rs",
+          "name": "physical_records_stop_reading_at_the_byte_cap"
+        },
+        {
+          "file": "xtask/src/generate.rs",
+          "name": "capture_frame_provenance_caps_only_contributing_records"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/main.rs",
+          "name": "library_and_live_drain_one_mib_under_memory_ceiling",
+          "platform": "linux"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/recording.rs",
+          "name": "replay_drains_one_mib_under_memory_ceiling",
+          "platform": "linux"
+        }
+      ],
+      "vectors": []
+    },
+    "QGDXC-SEC-0002": {
+      "tests": [
+        {
+          "file": "crates/qso-graph-dxcluster/tests/session.rs",
+          "name": "dxspider_startup_and_custom_prompt"
+        }
+      ],
+      "vectors": []
+    },
+    "QGDXC-SEC-0003": {
+      "tests": [
+        {
+          "file": "crates/qso-graph-dxcluster/tests/protocol.rs",
+          "name": "privacy_and_terminal"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster-cli/tests/rendering.rs",
+          "name": "replay_redacts_notes_and_events_in_both_output_formats"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/main.rs",
+          "name": "diagnostics_share_event_privacy_and_control_escaping"
+        }
+      ],
+      "vectors": []
+    },
+    "QGDXC-SEC-0004": {
+      "tests": [
+        {
+          "file": "xtask/src/checks.rs",
+          "name": "checks_reject_mutations"
+        }
+      ],
+      "vectors": []
+    },
+    "QGDXC-SEC-0005": {
+      "tests": [
+        {
+          "file": "crates/qso-graph-dxcluster/tests/protocol.rs",
+          "name": "privacy_and_terminal"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster/tests/protocol.rs",
+          "name": "unsupported_cc11_privacy_is_profile_independent"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster-cli/tests/rendering.rs",
+          "name": "replay_redacts_notes_and_events_in_both_output_formats"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/main.rs",
+          "name": "diagnostics_share_event_privacy_and_control_escaping"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster/tests/protocol.rs",
+          "name": "privacy_redacts_punctuated_and_labeled_addresses_in_all_views"
+        },
+        {
+          "file": "xtask/src/addresses.rs",
+          "name": "independent_runtime_scanner_matches_public_scanner_at_boundaries"
+        },
+        {
+          "file": "xtask/src/generate.rs",
+          "name": "export_privacy_redacts_boundary_candidates"
+        }
+      ],
+      "vectors": []
+    },
+    "QGDXC-SEC-0006": {
+      "tests": [
+        {
+          "file": "xtask/src/checks.rs",
+          "name": "checks_reject_mutations"
+        },
+        {
+          "file": "xtask/src/checks.rs",
+          "name": "sanitization_rejects_digit_initial_calls_and_identity_field_mutations"
+        },
+        {
+          "file": "xtask/src/checks.rs",
+          "name": "sanitization_rejects_punctuated_addresses_in_prose_and_decoded_fixtures"
+        },
+        {
+          "file": "xtask/src/checks.rs",
+          "name": "sanitization_rejects_labeled_ipv6_in_prose_and_decoded_fixture"
+        },
+        {
+          "file": "xtask/src/generate.rs",
+          "name": "publication_validates_all_files_before_writing_anything"
+        },
+        {
+          "file": "xtask/tests/capture_export.rs",
+          "name": "capture_export_redacts_boundaries_and_validates_before_publication"
+        }
+      ],
+      "vectors": []
+    },
+    "QGDXC-SES-0001": {
+      "tests": [
+        {
+          "file": "crates/qso-graph-dxcluster/tests/session.rs",
+          "name": "passive_profiles_and_duplicate_login"
+        }
+      ],
+      "vectors": []
+    },
+    "QGDXC-SES-0002": {
+      "tests": [
+        {
+          "file": "crates/qso-graph-dxcluster/tests/session.rs",
+          "name": "passive_profiles_and_duplicate_login"
+        }
+      ],
+      "vectors": []
+    },
+    "QGDXC-SES-0003": {
+      "tests": [
+        {
+          "file": "crates/qso-graph-dxcluster/tests/session.rs",
+          "name": "failures_latch_flush_and_cancel"
+        }
+      ],
+      "vectors": []
+    },
+    "QGDXC-SES-0004": {
+      "tests": [
+        {
+          "file": "crates/qso-graph-dxcluster/tests/session.rs",
+          "name": "passive_profiles_and_duplicate_login"
+        }
+      ],
+      "vectors": [
+        "overlong-ar-banner-no-profile-evidence"
+      ]
+    },
+    "QGDXC-SES-0005": {
+      "tests": [
+        {
+          "file": "crates/qso-graph-dxcluster/tests/session.rs",
+          "name": "passive_profiles_and_duplicate_login"
+        }
+      ],
+      "vectors": []
+    },
+    "QGDXC-SES-0006": {
+      "tests": [
+        {
+          "file": "crates/qso-graph-dxcluster/tests/session.rs",
+          "name": "passive_profiles_and_duplicate_login"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster/tests/session.rs",
+          "name": "dxspider_startup_and_custom_prompt"
+        }
+      ],
+      "vectors": []
+    },
+    "QGDXC-SES-0007": {
+      "tests": [
+        {
+          "file": "crates/qso-graph-dxcluster/tests/session.rs",
+          "name": "cc_paced_deadline"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster/tests/session.rs",
+          "name": "delayed_transport_admission_controls_pacing_and_reply_deadlines"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/recording.rs",
+          "name": "replay_uses_last_outbound_fragment_for_admission"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/recording.rs",
+          "name": "replay_waits_for_delayed_login_completion"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/main.rs",
+          "name": "sequential_address_fallback_survives_a_blackhole"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/main.rs",
+          "name": "address_budgets_respect_minimum_and_overall_deadline"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/main.rs",
+          "name": "address_budget_redistributes_unused_time_and_honors_cancellation"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster/tests/session.rs",
+          "name": "setup_errors_require_complete_classified_status"
+        }
+      ],
+      "vectors": []
+    },
+    "QGDXC-SES-0008": {
+      "tests": [
+        {
+          "file": "crates/qso-graph-dxcluster/tests/session.rs",
+          "name": "retries_stability_and_restart"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster/tests/session.rs",
+          "name": "silence_uses_application_bytes_and_custom_context"
+        }
+      ],
+      "vectors": []
+    },
+    "QGDXC-SES-0009": {
+      "tests": [
+        {
+          "file": "crates/qso-graph-dxcluster/tests/session.rs",
+          "name": "retries_stability_and_restart"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/recording.rs",
+          "name": "replay_boundaries_own_attempts_and_delayed_termination"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/main.rs",
+          "name": "sequential_address_fallback_survives_a_blackhole"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/main.rs",
+          "name": "address_budgets_respect_minimum_and_overall_deadline"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/main.rs",
+          "name": "address_budget_redistributes_unused_time_and_honors_cancellation"
+        }
+      ],
+      "vectors": []
+    },
+    "QGDXC-SES-0010": {
+      "tests": [
+        {
+          "file": "crates/qso-graph-dxcluster/tests/session.rs",
+          "name": "retries_stability_and_restart"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/recording.rs",
+          "name": "replay_preserves_automatic_retry_history_through_exhaustion"
+        },
+        {
+          "file": "xtask/src/runner.rs",
+          "name": "replay_gate_compares_connection_state_and_retry_delays"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster/tests/session.rs",
+          "name": "stable_reconnects_continue_beyond_1024_attempts"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster/src/session.rs",
+          "name": "reconnect_resource_storage_stays_flat"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/main.rs",
+          "name": "fresh_os_entropy_and_unique_tokens_without_history"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/recording.rs",
+          "name": "replay_stream_looks_up_fragmented_tokens_only_in_the_current_connection"
+        },
+        {
+          "file": "xtask/src/runner.rs",
+          "name": "vector_attempt_requests_require_explicit_resources"
+        }
+      ],
+      "vectors": [
+        "application-replay-retry-exhaustion"
+      ]
+    },
+    "QGDXC-SES-0011": {
+      "tests": [
+        {
+          "file": "crates/qso-graph-dxcluster/tests/session.rs",
+          "name": "cc_paced_deadline"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster/tests/session.rs",
+          "name": "delayed_transport_admission_controls_pacing_and_reply_deadlines"
+        }
+      ],
+      "vectors": [
+        "stricter-spacing",
+        "stricter-window-lines",
+        "stricter-window-duration"
+      ]
+    },
+    "QGDXC-SES-0012": {
+      "tests": [
+        {
+          "file": "crates/qso-graph-dxcluster/tests/session.rs",
+          "name": "failures_latch_flush_and_cancel"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster/tests/session.rs",
+          "name": "relayed_and_incomplete_status_text_cannot_end_sessions"
+        }
+      ],
+      "vectors": [
+        "relayed-displacement-announcement",
+        "relayed-displacement-talk",
+        "relayed-refusal-announcement",
+        "relayed-refusal-talk",
+        "truncated-displacement-prefix"
+      ]
+    },
+    "QGDXC-SES-0013": {
+      "tests": [
+        {
+          "file": "crates/qso-graph-dxcluster/tests/session.rs",
+          "name": "failures_latch_flush_and_cancel"
+        }
+      ],
+      "vectors": []
+    },
+    "QGDXC-SES-0014": {
+      "tests": [
+        {
+          "file": "crates/qso-graph-dxcluster/tests/session.rs",
+          "name": "failures_latch_flush_and_cancel"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/recording.rs",
+          "name": "replay_defers_received_termination_until_recorded_close"
+        }
+      ],
+      "vectors": []
+    },
+    "QGDXC-VEC-0001": {
+      "tests": [
+        {
+          "file": "xtask/src/generate.rs",
+          "name": "capture_frame_provenance_caps_only_contributing_records"
+        }
+      ],
+      "vectors": [
+        "synthetic-dxspider-spot"
+      ]
+    },
+    "QGDXC-VEC-0002": {
+      "tests": [
+        {
+          "file": "crates/qso-graph-dxcluster/tests/protocol.rs",
+          "name": "telnet_all_branches_and_bounds"
+        }
+      ],
+      "vectors": [
+        "telnet-exact-sb"
+      ]
+    },
+    "QGDXC-VEC-0003": {
+      "tests": [
+        {
+          "file": "crates/qso-graph-dxcluster/tests/session.rs",
+          "name": "cc_paced_deadline"
+        }
+      ],
+      "vectors": [
+        "eight-retries-exhausted"
+      ]
+    },
+    "QGDXC-VEC-0004": {
+      "tests": [],
+      "vectors": []
+    },
+    "QGDXC-VEC-0005": {
+      "tests": [
+        {
+          "file": "xtask/src/runner.rs",
+          "name": "independent_oracles_reject_mutated_expectations"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster/tests/session.rs",
+          "name": "chunk_admission_drains_with_split_invariant_events_and_actions"
+        }
+      ],
+      "vectors": [
+        "synthetic-dxspider-spot"
+      ]
+    },
+    "QGDXC-VEC-0006": {
+      "tests": [
+        {
+          "file": "xtask/src/runner.rs",
+          "name": "independent_oracles_reject_mutated_expectations"
+        },
+        {
+          "file": "xtask/src/runner.rs",
+          "name": "vector_configuration_rejects_unknown_or_invalid_members"
+        },
+        {
+          "file": "xtask/src/runner.rs",
+          "name": "pacing_mutation_invalidates_old_expectations"
+        },
+        {
+          "file": "xtask/src/runner.rs",
+          "name": "stricter_pacing_vectors_apply_configuration"
+        },
+        {
+          "file": "xtask/src/runner.rs",
+          "name": "vector_attempt_requests_require_explicit_resources"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster/tests/session.rs",
+          "name": "chunk_admission_drains_with_split_invariant_events_and_actions"
+        }
+      ],
+      "vectors": [
+        "startup-dxspider-dxspider",
+        "stricter-spacing",
+        "stricter-window-lines",
+        "stricter-window-duration"
+      ]
+    }
+  },
+  "scenarios": {
+    "application": [
+      "application-recording-replay-multiple-connections"
+    ],
+    "before": [
+      "before-identification-auto",
+      "before-identification-dxspider",
+      "before-identification-arcluster",
+      "before-identification-cccluster",
+      "before-identification-rbn"
+    ],
+    "cancel": [
+      "cancel-at-retry-deadline",
+      "cancel-flush-7",
+      "cancel-flush-8"
+    ],
+    "captured": [
+      "captured-0000",
+      "captured-0001",
+      "captured-0002",
+      "captured-0003",
+      "captured-0004",
+      "captured-0005",
+      "captured-0006",
+      "captured-0007",
+      "captured-0008",
+      "captured-0009",
+      "captured-0010",
+      "captured-0011",
+      "captured-0012",
+      "captured-0013",
+      "captured-0014",
+      "captured-0015",
+      "captured-0016",
+      "captured-0017",
+      "captured-0018",
+      "captured-0019",
+      "captured-0020",
+      "captured-0021",
+      "captured-0022",
+      "captured-0023",
+      "captured-0024",
+      "captured-0025",
+      "captured-0026",
+      "captured-0027",
+      "captured-0028",
+      "captured-0029",
+      "captured-0030",
+      "captured-0031",
+      "captured-0032",
+      "captured-0033",
+      "captured-0034",
+      "captured-0035",
+      "captured-0036",
+      "captured-0037",
+      "captured-0038",
+      "captured-0039",
+      "captured-0040",
+      "captured-0041",
+      "captured-0042",
+      "captured-0043",
+      "captured-0044",
+      "captured-0045",
+      "captured-0046",
+      "captured-0047",
+      "captured-0048",
+      "captured-0049",
+      "captured-0050",
+      "captured-0051",
+      "captured-0052",
+      "captured-0053",
+      "captured-0054",
+      "captured-0055",
+      "captured-0056",
+      "captured-0057",
+      "captured-0058",
+      "captured-0059",
+      "captured-0060",
+      "captured-0061",
+      "captured-0062",
+      "captured-0063",
+      "captured-0064",
+      "captured-0065",
+      "captured-0066",
+      "captured-0067",
+      "captured-0068",
+      "captured-0069",
+      "captured-0070",
+      "captured-0071",
+      "captured-0072",
+      "captured-0073",
+      "captured-0074",
+      "captured-0075",
+      "captured-0076",
+      "captured-0077",
+      "captured-0078",
+      "captured-0079",
+      "captured-0080",
+      "captured-0081",
+      "captured-0082",
+      "captured-0083",
+      "captured-0084",
+      "captured-0085",
+      "captured-0086",
+      "captured-0087",
+      "captured-0088",
+      "captured-0089",
+      "captured-0090",
+      "captured-0091",
+      "captured-0092",
+      "captured-0093",
+      "captured-0094",
+      "captured-0095",
+      "captured-0096",
+      "captured-0097",
+      "captured-0098",
+      "captured-0099",
+      "captured-0100",
+      "captured-0101",
+      "captured-0102",
+      "captured-0103",
+      "captured-0104",
+      "captured-0105",
+      "captured-0106",
+      "captured-0107",
+      "captured-0108",
+      "captured-0109",
+      "captured-0110",
+      "captured-0111",
+      "captured-0112",
+      "captured-0113",
+      "captured-0114",
+      "captured-0115",
+      "captured-0116",
+      "captured-0117",
+      "captured-0118",
+      "captured-0119",
+      "captured-0120",
+      "captured-0121",
+      "captured-0122",
+      "captured-0123",
+      "captured-0124",
+      "captured-0125",
+      "captured-0126",
+      "captured-0127",
+      "captured-0128",
+      "captured-0129",
+      "captured-0130",
+      "captured-0131",
+      "captured-0132",
+      "captured-0133",
+      "captured-0134",
+      "captured-0135",
+      "captured-0136",
+      "captured-0137",
+      "captured-0138",
+      "captured-0139",
+      "captured-0140",
+      "captured-0141",
+      "captured-0142",
+      "captured-0143",
+      "captured-0144",
+      "captured-0145",
+      "captured-0146",
+      "captured-0147",
+      "captured-0148",
+      "captured-0149",
+      "captured-0150",
+      "captured-0151",
+      "captured-0152",
+      "captured-0153",
+      "captured-0154",
+      "captured-0155",
+      "captured-0156",
+      "captured-0157",
+      "captured-0158",
+      "captured-0159",
+      "captured-0160",
+      "captured-0161",
+      "captured-0162",
+      "captured-0163",
+      "captured-0164",
+      "captured-0165",
+      "captured-0166",
+      "captured-0167",
+      "captured-0168",
+      "captured-0169",
+      "captured-0170",
+      "captured-0171",
+      "captured-0172",
+      "captured-0173",
+      "captured-0174",
+      "captured-0175",
+      "captured-0176",
+      "captured-0177",
+      "captured-0178",
+      "captured-0179",
+      "captured-0180",
+      "captured-0181",
+      "captured-0182",
+      "captured-0183",
+      "captured-0184",
+      "captured-0185",
+      "captured-0186",
+      "captured-0187",
+      "captured-0188",
+      "captured-0189",
+      "captured-0190",
+      "captured-0191",
+      "captured-0192",
+      "captured-0193",
+      "captured-0194",
+      "captured-0195",
+      "captured-0196",
+      "captured-0197",
+      "captured-0198",
+      "captured-0199",
+      "captured-0200",
+      "captured-0201",
+      "captured-0202",
+      "captured-0203",
+      "captured-0204",
+      "captured-0205",
+      "captured-0206",
+      "captured-0207",
+      "captured-0208",
+      "captured-0209",
+      "captured-0210",
+      "captured-0211",
+      "captured-0212",
+      "captured-0213",
+      "captured-0214",
+      "captured-0215",
+      "captured-0216",
+      "captured-0217",
+      "captured-0218",
+      "captured-0219",
+      "captured-0220",
+      "captured-0221",
+      "captured-0222",
+      "captured-0223",
+      "captured-0224",
+      "captured-0225",
+      "captured-0226",
+      "captured-0227",
+      "captured-0228",
+      "captured-0229",
+      "captured-0230",
+      "captured-0231",
+      "captured-0232",
+      "captured-0233",
+      "captured-0234",
+      "captured-0235",
+      "captured-0236",
+      "captured-0237",
+      "captured-0238",
+      "captured-0239",
+      "captured-0240",
+      "captured-0241",
+      "captured-0242",
+      "captured-0243"
+    ],
+    "cc11": [
+      "cc11-valid-false",
+      "cc11-valid-true",
+      "cc11-bad-frequency-false",
+      "cc11-bad-frequency-true",
+      "cc11-bad-date-false",
+      "cc11-bad-date-true",
+      "cc11-bad-time-false",
+      "cc11-bad-time-true",
+      "cc11-ip-call-false",
+      "cc11-ip-call-true",
+      "cc11-wrong-count-false",
+      "cc11-wrong-count-true"
+    ],
+    "configured": [
+      "configured-setup-error"
+    ],
+    "deadline": [
+      "deadline-connect",
+      "deadline-login",
+      "deadline-identity",
+      "deadline-login-flush-7",
+      "deadline-login-flush-8",
+      "deadline-identity-flush-7",
+      "deadline-identity-flush-8",
+      "deadline-setup-flush-7",
+      "deadline-setup-flush-8"
+    ],
+    "dispatch": [
+      "dispatch-boundary-0",
+      "dispatch-boundary-1",
+      "dispatch-boundary-2",
+      "dispatch-boundary-3",
+      "dispatch-boundary-4",
+      "dispatch-boundary-5",
+      "dispatch-boundary-6",
+      "dispatch-boundary-7",
+      "dispatch-boundary-8",
+      "dispatch-boundary-9",
+      "dispatch-boundary-10"
+    ],
+    "duplicate": [
+      "duplicate-login"
+    ],
+    "eight": [
+      "eight-retries-exhausted"
+    ],
+    "ending": [
+      "ending-lf",
+      "ending-crlf",
+      "ending-cr",
+      "ending-none"
+    ],
+    "enhanced": [
+      "enhanced-dxspider-145",
+      "enhanced-cccluster-146",
+      "enhanced-dxspider-147",
+      "enhanced-cccluster-148"
+    ],
+    "event": [
+      "event-auto-detection-context"
+    ],
+    "explicit": [
+      "explicit-restart"
+    ],
+    "flush": [
+      "flush-refusal"
+    ],
+    "frequency": [
+      "frequency-0",
+      "frequency-1",
+      "frequency-2",
+      "frequency-3",
+      "frequency-4",
+      "frequency-5",
+      "frequency-6",
+      "frequency-7",
+      "frequency-8",
+      "frequency-9"
+    ],
+    "identity": [
+      "identity-ascii-case"
+    ],
+    "latin1": [
+      "latin1"
+    ],
+    "lexical": [
+      "lexical-0",
+      "lexical-1",
+      "lexical-2",
+      "lexical-3",
+      "lexical-4",
+      "lexical-5",
+      "lexical-6",
+      "lexical-7"
+    ],
+    "line": [
+      "line-limit-recovery"
+    ],
+    "literal": [
+      "literal-custom-prompt"
+    ],
+    "login": [
+      "login-auto-5",
+      "login-auto-23",
+      "login-auto-6",
+      "login-dxspider-5",
+      "login-dxspider-23",
+      "login-dxspider-6",
+      "login-arcluster-5",
+      "login-arcluster-23",
+      "login-arcluster-6",
+      "login-cccluster-5",
+      "login-cccluster-23",
+      "login-cccluster-6",
+      "login-rbn-5",
+      "login-rbn-23",
+      "login-rbn-6"
+    ],
+    "manual": [
+      "manual-missing-colon-space"
+    ],
+    "password": [
+      "password-after-login",
+      "password"
+    ],
+    "privacy": [
+      "privacy-0-false",
+      "privacy-0-true",
+      "privacy-1-false",
+      "privacy-1-true",
+      "privacy-2-false",
+      "privacy-2-true",
+      "privacy-3-false",
+      "privacy-3-true",
+      "privacy-4-false",
+      "privacy-4-true",
+      "privacy-5-false",
+      "privacy-5-true"
+    ],
+    "profile": [
+      "profile-mismatch"
+    ],
+    "rbn": [
+      "rbn-comment-0",
+      "rbn-comment-1",
+      "rbn-comment-2",
+      "rbn-comment-3",
+      "rbn-comment-4",
+      "rbn-comment-5",
+      "rbn-comment-6",
+      "rbn-comment-7",
+      "rbn-comment-8",
+      "rbn-comment-9"
+    ],
+    "ready": [
+      "ready-then-displaced-false",
+      "ready-then-displaced-true"
+    ],
+    "refused": [
+      "refused"
+    ],
+    "reject": [
+      "reject-Q1ABC-0",
+      "reject-Q1ABC-00",
+      "reject-Q1ABC-01",
+      "reject-custom-prompt-18",
+      "reject-custom-prompt-257"
+    ],
+    "restart": [
+      "restart-flush-7",
+      "restart-flush-8"
+    ],
+    "setup": [
+      "setup-timeout"
+    ],
+    "silence": [
+      "silence-timeout-no-keepalive"
+    ],
+    "spider": [
+      "spider-suffix-0",
+      "spider-suffix-1",
+      "spider-suffix-2",
+      "spider-suffix-3",
+      "spider-suffix-4",
+      "spider-suffix-5",
+      "spider-suffix-6",
+      "spider-suffix-7",
+      "spider-suffix-8"
+    ],
+    "stable": [
+      "stable-ready-reset-599999",
+      "stable-ready-reset-600000"
+    ],
+    "startup": [
+      "startup-arcluster-arcluster",
+      "startup-auto-arcluster",
+      "startup-rbn-rbn",
+      "startup-auto-rbn",
+      "startup-cccluster-cccluster",
+      "startup-auto-cccluster",
+      "startup-dxspider-dxspider",
+      "startup-auto-dxspider"
+    ],
+    "synthetic": [
+      "synthetic-dxspider-spot",
+      "synthetic-dxspider-blank",
+      "synthetic-dxspider-unknown",
+      "synthetic-dxspider-malformed",
+      "synthetic-dxspider-overlap",
+      "synthetic-dxspider-announcement",
+      "synthetic-dxspider-wx",
+      "synthetic-dxspider-wwv",
+      "synthetic-dxspider-wcy",
+      "synthetic-dxspider-talk",
+      "synthetic-dxspider-history",
+      "synthetic-arcluster-spot",
+      "synthetic-arcluster-blank",
+      "synthetic-arcluster-unknown",
+      "synthetic-arcluster-malformed",
+      "synthetic-arcluster-overlap",
+      "synthetic-arcluster-announcement",
+      "synthetic-arcluster-wx",
+      "synthetic-arcluster-wwv",
+      "synthetic-arcluster-wcy",
+      "synthetic-arcluster-talk",
+      "synthetic-arcluster-history",
+      "synthetic-cccluster-spot",
+      "synthetic-cccluster-blank",
+      "synthetic-cccluster-unknown",
+      "synthetic-cccluster-malformed",
+      "synthetic-cccluster-overlap",
+      "synthetic-cccluster-announcement",
+      "synthetic-cccluster-wx",
+      "synthetic-cccluster-wwv",
+      "synthetic-cccluster-wcy",
+      "synthetic-cccluster-talk",
+      "synthetic-cccluster-history",
+      "synthetic-rbn-spot",
+      "synthetic-rbn-blank",
+      "synthetic-rbn-unknown",
+      "synthetic-rbn-malformed",
+      "synthetic-rbn-overlap",
+      "synthetic-rbn-announcement",
+      "synthetic-rbn-wx",
+      "synthetic-rbn-wwv",
+      "synthetic-rbn-wcy",
+      "synthetic-rbn-talk",
+      "synthetic-rbn-history",
+      "synthetic-auto-spot",
+      "synthetic-auto-blank",
+      "synthetic-auto-unknown",
+      "synthetic-auto-malformed",
+      "synthetic-auto-overlap",
+      "synthetic-auto-announcement",
+      "synthetic-auto-wx",
+      "synthetic-auto-wwv",
+      "synthetic-auto-wcy",
+      "synthetic-auto-talk",
+      "synthetic-auto-history"
+    ],
+    "telnet": [
+      "telnet-command-0",
+      "telnet-command-1",
+      "telnet-command-2",
+      "telnet-command-3",
+      "telnet-command-4",
+      "telnet-command-5",
+      "telnet-exact-sb",
+      "telnet-data-iac",
+      "telnet-incomplete-1",
+      "telnet-incomplete-2",
+      "telnet-unterminated",
+      "telnet-excess"
+    ],
+    "termination": [
+      "termination-eof-7",
+      "termination-eof-8",
+      "termination-error-7",
+      "termination-error-8",
+      "termination-unsupported_transport-7",
+      "termination-unsupported_transport-8",
+      "termination-resource_limit-7",
+      "termination-resource_limit-8"
+    ],
+    "overlong": [
+      "overlong-ar-banner-no-profile-evidence"
+    ],
+    "stricter": [
+      "stricter-spacing",
+      "stricter-window-lines",
+      "stricter-window-duration"
+    ]
+  }
+}
