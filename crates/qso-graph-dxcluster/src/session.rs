@@ -714,12 +714,35 @@ impl Session {
         self.context();
         Ok(())
     }
-    /// Fire exactly the timer returned by next_timer, at its logical deadline.
+    /// Report actual transport admission after consuming an Output action.
+    /// Call before admitting more input. The abstract vector harness admits
+    /// immediately; adapters that delay output update pacing and reply time here.
+    pub fn output_admitted(&mut self, now: u64, attempt: u64) -> Result<Batch, &'static str> {
+        self.at(now)?;
+        let mut b = Batch::default();
+        if attempt != self.attempt {
+            return Err("stale output admission");
+        }
+        let last = self.rate.back_mut().ok_or("no output to admit")?;
+        *last = now;
+        match self.state {
+            State::AwaitIdentity => {
+                self.arm(Timer::Identity, now + self.config.identity_ms, &mut b)
+            }
+            State::Setup if self.outstanding => {
+                self.arm(Timer::Setup, now + self.config.setup_ms, &mut b)
+            }
+            _ => return Err("no startup output awaiting admission"),
+        }
+        Ok(b)
+    }
+    /// Deliver a due timer at caller time. Abstract harnesses use its deadline;
+    /// live adapters use the current monotonic time after scheduling delays.
     pub fn fire(&mut self, t: Timer, now: u64) -> Result<Batch, &'static str> {
         self.at(now)?;
         let mut b = Batch::default();
-        if self.deadline(t) != Some(now) {
-            return Err("timer must fire at its deadline");
+        if !self.deadline(t).is_some_and(|deadline| deadline <= now) {
+            return Err("timer must be due");
         }
         self.timers[t as usize] = None;
         match t {

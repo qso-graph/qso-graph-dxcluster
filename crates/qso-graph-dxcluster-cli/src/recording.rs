@@ -172,6 +172,7 @@ impl<R: BufRead> Records<R> {
 pub struct Replay {
     engine: Session,
     last: u64,
+    open: bool,
 }
 impl Replay {
     pub fn new(call: String, profile: Profile, tokens: Vec<String>) -> Result<Self, String> {
@@ -179,9 +180,13 @@ impl Replay {
         Ok(Self {
             engine: Session::new(config, tokens, vec![0; 1024]).map_err(str::to_owned)?,
             last: 0,
+            open: false,
         })
     }
     fn advance(&mut self, at: u64, equal: bool, events: &mut Vec<Event>) -> Result<(), String> {
+        if !self.open {
+            return Ok(());
+        }
         while let Some((deadline, timer)) = self.engine.next_timer() {
             if deadline > at || deadline == at && !equal && timer != Timer::StableReady {
                 break;
@@ -210,6 +215,7 @@ impl Replay {
         self.advance(at, false, &mut events)?;
         self.last = at;
         if v["conn"] == "open" {
+            self.open = true;
             if self.engine.state != State::Connecting {
                 let b = if self.engine.attempt == 0 {
                     self.engine.start(at)
@@ -226,6 +232,7 @@ impl Replay {
                     .events,
             );
         } else if v["conn"] == "close" {
+            self.open = false;
             let reason = REASONS
                 .iter()
                 .copied()
@@ -344,7 +351,7 @@ mod tests {
         // QGDXC-REC-0001 QGDXC-REC-0002 QGDXC-REC-0003 QGDXC-REC-0004 QGDXC-REC-0005
         assert!(Recorder::new(Vec::new(), false).is_err());
         let mut r = Recorder::new(Vec::new(), true).unwrap();
-        for t in [0.0, 10.0] {
+        for t in [0.0, 100.0] {
             r.open(t).unwrap();
             r.wire(t, "in", b"call:").unwrap();
             r.wire(t, "out", b"Q1").unwrap();

@@ -240,7 +240,7 @@ impl Live {
                     }
                     self.record_close(&cause)?;
                 }
-                Action::Output { bytes, .. } => {
+                Action::Output { bytes, attempt } => {
                     if let Err(error) = self.send(&bytes) {
                         match error {
                             SendError::Recording(message) => return Err(message),
@@ -252,7 +252,7 @@ impl Live {
                                 let b = self
                                     .session
                                     .transport_end(
-                                        self.session.current_time(),
+                                        self.now(),
                                         self.session.attempt,
                                         "transport_error",
                                     )
@@ -260,6 +260,12 @@ impl Live {
                                 self.batch(b)?;
                             }
                         }
+                    } else {
+                        let admitted = self
+                            .session
+                            .output_admitted(self.now(), attempt)
+                            .map_err(str::to_owned)?;
+                        self.batch(admitted)?;
                     }
                 }
                 Action::ArmTimer { .. } | Action::CancelTimer { .. } => {}
@@ -301,10 +307,11 @@ impl Live {
     }
     fn timers(&mut self, now: u64, equal: bool) -> Result<(), String> {
         while let Some((at, t)) = self.session.next_timer() {
+            let now = now.max(self.now());
             if at > now || (at == now && !equal && t != Timer::StableReady) {
                 break;
             }
-            let b = self.session.fire(t, at).map_err(str::to_owned)?;
+            let b = self.session.fire(t, now).map_err(str::to_owned)?;
             self.batch(b)?;
         }
         Ok(())
@@ -346,7 +353,7 @@ fn connect(config: Config, recorder: Option<Recorder<File>>, json: bool) -> Resu
             let now = live.now();
             live.timers(now, false)?;
             if live.stop.load(Ordering::Relaxed) {
-                let b = live.session.cancel(now).map_err(str::to_owned)?;
+                let b = live.session.cancel(live.now()).map_err(str::to_owned)?;
                 live.batch(b)?;
                 break;
             }
@@ -385,14 +392,14 @@ fn connect(config: Config, recorder: Option<Recorder<File>>, json: bool) -> Resu
                         }
                         let b = live
                             .session
-                            .connected(now, live.session.attempt)
+                            .connected(live.now(), live.session.attempt)
                             .map_err(str::to_owned)?;
                         live.batch(b)?;
                     }
                     Err(_) => {
                         let b = live
                             .session
-                            .transport_end(now, live.session.attempt, "transport_error")
+                            .transport_end(live.now(), live.session.attempt, "transport_error")
                             .map_err(str::to_owned)?;
                         live.batch(b)?;
                     }
@@ -406,7 +413,7 @@ fn connect(config: Config, recorder: Option<Recorder<File>>, json: bool) -> Resu
                         live.record_close("eof")?;
                         let b = live
                             .session
-                            .transport_end(now, live.session.attempt, "eof")
+                            .transport_end(live.now(), live.session.attempt, "eof")
                             .map_err(str::to_owned)?;
                         live.batch(b)?;
                     }
@@ -418,7 +425,7 @@ fn connect(config: Config, recorder: Option<Recorder<File>>, json: bool) -> Resu
                         for byte in &bytes[..n] {
                             let b = live
                                 .session
-                                .input(now, live.session.attempt, *byte, None)
+                                .input(live.now(), live.session.attempt, *byte, None)
                                 .map_err(str::to_owned)?;
                             live.batch(b)?;
                         }
@@ -429,7 +436,7 @@ fn connect(config: Config, recorder: Option<Recorder<File>>, json: bool) -> Resu
                         live.record_close("transport_error")?;
                         let b = live
                             .session
-                            .transport_end(now, live.session.attempt, "transport_error")
+                            .transport_end(live.now(), live.session.attempt, "transport_error")
                             .map_err(str::to_owned)?;
                         live.batch(b)?;
                     }
@@ -444,8 +451,7 @@ fn connect(config: Config, recorder: Option<Recorder<File>>, json: bool) -> Resu
         Ok(())
     })();
     if result.is_err() {
-        let now = live.now();
-        if let Ok(b) = live.session.cancel(now) {
+        if let Ok(b) = live.session.cancel(live.now()) {
             let _ = live.batch(b);
         }
         let _ = live.record_close("cancelled");

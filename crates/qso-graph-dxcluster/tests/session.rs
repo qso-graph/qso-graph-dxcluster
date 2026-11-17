@@ -276,3 +276,32 @@ fn silence_uses_application_bytes_and_custom_context() {
     assert_eq!(events[1].get("reason"), Some("blank"));
     assert_eq!(events[1].raw_line, b"  ");
 }
+
+#[test]
+fn delayed_transport_admission_controls_pacing_and_reply_deadlines() {
+    let mut s = session(Profile::DxSpider);
+    s.config.setup_ms = 5000;
+    begin(&mut s);
+    input(
+        &mut s,
+        100,
+        b"Capabilities: ve7cc rbn\nQ1ABC de Q2ABC 1-Nov-2026 1832Z dxspider >",
+    );
+    // A controlled transport holds the due command until 5 seconds, then
+    // takes another 200 ms to accept the line. No wall clock or socket needed.
+    let b = s.fire(Timer::Pacing, 5000).unwrap();
+    assert_eq!(outputs(&b), ["set/page 0\r\n"]);
+    s.output_admitted(5200, 1).unwrap();
+    assert_eq!(s.deadline(Timer::Setup), Some(10200));
+    let b = input(
+        &mut s,
+        5210,
+        b"Page Length is now 0 lines\nQ1ABC de Q2ABC 1-Nov-2026 1832Z dxspider >",
+    );
+    assert!(outputs(&b).is_empty());
+    assert_eq!(s.deadline(Timer::Pacing), Some(6200));
+    assert!(s.fire(Timer::Pacing, 6199).is_err());
+    let b = s.fire(Timer::Pacing, 6200).unwrap();
+    assert_eq!(outputs(&b), ["set/nobeep\r\n"]);
+    assert_eq!(s.deadline(Timer::Setup), Some(11200));
+}
