@@ -43,7 +43,7 @@ Inspection: QGDXC-SEC-0002 — Network input has no path to process, filename, o
 
 Inspection: QGDXC-SES-0009 — A Session owns one endpoint/identity; the CLI instantiates one Session and completes socket shutdown before replacement. Integrators provide equivalent ownership for multiple sessions.
 
-Inspection: QGDXC-VEC-0001 — Oracle code imports no implementation symbols; captured vectors identify capture basenames and one-based physical record spans, and synthetic cases identify their derivation.
+Inspection: QGDXC-VEC-0001 — Oracle code imports no implementation symbols; captured vectors identify capture basenames and one-based contributing physical record numbers, and synthetic cases identify their derivation.
 
 Inspection: QGDXC-VEC-0004 — Claims remain draft review only until all applicable evidence is complete; example success alone does not establish conformance.
 
@@ -139,3 +139,11 @@ stream NDJSON. Other repository text and captured command output use fixed byte
 caps; diagnostic display seeks to a bounded log tail. Tests reject oversized
 physical records, protocol lines, text files, indexes, and command output, and
 check fragmented capture provenance.
+
+The capture provenance regressions cover QGDXC-SEC-0001 and QGDXC-VEC-0001.
+On Linux, the importer processes two million intervening note records under a
+64 MiB address-space ceiling and publishes only the two contributing record
+numbers. The same case failed with an allocation error before the change.
+Unit tests exercise the provenance cap, ignored notes and empty input records,
+and contributors to LF, CR, CRLF, and unterminated frames. Retained provenance
+is charged against the capture sample budget.

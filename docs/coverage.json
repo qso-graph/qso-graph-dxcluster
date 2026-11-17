@@ -715,6 +715,10 @@
         {
           "file": "crates/qso-graph-dxcluster-cli/src/bounded.rs",
           "name": "physical_records_stop_reading_at_the_byte_cap"
+        },
+        {
+          "file": "xtask/src/generate.rs",
+          "name": "capture_frame_provenance_caps_only_contributing_records"
         }
       ],
       "vectors": []
@@ -1021,7 +1025,12 @@
       "vectors": []
     },
     "QGDXC-VEC-0001": {
-      "tests": [],
+      "tests": [
+        {
+          "file": "xtask/src/generate.rs",
+          "name": "capture_frame_provenance_caps_only_contributing_records"
+        }
+      ],
       "vectors": [
         "synthetic-dxspider-spot"
       ]
