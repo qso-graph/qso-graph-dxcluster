@@ -118,9 +118,18 @@ fn stalled_pipe_cancellation_closes_and_records_before_bounded_exit() {
                 .filter_map(Result::ok)
                 .any(|task| {
                     fs::read_to_string(task.path().join("wchan"))
-                        .is_ok_and(|state| state.trim() == "pipe_write")
+                        // Linux 6.x names the sleeping writer anon_pipe_write.
+                        .is_ok_and(|state| state.trim().ends_with("pipe_write"))
                 })
         });
+        if !done {
+            let seen: Vec<String> = fs::read_dir(&tasks)
+                .unwrap()
+                .filter_map(Result::ok)
+                .filter_map(|task| fs::read_to_string(task.path().join("wchan")).ok())
+                .collect();
+            eprintln!("wait channels seen: {seen:?}");
+        }
         expect("pipe_write", done, &mut child, &stderr);
     }
     // Once the queue fills, recording stops admitting wire input too.
