@@ -216,6 +216,17 @@ impl Action {
         }
     }
 }
+/// QGDXC-IO-0005: maximum events returned by input or a drain call.
+pub const INPUT_EVENTS: usize = 8;
+/// QGDXC-IO-0005: maximum admitted chunk, including its pending remainder.
+pub const INPUT_BYTES: usize = 1024 * 1024;
+#[derive(Debug)]
+struct PendingInput {
+    bytes: Vec<u8>,
+    cursor: usize,
+    attempt: u64,
+    received_at: Option<String>,
+}
 #[derive(Clone, Debug, Default)]
 pub struct Batch {
     pub events: Vec<Event>,
@@ -247,6 +258,7 @@ pub struct Session {
     terminal_evidence: Option<Event>,
     flushing: bool,
     recorded_transport: bool,
+    input_pending: Option<PendingInput>,
 }
 impl Session {
     pub fn new(config: Config) -> Result<Self, &'static str> {
@@ -280,6 +292,7 @@ impl Session {
             terminal_evidence: None,
             flushing: false,
             recorded_transport: false,
+            input_pending: None,
         })
     }
     /// Use QGDXC-REC-0004 transport observations. Select before starting;
@@ -504,7 +517,76 @@ impl Session {
         self.context();
         Ok(b)
     }
+    /// Admit a chunk under QGDXC-IO-0005. Consume the returned batch, then
+    /// call `drain_input` while `has_pending_input` before offering more bytes.
+    /// Each call returns at most INPUT_EVENTS events, stopping at the first
+    /// byte that produces events or actions. Admission errors leave it unchanged.
+    pub fn input_chunk(
+        &mut self,
+        now: u64,
+        attempt: u64,
+        bytes: &[u8],
+        received_at: Option<&str>,
+    ) -> Result<Batch, &'static str> {
+        if self.has_pending_input() {
+            return Err("drain pending input before admitting more bytes");
+        }
+        if bytes.len() > INPUT_BYTES {
+            return Err("input chunk exceeds admission limit");
+        }
+        if received_at.is_some_and(|s| !values::receipt(s)) {
+            return Err("invalid UTC receipt timestamp");
+        }
+        self.at(now)?;
+        self.input_pending = Some(PendingInput {
+            bytes: bytes.to_vec(),
+            cursor: 0,
+            attempt,
+            received_at: received_at.map(str::to_owned),
+        });
+        self.drain_input()
+    }
+    pub fn has_pending_input(&self) -> bool {
+        self.input_pending.is_some()
+    }
+    /// Continue the admitted chunk at the current session time. Actions from
+    /// the previous batch must complete first, just as for byte input.
+    pub fn drain_input(&mut self) -> Result<Batch, &'static str> {
+        let Some(mut pending) = self.input_pending.take() else {
+            return Ok(Batch::default());
+        };
+        let mut batch = Batch::default();
+        while pending.cursor < pending.bytes.len() {
+            let byte = pending.bytes[pending.cursor];
+            pending.cursor += 1;
+            batch = self.input_byte(
+                self.now,
+                pending.attempt,
+                byte,
+                pending.received_at.as_deref(),
+            )?;
+            if !batch.events.is_empty() || !batch.actions.is_empty() {
+                break;
+            }
+        }
+        if pending.cursor < pending.bytes.len() {
+            self.input_pending = Some(pending);
+        }
+        Ok(batch)
+    }
     pub fn input(
+        &mut self,
+        now: u64,
+        attempt: u64,
+        byte: u8,
+        received_at: Option<&str>,
+    ) -> Result<Batch, &'static str> {
+        if self.has_pending_input() {
+            return Err("drain pending input before admitting more bytes");
+        }
+        self.input_byte(now, attempt, byte, received_at)
+    }
+    fn input_byte(
         &mut self,
         now: u64,
         attempt: u64,

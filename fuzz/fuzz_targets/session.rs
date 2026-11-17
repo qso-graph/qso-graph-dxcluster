@@ -48,4 +48,30 @@ fuzz_target!(|data: &[u8]| {
             }
         }
     }
+    // QGDXC-IO-0005: adversarial coalesced input uses the same drain path.
+    let mut session = Session::new(Config::new(
+        "example.invalid".into(),
+        7300,
+        "Q1ABC".into(),
+        Profile::Rbn,
+    ))
+    .unwrap();
+    session.start(0).unwrap();
+    session.connected(0, session.attempt).unwrap();
+    let mut batch = session
+        .input_chunk(
+            0,
+            session.attempt,
+            &data[..data.len().min(INPUT_BYTES)],
+            None,
+        )
+        .unwrap();
+    loop {
+        assert!(batch.events.len() <= INPUT_EVENTS);
+        drop(batch);
+        if !session.has_pending_input() {
+            break;
+        }
+        batch = session.drain_input().unwrap();
+    }
 });

@@ -238,7 +238,12 @@ impl Replay {
     }
     #[cfg(test)]
     fn record(&mut self, v: &Value) -> Result<Vec<Event>, String> {
-        self.record_with_token(v, &mut || Err("missing recorded readiness token".into()))
+        let mut events =
+            self.record_with_token(v, &mut || Err("missing recorded readiness token".into()))?;
+        while self.engine.has_pending_input() {
+            events.extend(self.engine.drain_input().map_err(str::to_owned)?.events);
+        }
+        Ok(events)
     }
     fn record_with_token(
         &mut self,
@@ -301,14 +306,12 @@ impl Replay {
                 }
             }
         } else if v["dir"] == "in" {
-            for byte in unbase64(v["b64"].as_str().ok_or("wire bytes")?).map_err(str::to_owned)? {
-                events.extend(
-                    self.engine
-                        .input(at, self.engine.attempt, byte, None)
-                        .map_err(str::to_owned)?
-                        .events,
-                );
-            }
+            let bytes = unbase64(v["b64"].as_str().ok_or("wire bytes")?).map_err(str::to_owned)?;
+            let b = self
+                .engine
+                .input_chunk(at, self.engine.attempt, &bytes, None)
+                .map_err(str::to_owned)?;
+            events.extend(self.supply(b, token)?);
         }
         Ok(events)
     }
@@ -390,6 +393,7 @@ impl<R: BufRead> Lookahead<R> {
 pub struct ReplayStream<R: BufRead> {
     source: Lookahead<R>,
     replay: Replay,
+    input_line: usize,
 }
 impl<R: BufRead> ReplayStream<R> {
     pub fn new(reader: R, retain: bool) -> Result<Self, String> {
@@ -452,12 +456,23 @@ impl<R: BufRead> ReplayStream<R> {
         Ok(Self {
             source,
             replay: Replay::new_with_retention(call, profile, retain)?,
+            input_line: 0,
         })
     }
+    /// Return one event batch under QGDXC-IO-0005. Continuations retain the
+    /// physical record number with null metadata, so notes are delivered once.
     pub fn next_record(&mut self) -> Result<Option<(usize, Value, Vec<Event>)>, String> {
+        if self.replay.engine.has_pending_input() {
+            let b = self.replay.engine.drain_input().map_err(str::to_owned)?;
+            let source = &mut self.source;
+            let events = self.replay.supply(b, &mut || source.token())?;
+            // Continuations have no metadata; notes are delivered only once.
+            return Ok(Some((self.input_line, Value::Null, events)));
+        }
         let Some((line, v)) = self.source.next()? else {
             return Ok(None);
         };
+        self.input_line = line;
         let attempt = self.replay.engine.attempt + u64::from(v["conn"] == "open");
         let source = &mut self.source;
         let events = self
@@ -481,6 +496,54 @@ mod tests {
         )
         .unwrap();
         r
+    }
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn replay_drains_one_mib_under_memory_ceiling() {
+        // QGDXC-IO-0005 QGDXC-SEC-0001 QGDXC-REC-0004
+        if !crate::test_support::memory_child(&[
+            "recording",
+            "tests",
+            "replay_drains_one_mib_under_memory_ceiling",
+        ]) {
+            return;
+        }
+        // Exercise a single decoded 1 MiB input at the replay engine boundary.
+        let mut replay = Replay::new("Q1ABC".into(), Profile::Rbn).unwrap();
+        replay.record(&json!({"t":0,"conn":"open"})).unwrap();
+        let v = json!({"t":0,"dir":"in","b64":base64(&vec![b'\n'; INPUT_BYTES])});
+        let mut events = replay
+            .record_with_token(&v, &mut || unreachable!())
+            .unwrap();
+        let mut count = 0;
+        loop {
+            assert!(events.len() <= INPUT_EVENTS);
+            count += events.len();
+            drop(events);
+            if !replay.engine.has_pending_input() {
+                break;
+            }
+            events = replay.engine.drain_input().unwrap().events;
+        }
+        assert_eq!(count, INPUT_BYTES);
+        // A physical record also includes base64 and metadata. Preserve its
+        // existing cap: 750,000 bytes fit in one, the remainder in a second.
+        let mut r = configured("rbn");
+        r.open(0.0).unwrap();
+        r.wire(0.0, "in", &vec![b'\n'; 750_000]).unwrap();
+        r.wire(0.0, "in", &vec![b'\n'; INPUT_BYTES - 750_000])
+            .unwrap();
+        r.close(0.0, "cancelled").unwrap();
+        let mut stream = ReplayStream::new(std::io::Cursor::new(r.writer), false).unwrap();
+        let mut count = 0;
+        while let Some((_, _, events)) = stream.next_record().unwrap() {
+            assert!(events.len() <= INPUT_EVENTS);
+            count += events
+                .iter()
+                .filter(|e| e.kind == "unrecognized_line")
+                .count();
+        }
+        assert_eq!(count, INPUT_BYTES);
     }
     #[test]
     fn replay_stream_looks_up_fragmented_tokens_only_in_the_current_connection() {

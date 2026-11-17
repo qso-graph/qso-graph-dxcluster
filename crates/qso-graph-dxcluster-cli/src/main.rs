@@ -209,6 +209,17 @@ impl Live {
             .as_millis()
             .min(u128::from(qso_graph_dxcluster::values::MAX_INTEGER)) as u64
     }
+    fn input(&mut self, bytes: &[u8]) -> Result<(), String> {
+        let b = self
+            .session
+            .input_chunk(self.now(), self.session.attempt, bytes, None)
+            .map_err(str::to_owned)?;
+        self.batch(b)
+    }
+    fn drain_input(&mut self) -> Result<(), String> {
+        let b = self.session.drain_input().map_err(str::to_owned)?;
+        self.batch(b)
+    }
     fn record_close(&mut self, reason: &str) -> Result<(), String> {
         let t = self.clock.elapsed().as_secs_f64();
         if let Some(r) = &mut self.recorder {
@@ -491,17 +502,21 @@ fn connect(config: Config, recorder: Option<Recorder<File>>, json: bool) -> Resu
                     }
                 }
             }
-            // QGDXC-IO-0005: admit one byte at a time so a full render queue
-            // leaves subsequent input in the transport, with no hidden read-ahead.
-            for _ in 0..4096 {
+            // QGDXC-IO-0005: drain the admitted chunk before reading again.
+            // Rendering backpressure leaves its remainder inside the session.
+            for _ in 0..64 {
                 if live.output.backpressured() || live.stop.load(Ordering::Relaxed) {
                     break;
+                }
+                if live.session.has_pending_input() {
+                    live.drain_input()?;
+                    continue;
                 }
                 let Some(socket) = &mut live.socket else {
                     break;
                 };
-                let mut byte = [0u8; 1];
-                match socket.read(&mut byte) {
+                let mut bytes = [0u8; 4096];
+                match socket.read(&mut bytes) {
                     Ok(0) => {
                         live.socket = None;
                         live.record_close("eof")?;
@@ -512,16 +527,12 @@ fn connect(config: Config, recorder: Option<Recorder<File>>, json: bool) -> Resu
                         live.batch(b)?;
                         break;
                     }
-                    Ok(_) => {
+                    Ok(n) => {
                         if let Some(r) = &mut live.recorder {
-                            r.wire(live.clock.elapsed().as_secs_f64(), "in", &byte)
+                            r.wire(live.clock.elapsed().as_secs_f64(), "in", &bytes[..n])
                                 .map_err(|e| format!("recording failed: {e}"))?;
                         }
-                        let b = live
-                            .session
-                            .input(live.now(), live.session.attempt, byte[0], None)
-                            .map_err(str::to_owned)?;
-                        live.batch(b)?;
+                        live.input(&bytes[..n])?;
                     }
                     Err(e) if e.kind() == io::ErrorKind::WouldBlock => break,
                     Err(_) => {
@@ -638,6 +649,76 @@ mod tests {
                 );
             }
         }
+    }
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn library_and_live_drain_one_mib_under_memory_ceiling() {
+        // QGDXC-IO-0005 QGDXC-SEC-0001
+        if !crate::test_support::memory_child(&[
+            "tests",
+            "library_and_live_drain_one_mib_under_memory_ceiling",
+        ]) {
+            return;
+        }
+        let bytes = vec![b'\n'; INPUT_BYTES];
+        let mut session = Session::new(Config::new(
+            "example.invalid".into(),
+            7300,
+            "Q1ABC".into(),
+            Profile::Rbn,
+        ))
+        .unwrap();
+        session.start(0).unwrap();
+        session.connected(0, session.attempt).unwrap();
+        let mut b = session
+            .input_chunk(0, session.attempt, &bytes, None)
+            .unwrap();
+        let mut count = 0;
+        loop {
+            assert!(b.events.len() <= INPUT_EVENTS);
+            count += b.events.len();
+            drop(b);
+            if !session.has_pending_input() {
+                break;
+            }
+            b = session.drain_input().unwrap();
+        }
+        assert_eq!(count, INPUT_BYTES);
+        struct Count(Arc<std::sync::atomic::AtomicUsize>);
+        impl Write for Count {
+            fn write(&mut self, b: &[u8]) -> io::Result<usize> {
+                self.0
+                    .fetch_add(b.iter().filter(|b| **b == b'\n').count(), Ordering::Relaxed);
+                Ok(b.len())
+            }
+            fn flush(&mut self) -> io::Result<()> {
+                Ok(())
+            }
+        }
+        let count = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let mut live = Live {
+            session,
+            socket: None,
+            recorder: None,
+            clock: Instant::now(),
+            json: false,
+            output: Output::new(Count(count.clone())),
+            receiver: None,
+            closing: None,
+            deferred_connect: false,
+            stop: Arc::new(AtomicBool::new(false)),
+        };
+        live.input(&bytes).unwrap();
+        while live.session.has_pending_input() {
+            live.output.flush().unwrap();
+            if live.output.backpressured() {
+                std::thread::yield_now();
+            } else {
+                live.drain_input().unwrap();
+            }
+        }
+        live.output.finish(|| false).unwrap();
+        assert_eq!(count.load(Ordering::Relaxed), INPUT_BYTES);
     }
     #[test]
     fn live_deadline_closes_transport_while_rendering_is_stalled() {
@@ -777,3 +858,6 @@ mod tests {
         assert!(HELP.starts_with("qg-dxc reads live DX spots for radio operators"));
     }
 }
+
+#[cfg(all(test, target_os = "linux"))]
+mod test_support;

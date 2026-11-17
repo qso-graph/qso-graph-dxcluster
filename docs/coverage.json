@@ -529,6 +529,18 @@
         {
           "file": "crates/qso-graph-dxcluster-cli/src/output.rs",
           "name": "bounded_queue_resumes_without_losing_admitted_lines"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/main.rs",
+          "name": "library_and_live_drain_one_mib_under_memory_ceiling"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/recording.rs",
+          "name": "replay_drains_one_mib_under_memory_ceiling"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster/tests/session.rs",
+          "name": "chunk_admission_drains_with_split_invariant_events_and_actions"
         }
       ],
       "vectors": []
@@ -659,6 +671,10 @@
         {
           "file": "crates/qso-graph-dxcluster-cli/src/recording.rs",
           "name": "replay_stream_caps_lookahead_and_does_not_search_for_passive_profiles"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/recording.rs",
+          "name": "replay_drains_one_mib_under_memory_ceiling"
         }
       ],
       "vectors": [
@@ -719,6 +735,14 @@
         {
           "file": "xtask/src/generate.rs",
           "name": "capture_frame_provenance_caps_only_contributing_records"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/main.rs",
+          "name": "library_and_live_drain_one_mib_under_memory_ceiling"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/recording.rs",
+          "name": "replay_drains_one_mib_under_memory_ceiling"
         }
       ],
       "vectors": []
@@ -1070,6 +1094,10 @@
         {
           "file": "xtask/src/runner.rs",
           "name": "independent_oracles_reject_mutated_expectations"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster/tests/session.rs",
+          "name": "chunk_admission_drains_with_split_invariant_events_and_actions"
         }
       ],
       "vectors": [
@@ -1097,6 +1125,10 @@
         {
           "file": "xtask/src/runner.rs",
           "name": "vector_attempt_requests_require_explicit_resources"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster/tests/session.rs",
+          "name": "chunk_admission_drains_with_split_invariant_events_and_actions"
         }
       ],
       "vectors": [

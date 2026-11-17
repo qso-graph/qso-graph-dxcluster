@@ -247,17 +247,20 @@ pub fn execute(v: &Value) -> Result<Trace, String> {
                     }
                 }
                 "input" => {
-                    for byte in
-                        unbase64(s["b64"].as_str().ok_or("input")?).map_err(str::to_owned)?
-                    {
-                        let b = engine
-                            .input(
-                                at,
-                                s["attempt"].as_u64().ok_or("attempt")?,
-                                byte,
-                                s["received_at"].as_str(),
-                            )
-                            .map_err(str::to_owned)?;
+                    let bytes =
+                        unbase64(s["b64"].as_str().ok_or("input")?).map_err(str::to_owned)?;
+                    let mut b = engine
+                        .input_chunk(
+                            at,
+                            s["attempt"].as_u64().ok_or("attempt")?,
+                            &bytes,
+                            s["received_at"].as_str(),
+                        )
+                        .map_err(str::to_owned)?;
+                    loop {
+                        if b.events.len() > qso_graph_dxcluster::INPUT_EVENTS {
+                            return Err("input event batch exceeds bound".into());
+                        }
                         trace(
                             &mut engine,
                             &mut inputs,
@@ -267,6 +270,10 @@ pub fn execute(v: &Value) -> Result<Trace, String> {
                             &mut events,
                             &mut actions,
                         )?;
+                        if !engine.has_pending_input() {
+                            break;
+                        }
+                        b = engine.drain_input().map_err(str::to_owned)?;
                     }
                     continue;
                 }

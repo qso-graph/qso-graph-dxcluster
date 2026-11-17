@@ -541,3 +541,48 @@ fn stable_reconnects_continue_beyond_1024_attempts() {
         }
     }
 }
+
+#[test]
+fn chunk_admission_drains_with_split_invariant_events_and_actions() {
+    // QGDXC-IO-0005 QGDXC-VEC-0005 QGDXC-VEC-0006
+    let bytes = b"login:\r\nQ1ABC de RELAY 18-Apr-2026 18:32Z >\r\nDX de Q2ABC: 14025 Q3ABC CQ 1832Z\r\npassword:\r\n";
+    let receipt = Some("2026-04-18T18:32:00Z");
+    let run = |chunks: Vec<&[u8]>| {
+        let mut s = session(Profile::Rbn);
+        s.start(0).unwrap();
+        let attempt = s.attempt;
+        s.connected(0, attempt).unwrap();
+        let mut events = vec![];
+        let mut actions = vec![];
+        for chunk in chunks {
+            let attempt = s.attempt;
+            let mut b = s.input_chunk(0, attempt, chunk, receipt).unwrap();
+            if s.has_pending_input() {
+                assert!(s.input_chunk(0, attempt, b"x", receipt).is_err());
+                assert!(s.input(0, attempt, b'x', receipt).is_err());
+            }
+            loop {
+                assert!(b.events.len() <= INPUT_EVENTS);
+                let supplied = s.supply(b).unwrap();
+                events.extend(supplied.events.iter().map(Event::json));
+                actions.extend(supplied.actions.iter().map(Action::json));
+                if !s.has_pending_input() {
+                    break;
+                }
+                b = s.drain_input().unwrap();
+            }
+        }
+        (events, actions, s.state)
+    };
+    let expected = run(vec![bytes]);
+    for split in 0..=bytes.len() {
+        assert_eq!(run(vec![&bytes[..split], &bytes[split..]]), expected);
+    }
+    assert_eq!(run(bytes.chunks(1).collect()), expected);
+    let mut s = session(Profile::Rbn);
+    assert!(
+        s.input_chunk(0, 0, &vec![b'\n'; INPUT_BYTES + 1], None)
+            .is_err()
+    );
+    assert!(!s.has_pending_input());
+}

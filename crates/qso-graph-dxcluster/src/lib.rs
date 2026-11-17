@@ -11,4 +11,4 @@ pub mod session;
 pub mod values;
 pub use model::{Event, Profile, Value};
 pub use parser::{Context, Parser};
-pub use session::{Action, Batch, Config, Session, State, Timer};
+pub use session::{Action, Batch, Config, INPUT_BYTES, INPUT_EVENTS, Session, State, Timer};

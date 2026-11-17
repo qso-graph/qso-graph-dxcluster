@@ -94,9 +94,10 @@ aliases and applies privacy transformations before writing inputs. The mapping
 is not published, and raw recordings are never fixtures. Re-running generation
 against the same captures produces identical bytes.
 
-Caller integration: consume each returned Batch before admitting another byte;
+Caller integration: use the chunk admission and draining contract in
+QGDXC-IO-0005; consume each returned Batch before continuing;
 complete Close before a later Connect; deliver due live timers using current
-monotonic time and report actual output admission with Session::output_admitted;
+monotonic time and report actual output admission with the Session `output_admitted` method;
 handle completion and cancellation before equal-time expiry except stable_ready;
 and preserve shared pacing history when replacing a Session for the same
 endpoint and canonical identity. The supplied CLI implements one active session.
@@ -104,6 +105,11 @@ The CLI's live renderer uses a dedicated writer with a 64-line channel, a
 64-line pending reserve for batch and control events, and one line held by the
 writer (QGDXC-IO-0005). The session loop pauses socket reads when output is full;
 timers, cancellation, transport actions, and recording continue independently.
+The chunk tests compare event and action order across every split and enforce
+the admission limits. Linux memory tests drain a 1 MiB LF chunk through the
+library, live adapter, and replay engine under a 64 MiB ceiling. The replay
+stream test also covers a coalesced record containing 750,000 LF bytes within
+the physical record cap (QGDXC-REC-0004).
 The queue test checks bounds and complete ordered delivery after resumption. A
 controlled deadline test checks transport closure and recording under stalled
 rendering. On Linux, the stalled-pipe integration test confirms a blocked pipe
