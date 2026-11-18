@@ -258,13 +258,13 @@ pub enum Input {
     PageDown,
     Home,
     CtrlC,
-    Paste(String),
 }
 pub enum Editor {
     Normal,
     Calls {
         text: String,
         error: String,
+        rejected: bool,
     },
     Select {
         band: bool,
@@ -402,8 +402,13 @@ impl Model {
             return;
         }
         match &mut self.editor {
-            Editor::Calls { text, error } => match input {
+            Editor::Calls {
+                text,
+                error,
+                rejected,
+            } => match input {
                 Input::Escape => self.editor = Editor::Normal,
+                Input::Enter if *rejected => {}
                 Input::Enter => match patterns(text) {
                     Ok(calls) => {
                         self.filters.calls = calls;
@@ -417,18 +422,13 @@ impl Model {
                 }
                 Input::Char(c) if !c.is_control() => {
                     if text.len() + c.len_utf8() > 335 {
-                        *error = "Callsign edit exceeds 335 bytes".into();
+                        *rejected = true;
+                        *error = "Callsign edit exceeds 335 bytes; Escape cancels".into();
                     } else {
                         text.push(c);
-                        error.clear();
-                    }
-                }
-                Input::Paste(value) => {
-                    if text.len().saturating_add(value.len()) > 335 {
-                        *error = "Callsign edit exceeds 335 bytes".into();
-                    } else {
-                        text.push_str(&value);
-                        error.clear();
+                        if !*rejected {
+                            error.clear();
+                        }
                     }
                 }
                 _ => {}
@@ -485,6 +485,7 @@ impl Model {
                     self.editor = Editor::Calls {
                         text: self.filters.calls.join(","),
                         error: String::new(),
+                        rejected: false,
                     }
                 }
                 Input::Char('k') => {

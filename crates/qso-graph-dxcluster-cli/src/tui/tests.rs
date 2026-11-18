@@ -112,11 +112,11 @@ fn configuration_validates_all_sources_before_io() {
         assert!(Options::parse(&args(&values)).is_err());
     }
     let eight: Vec<_> = (0..8)
-        .flat_map(|i| ["--replay".into(), format!("source{i}")])
+        .flat_map(|_| ["--replay".into(), "Cargo.toml".to_owned()])
         .collect();
     assert!(Options::parse(&eight).is_ok());
     let nine: Vec<_> = (0..9)
-        .flat_map(|i| ["--replay".into(), format!("source{i}")])
+        .flat_map(|_| ["--replay".into(), "Cargo.toml".to_owned()])
         .collect();
     assert!(
         Options::parse(&nine)
@@ -144,16 +144,20 @@ fn labels_resolve_rendered_collisions_in_argument_order() {
             "\\u{202e}"
         ])
     );
+    // Replay arguments now name regular files (QGDXC-TUI-0003).
+    assert!(Options::parse(&args(&["--replay", "/"])).is_err());
     let parsed = Options::parse(&args(&[
         "--replay",
-        "/",
+        "Cargo.toml",
         "--replay",
-        "/tmp/one.ndjson",
-        "--replay",
-        "one.ndjson",
+        "./Cargo.toml",
     ]))
     .unwrap();
-    assert_eq!(parsed.labels, args(&["source", "one", "one#2"]));
+    assert_eq!(parsed.labels, args(&["Cargo", "Cargo#2"]));
+    assert_eq!(
+        labels(&args(&["source", "one", "one"])),
+        args(&["source", "one", "one#2"])
+    );
 }
 #[test]
 fn every_band_edge_and_original_mode_precedence() {
@@ -317,10 +321,14 @@ fn synthetic_keys_edit_transactionally_and_quit_every_mode() {
     assert_eq!(patterns(&maximum).unwrap().len(), 16);
     key(&mut m, KeyCode::Char('c'));
     key(&mut m, KeyCode::Char('/'));
-    m.key(Input::Paste(maximum.clone()));
-    m.key(Input::Paste("extra".into()));
+    for c in maximum.chars().chain("extra".chars()) {
+        key(&mut m, KeyCode::Char(c));
+    }
     m.key(Input::Char('X'));
-    let Editor::Calls { text: entry, error } = &m.editor else {
+    let Editor::Calls {
+        text: entry, error, ..
+    } = &m.editor
+    else {
         panic!()
     };
     assert_eq!(entry, &maximum);
@@ -333,7 +341,9 @@ fn synthetic_keys_edit_transactionally_and_quit_every_mode() {
     key(&mut m, KeyCode::Esc);
     assert!(m.filters.calls.is_empty());
     key(&mut m, KeyCode::Char('/'));
-    m.key(Input::Paste(format!("{maximum}x")));
+    for c in format!("{maximum}x").chars() {
+        key(&mut m, KeyCode::Char(c));
+    }
     key(&mut m, KeyCode::Enter);
     assert!(m.filters.calls.is_empty());
     for open in ['/', 'b', 'm', '?', 'x'] {
@@ -692,12 +702,6 @@ fn terminal_state_restores_on_return_error_partial_entry_and_unwind() {
         fn leave_screen(&mut self) -> io::Result<()> {
             self.record("leave")
         }
-        fn enter_paste(&mut self) -> io::Result<()> {
-            self.record("paste")
-        }
-        fn leave_paste(&mut self) -> io::Result<()> {
-            self.record("restore-paste")
-        }
         fn flush(&mut self) -> io::Result<()> {
             self.record("flush")
         }
@@ -720,27 +724,9 @@ fn terminal_state_restores_on_return_error_partial_entry_and_unwind() {
             });
             let actual = log.lock().unwrap().clone();
             let expected = if raw {
-                vec![
-                    "query",
-                    "enter",
-                    "paste",
-                    "flush",
-                    "restore-paste",
-                    "leave",
-                    "flush",
-                ]
+                vec!["query", "enter", "flush", "leave", "flush"]
             } else {
-                vec![
-                    "query",
-                    "raw",
-                    "enter",
-                    "paste",
-                    "flush",
-                    "restore-paste",
-                    "leave",
-                    "cooked",
-                    "flush",
-                ]
+                vec!["query", "raw", "enter", "flush", "leave", "cooked", "flush"]
             };
             assert_eq!(actual, expected);
         }
@@ -753,31 +739,8 @@ fn terminal_state_restores_on_return_error_partial_entry_and_unwind() {
             vec!["query", "raw", "enter", "leave", "cooked", "flush"],
         ),
         (
-            "paste",
-            vec![
-                "query",
-                "raw",
-                "enter",
-                "paste",
-                "restore-paste",
-                "leave",
-                "cooked",
-                "flush",
-            ],
-        ),
-        (
             "flush",
-            vec![
-                "query",
-                "raw",
-                "enter",
-                "paste",
-                "flush",
-                "restore-paste",
-                "leave",
-                "cooked",
-                "flush",
-            ],
+            vec!["query", "raw", "enter", "flush", "leave", "cooked", "flush"],
         ),
     ] {
         let log = Arc::new(Mutex::new(vec![]));
@@ -806,5 +769,173 @@ fn terminal_state_restores_on_return_error_partial_entry_and_unwind() {
         )
         .unwrap();
         assert_eq!(terminal.backend().cursor_visible(), visible);
+    }
+}
+
+#[test]
+fn callsign_key_limit_rejects_whole_edit_and_keeps_ctrl_c_responsive() {
+    // QGDXC-TUI-0041 QGDXC-TUI-0051
+    let mut m = Model::new(args(&["one"]));
+    m.filters.calls = patterns("Q1*").unwrap();
+    key(&mut m, KeyCode::Char('/'));
+    for _ in 0..3 {
+        key(&mut m, KeyCode::Backspace);
+    }
+    let maximum = vec!["Q".repeat(20); 16].join(",");
+    for c in maximum.chars() {
+        key(&mut m, KeyCode::Char(c));
+    }
+    let Editor::Calls { text, .. } = &m.editor else {
+        panic!()
+    };
+    assert_eq!(text.len(), 335);
+    key(&mut m, KeyCode::Char('X'));
+    // Enter cannot commit the valid but truncated prefix, even after Backspace.
+    key(&mut m, KeyCode::Enter);
+    assert_eq!(m.filters.calls, args(&["Q1*"]));
+    key(&mut m, KeyCode::Backspace);
+    key(&mut m, KeyCode::Enter);
+    assert_eq!(m.filters.calls, args(&["Q1*"]));
+    let Editor::Calls { text, .. } = &m.editor else {
+        panic!()
+    };
+    assert!(text.len() <= 335);
+    m.key(
+        input(Event::Key(event::KeyEvent::new(
+            KeyCode::Char('c'),
+            KeyModifiers::CONTROL,
+        )))
+        .unwrap(),
+    );
+    assert!(m.quit);
+}
+
+#[test]
+fn replay_configuration_rejects_directory_before_open() {
+    // QGDXC-TUI-0003
+    let error = Options::parse(&args(&["--replay", "."]))
+        .err()
+        .expect("directory accepted");
+    assert!(error.contains("configuration: --replay ."), "{error}");
+    assert!(error.contains("regular file"), "{error}");
+}
+
+#[cfg(unix)]
+#[test]
+fn replay_configuration_rejects_stalled_fifo_before_open() {
+    // QGDXC-TUI-0003 QGDXC-TUI-0052
+    let path = std::env::temp_dir().join(format!("qg-dxc-fifo-{}", std::process::id()));
+    let status = match std::process::Command::new("mkfifo").arg(&path).status() {
+        Ok(status) => status,
+        Err(e) if e.kind() == io::ErrorKind::NotFound => {
+            eprintln!("skipping FIFO test: mkfifo is unavailable");
+            return;
+        }
+        Err(e) => panic!("mkfifo: {e}"),
+    };
+    assert!(status.success());
+    let argument = path.to_str().unwrap().to_owned();
+    let (tx, rx) = mpsc::channel();
+    let worker = std::thread::spawn(move || {
+        let result = Options::parse(&args(&["--replay", &argument])).err();
+        tx.send(result).unwrap();
+    });
+    let result = rx.recv_timeout(Duration::from_secs(1));
+    std::fs::remove_file(&path).unwrap();
+    let error = result
+        .expect("FIFO validation stalled")
+        .expect("FIFO accepted");
+    worker.join().unwrap();
+    assert!(
+        error.contains(&format!("--replay {}", path.display())),
+        "{error}"
+    );
+    assert!(error.contains("regular file"), "{error}");
+    // metadata follows symlinks: a regular target is supported, a FIFO is not.
+    let link = path.with_extension("link");
+    std::os::unix::fs::symlink(std::env::current_dir().unwrap().join("Cargo.toml"), &link).unwrap();
+    assert!(Options::parse(&args(&["--replay", link.to_str().unwrap()])).is_ok());
+    std::fs::remove_file(link).unwrap();
+}
+
+#[test]
+fn filters_accept_exact_kind_and_listed_other_unknown_mode_rows() {
+    // QGDXC-TUI-0040: assert row identities, including rejected rows.
+    let mut m = Model::new(args(&["one"]));
+    let modes = ["CW", "SSB", "AM", "FM", "FT8", "FT4", "RTTY", "PSK31", ""];
+    for (kind, comment) in ["human", "skimmer"]
+        .into_iter()
+        .flat_map(|k| modes.map(|m| (k, m)))
+    {
+        let mut e = spot("Q1ABC", 14_074_000, comment);
+        e.set("spot_kind", kind);
+        m.receive(0, e, Duration::ZERO);
+    }
+    let ids = |m: &Model| m.matching().iter().map(|s| s.id).collect::<BTreeSet<_>>();
+    assert_eq!(ids(&m), (1..=18).collect()); // inactive mode, kind all
+    for (kind, offset) in [(1, 0), (2, 9), (0, 0)] {
+        m.filters.kind = kind;
+        let all: BTreeSet<_> = match kind {
+            1 => (1..=9).collect(),
+            2 => (10..=18).collect(),
+            _ => (1..=18).collect(),
+        };
+        assert_eq!(ids(&m), all);
+        for (i, group) in MODES.iter().enumerate() {
+            m.filters.modes = Some([(*group).to_owned()].into());
+            let expected = if kind == 0 {
+                [i as u64 + 1, i as u64 + 10].into()
+            } else {
+                [i as u64 + 1 + offset].into()
+            };
+            assert_eq!(ids(&m), expected, "kind {kind}, mode {group}");
+        }
+        m.filters.modes = Some(BTreeSet::new());
+        assert!(ids(&m).is_empty());
+        m.filters.modes = None;
+        assert_eq!(ids(&m), all);
+    }
+    m.filters.bands = Some(BTreeSet::new());
+    assert!(ids(&m).is_empty());
+    m.filters.bands = None;
+    assert_eq!(ids(&m).len(), 18);
+}
+
+#[test]
+fn replay_error_aborts_and_finalizes_current_connection_once() {
+    // QGDXC-TUI-0003 QGDXC-TUI-0052
+    for suffix in [&b"\r"[..], &b""[..], &b"\xff\xfa\x01"[..]] {
+        let mut r = Recorder::new(vec![], true).unwrap();
+        r.note(
+            0.0,
+            "qg-dxc configuration: {\"call\":\"Q1ABC\",\"profile\":\"arcluster\"}",
+        )
+        .unwrap();
+        r.open(0.0).unwrap();
+        r.wire(
+            0.0,
+            "in",
+            &[b"DX de Q9XYZ: 14074 Q2ABC CW 1832Z".as_slice(), suffix].concat(),
+        )
+        .unwrap();
+        let mut bytes = r.into_inner();
+        bytes.extend_from_slice(b"invalid JSON\n");
+        let mut schedule = Schedule::new(vec![Ok(
+            ReplayStream::new(Cursor::new(bytes), false).unwrap()
+        )]);
+        let (mut errors, mut finalized, mut content) = (0, 0, 0);
+        while let Some((_, message)) = schedule.poll(0.0) {
+            match message {
+                Message::Error(_) => errors += 1,
+                Message::Event(e) if e.get("reason") == Some("cancelled") => finalized += 1,
+                Message::Event(e) if e.kind == "spot" || e.kind == "unrecognized_line" => {
+                    content += 1
+                }
+                _ => {}
+            }
+        }
+        schedule.cancel();
+        assert_eq!((errors, finalized, content), (1, 1, 1), "{suffix:?}");
+        assert!(schedule.poll(10000.0).is_none());
     }
 }

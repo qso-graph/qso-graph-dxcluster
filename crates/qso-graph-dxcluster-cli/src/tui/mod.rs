@@ -35,8 +35,6 @@ trait ScreenIo {
     fn set_raw(&mut self, enabled: bool) -> io::Result<()>;
     fn enter_screen(&mut self) -> io::Result<()>;
     fn leave_screen(&mut self) -> io::Result<()>;
-    fn enter_paste(&mut self) -> io::Result<()>;
-    fn leave_paste(&mut self) -> io::Result<()>;
     fn flush(&mut self) -> io::Result<()>;
 }
 struct SystemScreen;
@@ -57,13 +55,6 @@ impl ScreenIo for SystemScreen {
     fn leave_screen(&mut self) -> io::Result<()> {
         execute!(io::stdout(), LeaveAlternateScreen, RestorePosition)
     }
-    fn enter_paste(&mut self) -> io::Result<()> {
-        // XTSAVE/XTRESTORE preserve the caller's bracketed-paste mode.
-        io::stdout().write_all(b"\x1b[?2004s\x1b[?2004h")
-    }
-    fn leave_paste(&mut self) -> io::Result<()> {
-        io::stdout().write_all(b"\x1b[?2004r")
-    }
     fn flush(&mut self) -> io::Result<()> {
         io::stdout().flush()
     }
@@ -72,7 +63,6 @@ struct Screen<T: ScreenIo> {
     io: T,
     raw_changed: bool,
     alternate: bool,
-    paste: bool,
 }
 impl<T: ScreenIo> Screen<T> {
     fn enter(io: T) -> io::Result<Self> {
@@ -80,7 +70,6 @@ impl<T: ScreenIo> Screen<T> {
             io,
             raw_changed: false,
             alternate: false,
-            paste: false,
         };
         if !screen.io.raw()? {
             screen.raw_changed = true;
@@ -89,17 +78,12 @@ impl<T: ScreenIo> Screen<T> {
         // Set flags before fallible writes, which can succeed partially.
         screen.alternate = true;
         screen.io.enter_screen()?;
-        screen.paste = true;
-        screen.io.enter_paste()?;
         screen.io.flush()?;
         Ok(screen)
     }
 }
 impl<T: ScreenIo> Drop for Screen<T> {
     fn drop(&mut self) {
-        if self.paste {
-            let _ = self.io.leave_paste();
-        }
         if self.alternate {
             let _ = self.io.leave_screen();
         }
@@ -109,9 +93,13 @@ impl<T: ScreenIo> Drop for Screen<T> {
         let _ = self.io.flush();
     }
 }
+// Field order is the cleanup order, including during unwinding (QGDXC-TUI-0052).
+struct Interface<T: ScreenIo> {
+    _screen: Screen<T>,
+    workers: Workers,
+}
 pub fn input(event: Event) -> Option<Input> {
     match event {
-        Event::Paste(s) => Some(Input::Paste(s)),
         Event::Key(key) if key.kind != KeyEventKind::Release => {
             if key.modifiers.contains(KeyModifiers::CONTROL)
                 && matches!(key.code, KeyCode::Char('c' | 'C'))
@@ -177,14 +165,18 @@ pub fn run(args: &[String]) -> Result<u8, String> {
     let hook = std::panic::take_hook();
     std::panic::set_hook(Box::new(|_| {}));
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| -> io::Result<u8> {
-        let _screen = Screen::enter(SystemScreen)?;
+        let screen = Screen::enter(SystemScreen)?;
         let mut terminal = Terminal::new(CrosstermBackend::new(io::stdout()))?;
         let origin = Instant::now();
         let mut model = Model::new(options.labels.clone());
-        let mut workers = Workers::start(options, origin, stop.clone());
+        let mut interface = Interface {
+            _screen: screen,
+            workers: Workers::new(stop.clone()),
+        };
+        interface.workers.start(options, origin);
         let mut redraw = Redraw::default();
         while !model.quit && !stop.load(Ordering::Relaxed) {
-            workers.drain(&mut model, origin);
+            interface.workers.drain(&mut model, origin);
             let now = origin.elapsed();
             if redraw.due(now) {
                 model.page = terminal

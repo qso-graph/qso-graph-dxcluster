@@ -103,6 +103,14 @@ impl Options {
                 return Err("configuration: --call requires --node".into());
             }
             for path in replays {
+                // QGDXC-TUI-0003: metadata follows symlinks; never open special files.
+                let metadata = std::fs::metadata(&path)
+                    .map_err(|e| format!("configuration: --replay {path}: {e}"))?;
+                if !metadata.is_file() {
+                    return Err(format!(
+                        "configuration: --replay {path}: expected a regular file"
+                    ));
+                }
                 bases.push(
                     Path::new(&path)
                         .file_stem()

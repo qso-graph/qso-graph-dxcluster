@@ -236,6 +236,35 @@ impl Replay {
         self.advance(self.last, &mut events)?;
         Ok(events)
     }
+    fn abort(&mut self) -> Result<Vec<Event>, String> {
+        let mut events = vec![];
+        // Drain admitted bytes before EOF so no continuation is lost.
+        while self.engine.has_pending_input() {
+            events.extend(self.engine.drain_input().map_err(str::to_owned)?.events);
+        }
+        if self.open {
+            events.extend(self.close(self.last, "cancelled", &mut || {
+                Err("readiness token requested during replay abort".into())
+            })?);
+        }
+        // Also cancel retry timers when the last recorded connection has closed.
+        events.extend(self.engine.cancel(self.last).map_err(str::to_owned)?.events);
+        Ok(events)
+    }
+    fn close(
+        &mut self,
+        at: u64,
+        reason: &'static str,
+        token: &mut impl FnMut() -> Result<String, String>,
+    ) -> Result<Vec<Event>, String> {
+        self.open = false;
+        self.outbound.clear();
+        let batch = self
+            .engine
+            .transport_end(at, self.engine.attempt, reason)
+            .map_err(str::to_owned)?;
+        self.supply(batch, token)
+    }
     #[cfg(test)]
     fn record(&mut self, v: &Value) -> Result<Vec<Event>, String> {
         let mut events =
@@ -277,18 +306,12 @@ impl Replay {
                     .events,
             );
         } else if v["conn"] == "close" {
-            self.open = false;
-            self.outbound.clear();
             let reason = REASONS
                 .iter()
                 .copied()
                 .find(|r| Some(*r) == v["reason"].as_str())
                 .ok_or("close reason")?;
-            let b = self
-                .engine
-                .transport_end(at, self.engine.attempt, reason)
-                .map_err(str::to_owned)?;
-            events.extend(self.supply(b, token)?);
+            events.extend(self.close(at, reason, token)?);
         } else if v["dir"] == "out" {
             for byte in unbase64(v["b64"].as_str().ok_or("wire bytes")?).map_err(str::to_owned)? {
                 if self.outbound.len() == 256 {
@@ -394,6 +417,7 @@ pub struct ReplayStream<R: BufRead> {
     source: Lookahead<R>,
     replay: Replay,
     input_line: usize,
+    aborted: bool,
 }
 impl<R: BufRead> ReplayStream<R> {
     pub fn new(reader: R, retain: bool) -> Result<Self, String> {
@@ -457,11 +481,15 @@ impl<R: BufRead> ReplayStream<R> {
             source,
             replay: Replay::new_with_retention(call, profile, retain)?,
             input_line: 0,
+            aborted: false,
         })
     }
     /// Return one event batch under QGDXC-IO-0005. Continuations retain the
     /// physical record number with null metadata, so notes are delivered once.
     pub fn next_record(&mut self) -> Result<Option<(usize, Value, Vec<Event>)>, String> {
+        if self.aborted {
+            return Ok(None);
+        }
         if self.replay.engine.has_pending_input() {
             let b = self.replay.engine.drain_input().map_err(str::to_owned)?;
             let source = &mut self.source;
@@ -484,6 +512,14 @@ impl<R: BufRead> ReplayStream<R> {
     pub fn finish(&mut self) -> Result<Vec<Event>, String> {
         self.replay.finish()
     }
+    /// QGDXC-TUI-0052: finalize the recorded connection once on cancellation.
+    pub fn abort(&mut self) -> Result<Vec<Event>, String> {
+        if self.aborted {
+            return Ok(vec![]);
+        }
+        self.aborted = true;
+        self.replay.abort()
+    }
 }
 #[cfg(test)]
 mod tests {
@@ -496,6 +532,93 @@ mod tests {
         )
         .unwrap();
         r
+    }
+    #[test]
+    fn replay_abort_finalizes_pending_cr_partial_line_and_telnet_once() {
+        // QGDXC-TUI-0052: compare abort with the recorded close procedure.
+        let line = b"DX de Q9XYZ: 14074 Q2ABC CW 1832Z";
+        for (suffix, kind, ending) in [
+            (&b"\r"[..], "spot", "cr"),
+            (&b""[..], "unrecognized_line", "none"),
+            (&b"\xff\xfa\x01"[..], "unrecognized_line", "none"),
+        ] {
+            let mut r = configured("arcluster");
+            r.open(0.0).unwrap();
+            r.wire(0.0, "in", &[line.as_slice(), suffix].concat())
+                .unwrap();
+            r.close(3600.0, "cancelled").unwrap();
+            let data = r.into_inner();
+            let mut stream = ReplayStream::new(std::io::Cursor::new(data.clone()), false).unwrap();
+            loop {
+                let (_, v, events) = stream.next_record().unwrap().unwrap();
+                assert!(
+                    !events
+                        .iter()
+                        .any(|e| e.kind == "spot" || e.kind == "unrecognized_line")
+                );
+                if v["dir"] == "in" {
+                    break;
+                }
+            }
+            let events = stream.abort().unwrap();
+            let content: Vec<_> = events
+                .iter()
+                .filter(|e| e.kind != "connection_state")
+                .collect();
+            assert_eq!(content.len(), 1, "{suffix:?}: {events:?}");
+            assert_eq!(content[0].kind, kind);
+            assert_eq!(content[0].raw_line, line);
+            assert_eq!(content[0].raw_ending, ending);
+            let ended: Vec<_> = events
+                .iter()
+                .filter(|e| e.kind == "connection_state")
+                .collect();
+            assert_eq!(ended.len(), 1);
+            assert_eq!(ended[0].get("state"), Some("disconnected"));
+            assert_eq!(ended[0].get("reason"), Some("cancelled"));
+            assert!(stream.abort().unwrap().is_empty());
+            assert!(stream.finish().unwrap().is_empty());
+            assert!(
+                stream.next_record().unwrap().is_none(),
+                "abort must not consume later records"
+            );
+            let mut closed = ReplayStream::new(std::io::Cursor::new(data), false).unwrap();
+            let mut close_events = vec![];
+            while let Some((_, v, batch)) = closed.next_record().unwrap() {
+                if v["conn"] == "close" {
+                    close_events.extend(batch);
+                }
+            }
+            // Compare the full serialized events with the recorded close path.
+            assert_eq!(
+                events.iter().map(Event::json).collect::<Vec<_>>(),
+                close_events.iter().map(Event::json).collect::<Vec<_>>()
+            );
+            assert!(closed.abort().unwrap().is_empty());
+        }
+    }
+    #[test]
+    fn replay_abort_cancels_recorded_retry_once() {
+        // QGDXC-TUI-0052
+        let mut r = configured("arcluster");
+        r.open(0.0).unwrap();
+        r.close(1.0, "eof").unwrap();
+        r.open(3600.0).unwrap();
+        r.close(3601.0, "cancelled").unwrap();
+        let mut stream = ReplayStream::new(std::io::Cursor::new(r.into_inner()), false).unwrap();
+        loop {
+            let (_, record, _) = stream.next_record().unwrap().unwrap();
+            if record["conn"] == "close" {
+                break;
+            }
+        }
+        assert_eq!(stream.replay.engine.state, State::Backoff);
+        let events = stream.abort().unwrap();
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].get("reason"), Some("cancelled"));
+        assert_eq!(stream.replay.engine.state, State::Disconnected);
+        assert!(stream.abort().unwrap().is_empty());
+        assert!(stream.next_record().unwrap().is_none());
     }
     #[cfg(target_os = "linux")]
     #[test]

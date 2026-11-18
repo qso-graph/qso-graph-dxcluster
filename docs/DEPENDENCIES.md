@@ -19,8 +19,9 @@ The terminal interface pins ratatui 0.30.2 (published June 19, 2026) and
 crossterm 0.29.0 (published April 5, 2025). The crates.io registry index
 retrieved by `cargo fetch` lists these as the newest stable releases before
 the November 4, 2026 cutoff. Ratatui defaults are disabled; only its crossterm
-backend is enabled. Crossterm defaults are disabled; event and bracketed-paste
-support are enabled. Other additions are transitive terminal dependencies.
+backend is enabled. The CLI requests Crossterm event support with defaults disabled; the Ratatui
+backend also enables Crossterm defaults transitively. The interface does not
+enable bracketed paste (QGDXC-TUI-0041). Other additions are transitive terminal dependencies.
 
 Every registry package below is an explicit decision. Versions are locked in
 Cargo.lock; exact-version cargo-vet exemptions mean **not audited yet**, not an

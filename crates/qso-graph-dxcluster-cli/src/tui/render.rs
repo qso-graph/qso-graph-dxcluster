@@ -62,7 +62,7 @@ pub fn draw(frame: &mut Frame<'_>, model: &Model, now: Duration) {
         return;
     }
     match &model.editor {
-        Editor::Calls { text, error } => {
+        Editor::Calls { text, error, .. } => {
             line(
                 frame,
                 area,

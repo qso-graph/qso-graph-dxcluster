@@ -65,6 +65,9 @@ show or hide `unknown` like any other value.
 Filters are display filters only. They never send a command, never change what a
 session receives, and never discard a retained spot.
 
+The filter set, its keys, and its matching rules are provisional in this draft and
+are expected to change with use. The guarantees in the paragraph above are not.
+
 | ID | Requirement | Verify |
 |---|---|---|
 | `QGDXC-TUI-0040` | The interface MUST provide four filters, all off at start, combined with AND: **band** (any subset of the bands of F.3, including `other`); **mode** (any subset of `CW`, `SSB`, `AM`, `FM`, `FT8`, `FT4`, `RTTY`, `other`, `unknown`, where `other` is every recognized F.4 mode not listed); **callsign** (F.5.1); **kind** (`all`, `human`, or `skimmer`, from `spot_kind`). An inactive filter MUST accept every spot. An active band or mode filter MUST accept exactly the selected values; an empty selected set MUST accept no spots. | Test |
