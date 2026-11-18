@@ -45,7 +45,9 @@ Recording is opt-in; exact recording also requires the explicit retention flag.
 Replay opens only the specified local file. The same retention flag also applies
 to replay; its output follows `QGDXC-SEC-0003` and `QGDXC-SEC-0005`. Ctrl-C closes the active connection.
 A node that asks for a password stops the session with `password_unsupported`.
-No password option is available in this version. Human output has one escaped
+qg-dxc never sends a password over plain Telnet: anyone on the network path can read
+it, and passwords are often reused. Password login may come later, only over verified
+TLS. Human output has one escaped
 line per event; `--json` produces Annex A NDJSON events.
 
 For library integration, start with [the API documentation](crates/qso-graph-dxcluster/src/lib.rs)
