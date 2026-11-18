@@ -27,3 +27,7 @@ deny = [
 confidence-threshold = 0.93
 allow = ["Apache-2.0", "GPL-3.0-or-later", "MIT", "Unicode-3.0"]
 
+# Required by the terminal renderer; the Zlib notice remains in the package.
+[[licenses.exceptions]]
+crate = "foldhash:=0.2.0"
+allow = ["Zlib"]

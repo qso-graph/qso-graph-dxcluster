@@ -1,0 +1,810 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+use super::{
+    config::{Options, Source, labels},
+    model::*,
+    render,
+    sources::{CAPACITY, Message, Schedule},
+    *,
+};
+use crate::{
+    Delivery, Live,
+    recording::{Recorder, ReplayStream},
+};
+use qso_graph_dxcluster::{Config, Event as ClusterEvent, Profile, Session, State};
+use ratatui::{Terminal, backend::TestBackend, buffer::Buffer, layout::Rect};
+use std::{collections::BTreeSet, io::Cursor, sync::mpsc};
+
+fn args(values: &[&str]) -> Vec<String> {
+    values.iter().map(|s| (*s).into()).collect()
+}
+fn spot(call: &str, hz: i64, comment: &str) -> ClusterEvent {
+    let mut event = ClusterEvent::new(Profile::ArCluster, "spot");
+    event.set("call", call);
+    event.set("spotter_call", "Q9XYZ-#");
+    event.set("frequency_hz", qso_graph_dxcluster::Value::Integer(hz));
+    event.set("comment", comment);
+    event.set("time_of_day", "18:32");
+    event.set("spot_kind", "human");
+    event
+}
+fn grid(model: &Model, width: u16, height: u16) -> Buffer {
+    let mut terminal = Terminal::new(TestBackend::new(width, height)).unwrap();
+    present(&mut terminal, model, Duration::from_secs(10)).unwrap();
+    terminal.backend().buffer().clone()
+}
+fn text(buffer: &Buffer, y: u16) -> String {
+    (0..buffer.area.width)
+        .map(|x| buffer[(x, y)].symbol())
+        .collect()
+}
+fn key(model: &mut Model, code: KeyCode) {
+    model.key(input(Event::Key(event::KeyEvent::new(code, KeyModifiers::NONE))).unwrap());
+}
+#[test]
+fn configuration_validates_all_sources_before_io() {
+    // QGDXC-TUI-0001 QGDXC-TUI-0014
+    let valid = Options::parse(&args(&[
+        "--call",
+        "Q1ABC",
+        "--node",
+        "example.invalid:7300",
+        "--node",
+        "[2001:db8::1]:65535/rbn",
+    ]))
+    .unwrap();
+    assert_eq!(valid.sources.len(), 2);
+    for source in valid.sources {
+        let Source::Node(c) = source else { panic!() };
+        assert!(!c.retain_third_party_data);
+    }
+    for profile in ["auto", "dxspider", "arcluster", "cccluster", "rbn"] {
+        assert!(
+            Options::parse(&args(&[
+                "--call",
+                "Q1ABC",
+                "--node",
+                &format!("example.invalid:1/{profile}")
+            ]))
+            .is_ok()
+        );
+    }
+    for endpoint in [
+        "bad host:1",
+        "example.invalid:0",
+        "example.invalid:65536",
+        "example.invalid:+1",
+        "example.invalid:1/unknown",
+        "example.invalid:1/ssh",
+        "example.invalid",
+        "[]:1",
+        "[no]:1",
+        "2001:db8::1:7300",
+        ":1",
+    ] {
+        let error = Options::parse(&args(&["--call", "Q1ABC", "--node", endpoint]))
+            .err()
+            .unwrap();
+        assert!(error.contains(endpoint), "{error}");
+    }
+    for call in ["Q1ABC-0", "Q1ABC-01", "Q1ABC\nq", "QABC"] {
+        assert!(
+            Options::parse(&args(&["--call", call, "--node", "example.invalid:1"]))
+                .err()
+                .unwrap()
+                .contains(call)
+        );
+    }
+    for values in [
+        vec![],
+        vec!["--node", "example.invalid:1"],
+        vec!["--replay", "one", "--node", "example.invalid:1"],
+        vec![
+            "--call",
+            "Q1ABC",
+            "--node",
+            "example.invalid:1",
+            "--node",
+            "EXAMPLE.invalid:1/rbn",
+        ],
+        vec!["--retain-third-party-data", "yes"],
+        vec!["--replay", "one", "--call", "Q1ABC"],
+    ] {
+        assert!(Options::parse(&args(&values)).is_err());
+    }
+    let eight: Vec<_> = (0..8)
+        .flat_map(|i| ["--replay".into(), format!("source{i}")])
+        .collect();
+    assert!(Options::parse(&eight).is_ok());
+    let nine: Vec<_> = (0..9)
+        .flat_map(|i| ["--replay".into(), format!("source{i}")])
+        .collect();
+    assert!(
+        Options::parse(&nine)
+            .err()
+            .unwrap()
+            .contains("--node/--replay")
+    );
+}
+#[test]
+fn labels_resolve_rendered_collisions_in_argument_order() {
+    // QGDXC-TUI-0004 QGDXC-TUI-0013
+    assert_eq!(
+        labels(&args(&[
+            "abcdefghijklmnopq",
+            "abcdefghijklmnop#2",
+            "abcdefghijklmnopq",
+            "abcdefghijklmn#2",
+            "\u{202e}"
+        ])),
+        args(&[
+            "abcdefghijklmnop",
+            "abcdefghijklmn#2",
+            "abcdefghijklmn#3",
+            "abcdefghijklmn#4",
+            "\\u{202e}"
+        ])
+    );
+    let parsed = Options::parse(&args(&[
+        "--replay",
+        "/",
+        "--replay",
+        "/tmp/one.ndjson",
+        "--replay",
+        "one.ndjson",
+    ]))
+    .unwrap();
+    assert_eq!(parsed.labels, args(&["source", "one", "one#2"]));
+}
+#[test]
+fn every_band_edge_and_original_mode_precedence() {
+    // QGDXC-TUI-0020 QGDXC-TUI-0030
+    for &(name, low, high) in BANDS {
+        assert_eq!(band(low), name);
+        assert_eq!(band(high), name);
+        assert_ne!(band(low - 1), name);
+        assert_ne!(band(high + 1), name);
+    }
+    assert_eq!(band(1), "other");
+    assert_eq!(band(54_000_000), "6m");
+    assert_eq!(band(54_000_001), "5m");
+    assert_eq!(band(7_500_000_000_001), "other");
+    for (comment, expected) in [
+        ("CQ usb CW", "SSB"),
+        ("cw FT8", "CW"),
+        ("(CW)\tFT8", "unknown"),
+        ("PSK63 CQ", "PSK63"),
+        ("", "unknown"),
+    ] {
+        let mut e = spot("Q1ABC", 14_074_000, comment);
+        assert_eq!(mode(&e), expected);
+        e.set("mode", "LSB");
+        assert_eq!(mode(&e), "SSB");
+    }
+    for reported in [
+        "CW", "SSB", "USB", "LSB", "AM", "FM", "FT8", "FT4", "RTTY", "PSK31", "PSK63", "JT65",
+        "JS8", "MSK144", "Q65", "SSTV",
+    ] {
+        let event = spot("Q1ABC", 1, &reported.to_lowercase());
+        assert_eq!(
+            mode(&event),
+            if matches!(reported, "USB" | "LSB") {
+                "SSB"
+            } else {
+                reported
+            }
+        );
+    }
+    assert_eq!(frequency_text(14_349_949), "14349.9");
+    assert_eq!(frequency_text(14_349_950), "14350.0");
+    let e = spot("Q1ABC", 14_350_001, "40m FT8");
+    assert_eq!(frequency_text(frequency(&e)), "14350.0");
+    assert_eq!(band(frequency(&e)), "other");
+}
+#[test]
+fn retention_filters_pause_scroll_and_eviction() {
+    // QGDXC-TUI-0010 QGDXC-TUI-0012 QGDXC-TUI-0040 QGDXC-TUI-0042 QGDXC-TUI-0051
+    let mut m = Model::new(args(&["one", "two"]));
+    for source in [0, 1] {
+        m.receive(
+            source,
+            spot("Q1ABC", 14_074_000, "FT8"),
+            Duration::from_secs(0),
+        );
+    }
+    assert_eq!(
+        m.matching().iter().map(|s| s.source).collect::<Vec<_>>(),
+        [1, 0]
+    );
+    key(&mut m, KeyCode::Char('p'));
+    assert!(m.summary().contains("PAUSED +0"));
+    let top = m.top;
+    for _ in 0..10 {
+        m.receive(1, spot("Q2ABC", 7_025_000, "CW"), Duration::from_secs(1));
+    }
+    assert_eq!(m.top, top);
+    assert!(m.summary().contains("PAUSED +10"));
+    key(&mut m, KeyCode::Down);
+    assert_eq!(m.top, Some(1));
+    key(&mut m, KeyCode::Home);
+    assert_eq!(m.top, Some(12));
+    key(&mut m, KeyCode::PageDown);
+    assert_eq!(m.top, Some(2));
+    key(&mut m, KeyCode::PageUp);
+    assert_eq!(m.top, Some(12));
+    key(&mut m, KeyCode::Down);
+    key(&mut m, KeyCode::Up);
+    assert_eq!(m.top, Some(12));
+    // All four filters intersect, including an active empty set.
+    m.filters.bands = Some(["40m".into()].into());
+    m.filters.modes = Some(["CW".into()].into());
+    m.filters.calls = patterns("q2*").unwrap();
+    m.filters.kind = 1;
+    assert_eq!(m.matching().len(), 10);
+    m.filters.modes = Some(BTreeSet::new());
+    assert_eq!(m.matching().len(), 0);
+    key(&mut m, KeyCode::Char('c'));
+    assert_eq!(m.matching().len(), 12);
+    key(&mut m, KeyCode::Char('2'));
+    assert_eq!(m.matching().len(), 1);
+    assert_eq!(m.top, Some(1));
+    for _ in 0..LIMIT + 1 {
+        m.receive(0, spot("Q1ABC", 1, ""), Duration::from_secs(2));
+    }
+    assert_eq!(m.spots.len(), LIMIT);
+    assert_eq!(m.top, m.matching().last().map(|s| s.id));
+    assert_eq!(m.sources[0].count, 10002);
+    assert_eq!(m.sources[1].count, 11);
+    assert!(m.summary().contains("retained:10000 received:10013"));
+    key(&mut m, KeyCode::Char('p'));
+    assert_eq!(m.top, Some(10013));
+    key(&mut m, KeyCode::Char('c'));
+    assert!(m.sources.iter().all(|s| !s.hidden));
+    for kind in [1, 2, 0] {
+        key(&mut m, KeyCode::Char('k'));
+        assert_eq!(m.filters.kind, kind);
+    }
+}
+#[test]
+fn synthetic_keys_edit_transactionally_and_quit_every_mode() {
+    // QGDXC-TUI-0041 QGDXC-TUI-0043 QGDXC-TUI-0051 QGDXC-TUI-0060
+    let mut m = Model::new(args(&["one"]));
+    key(&mut m, KeyCode::Char('/'));
+    for c in "q1*,q2?".chars() {
+        key(&mut m, KeyCode::Char(c));
+    }
+    key(&mut m, KeyCode::Backspace);
+    key(&mut m, KeyCode::Char('?'));
+    key(&mut m, KeyCode::Enter);
+    assert_eq!(m.filters.calls, args(&["Q1*", "Q2?"]));
+    assert!(text(&grid(&m, 80, 24), 1).contains("call:2"));
+    key(&mut m, KeyCode::Char('/'));
+    key(&mut m, KeyCode::Char('q'));
+    assert!(!m.quit);
+    key(&mut m, KeyCode::Char('['));
+    key(&mut m, KeyCode::Enter);
+    assert!(matches!(m.editor, Editor::Calls { .. }));
+    key(&mut m, KeyCode::Esc);
+    assert_eq!(m.filters.calls.len(), 2);
+    key(&mut m, KeyCode::Char('b'));
+    key(&mut m, KeyCode::Down);
+    key(&mut m, KeyCode::Char(' '));
+    key(&mut m, KeyCode::Enter);
+    assert_eq!(m.filters.bands, Some(["630m".into()].into()));
+    key(&mut m, KeyCode::Char('m'));
+    key(&mut m, KeyCode::Char(' '));
+    key(&mut m, KeyCode::Esc);
+    assert!(m.filters.modes.is_none());
+    key(&mut m, KeyCode::Char('m'));
+    key(&mut m, KeyCode::Down);
+    key(&mut m, KeyCode::Up);
+    key(&mut m, KeyCode::Char(' '));
+    key(&mut m, KeyCode::Enter);
+    assert_eq!(m.filters.modes, Some(["CW".into()].into()));
+    assert!(text(&grid(&m, 80, 24), 1).contains("band:1 mode:1 call:2"));
+    for entry in [
+        "Q1*,,Q2*",
+        ",",
+        "Q1[A]",
+        "Q1_",
+        "Q1é",
+        &"Q".repeat(21),
+        &vec!["Q"; 17].join(","),
+    ] {
+        assert!(patterns(entry).is_err(), "{entry}");
+    }
+    let maximum = vec!["Q".repeat(20); 16].join(",");
+    assert_eq!(maximum.len(), 335);
+    assert_eq!(patterns(&maximum).unwrap().len(), 16);
+    key(&mut m, KeyCode::Char('c'));
+    key(&mut m, KeyCode::Char('/'));
+    m.key(Input::Paste(maximum.clone()));
+    m.key(Input::Paste("extra".into()));
+    m.key(Input::Char('X'));
+    let Editor::Calls { text: entry, error } = &m.editor else {
+        panic!()
+    };
+    assert_eq!(entry, &maximum);
+    assert!(!error.is_empty());
+    let editor_grid = grid(&m, 80, 24);
+    let displayed: String = (2..7)
+        .map(|y| text(&editor_grid, y).trim_end().to_owned())
+        .collect();
+    assert_eq!(displayed, maximum);
+    key(&mut m, KeyCode::Esc);
+    assert!(m.filters.calls.is_empty());
+    key(&mut m, KeyCode::Char('/'));
+    m.key(Input::Paste(format!("{maximum}x")));
+    key(&mut m, KeyCode::Enter);
+    assert!(m.filters.calls.is_empty());
+    for open in ['/', 'b', 'm', '?', 'x'] {
+        let mut m = Model::new(args(&["one"]));
+        key(&mut m, KeyCode::Char(open));
+        let event = Event::Key(event::KeyEvent::new(
+            KeyCode::Char('c'),
+            KeyModifiers::CONTROL,
+        ));
+        m.key(input(event).unwrap());
+        assert!(m.quit);
+    }
+    key(&mut m, KeyCode::Esc);
+    key(&mut m, KeyCode::Char('?'));
+    assert!(text(&grid(&m, 80, 24), 0).contains("receive-only"));
+}
+#[test]
+fn wildcard_pathological_processing_growth_is_bounded() {
+    // QGDXC-TUI-0041: count DP time steps, rather than impose a wall-clock limit.
+    let mut previous = 0;
+    for length in [64, 128, 256, 512, 1024, 2048] {
+        let pattern = "*Q".repeat(9) + "*Z";
+        let (matched, work) = wildcard_work(&pattern, &"Q".repeat(length));
+        assert!(!matched);
+        assert_eq!(work, pattern.len() * length);
+        if previous > 0 {
+            assert_eq!(work, previous * 2);
+        }
+        previous = work;
+    }
+    // Also measure relative runtime growth on the adversarial failing suffix.
+    // Median batches reduce scheduler noise; the limit is a growth ratio,
+    // independent of absolute CPU speed. DP step counts above pin the bound.
+    let pattern = "*Q".repeat(9) + "*Z";
+    let measure = |length| {
+        let call = "Q".repeat(length);
+        let mut samples = vec![];
+        for _ in 0..7 {
+            let start = Instant::now();
+            for _ in 0..32 {
+                std::hint::black_box(wildcard_work(
+                    std::hint::black_box(&pattern),
+                    std::hint::black_box(&call),
+                ));
+            }
+            samples.push(start.elapsed());
+        }
+        samples.sort();
+        samples[3]
+    };
+    let small = measure(256);
+    let large = measure(2048);
+    assert!(
+        large.as_nanos() <= small.as_nanos() * 16,
+        "superlinear timing growth: {small:?} -> {large:?}"
+    );
+    for (p, c, yes) in [
+        ("q1*", "Q1ABC", true),
+        ("*/P", "Q1ABC/P", true),
+        ("Q?ABC", "Q1ABC", true),
+        ("Q1", "Q1ABC", false),
+        ("*", "", true),
+        ("?", "", false),
+        ("Q*Q*Z", "QQQQZ", true),
+    ] {
+        assert_eq!(wildcard_work(p, c).0, yes);
+    }
+}
+#[test]
+fn hostile_scalars_cannot_write_outside_field_cells() {
+    // QGDXC-TUI-0011 QGDXC-TUI-0013 QGDXC-TUI-0060
+    let hostile = "\x1b[2J\x07\u{009b}\u{202e}\u{200b}\u{0301}界\x7f\n";
+    let escaped =
+        "\\u{001b}[2J\\u{0007}\\u{009b}\\u{202e}\\u{200b}\\u{0301}\\u{754c}\\u{007f}\\u{000a}";
+    assert_eq!(sanitize(hostile), escaped);
+    for width in 0..=80 {
+        let mut terminal = Terminal::new(TestBackend::new(86, 3)).unwrap();
+        terminal
+            .draw(|frame| {
+                for cell in &mut frame.buffer_mut().content {
+                    cell.set_symbol("X");
+                }
+                render::field(frame, Rect::new(3, 1, width, 1), hostile, true);
+            })
+            .unwrap();
+        let buffer = terminal.backend().buffer();
+        for y in 0..3 {
+            for x in 0..86 {
+                if y != 1 || x < 3 || x >= 3 + width {
+                    assert_eq!(buffer[(x, y)].symbol(), "X");
+                }
+            }
+        }
+        let expected = clip(escaped, width as usize, true);
+        for (i, c) in expected.chars().enumerate() {
+            assert_eq!(buffer[(3 + i as u16, 1)].symbol(), c.to_string());
+        }
+    }
+    let mut m = Model::new(args(&["source-1234567890"]));
+    m.receive(
+        0,
+        spot("Q12345678901234567890", 14_349_950, "\x1b[2J FT8 界"),
+        Duration::from_secs(0),
+    );
+    let buffer = grid(&m, 80, 24);
+    assert_eq!(text(&buffer, 4)[..4].to_owned(), "1832");
+    assert!(text(&buffer, 4).contains("14350.0"));
+    assert!(text(&buffer, 4).contains("Q12345678~"));
+    assert!(text(&buffer, 4).contains("source-123456789"));
+    assert!(
+        buffer
+            .content
+            .iter()
+            .all(|c| c.symbol().bytes().all(|b| (32..=126).contains(&b)))
+    );
+    let widths = render::widths(80, 16);
+    assert_eq!(widths[8], 0);
+    assert!(widths[..8].iter().all(|w| *w > 0));
+}
+#[test]
+fn status_layout_small_resize_and_redraw_clock() {
+    // QGDXC-TUI-0050 QGDXC-TUI-0053 QGDXC-TUI-0054 QGDXC-TUI-0060
+    let mut m = Model::new(args(&["one", "two"]));
+    assert_eq!(
+        m.sources[0].line(Duration::from_secs(10)),
+        "one   unknown spots:0 age: "
+    );
+    let mut event = ClusterEvent::new(Profile::Rbn, "connection_state");
+    event.set("state", "blocked");
+    event.set("reason", "retry_exhausted");
+    m.receive(0, event, Duration::from_secs(0));
+    m.sources[0].hidden = true;
+    m.receive(0, spot("Q1ABC", 1, ""), Duration::from_secs(3));
+    assert_eq!(m.sources[0].count, 1);
+    assert!(m.sources[0].line(Duration::from_secs(10)).contains("age:7"));
+    let normal = grid(&m, 80, 24);
+    assert!(text(&normal, 2).contains("blocked retry_exhausted"));
+    for (width, height) in [(79, 24), (80, 23), (1, 1), (0, 0)] {
+        let small = grid(&m, width, height);
+        if height > 0 && width > 0 {
+            assert!(text(&small, 0).starts_with('E'));
+        }
+        assert!(small.content.iter().all(|c| c.symbol().is_ascii()));
+    }
+    let mut terminal = Terminal::new(TestBackend::new(79, 23)).unwrap();
+    present(&mut terminal, &m, Duration::from_secs(10)).unwrap();
+    terminal.backend_mut().resize(80, 24);
+    present(&mut terminal, &m, Duration::from_secs(10)).unwrap();
+    assert!(text(terminal.backend().buffer(), 0).starts_with("QG DX Cluster"));
+    m.receive(0, spot("Q1ABC", 1, ""), Duration::from_millis(3900));
+    assert!(
+        m.sources[0]
+            .line(Duration::from_millis(4100))
+            .contains("age:0")
+    );
+    assert!(
+        m.sources[0]
+            .line(Duration::from_millis(4900))
+            .contains("age:1")
+    );
+    for open in ['/', 'b', 'm', '?'] {
+        let mut small = Model::new(args(&["one"]));
+        key(&mut small, KeyCode::Char(open));
+        small.key_at_size(Input::Char('q'), 79, 23);
+        assert!(small.quit);
+    }
+    let mut redraw = Redraw::default();
+    let mut draws = vec![];
+    for ms in 0..=3000 {
+        if redraw.due(Duration::from_millis(ms)) {
+            draws.push(ms);
+        }
+    }
+    assert!(
+        draws
+            .windows(2)
+            .all(|w| w[1] - w[0] >= 50 && w[1] - w[0] <= 1000)
+    );
+    assert_eq!(draws.len(), 61);
+}
+fn recording(at: f64, call: &str, count: usize) -> ReplayStream<Cursor<Vec<u8>>> {
+    let mut r = Recorder::new(vec![], true).unwrap();
+    r.note(
+        at,
+        "qg-dxc configuration: {\"call\":\"Q1ABC\",\"profile\":\"arcluster\"}",
+    )
+    .unwrap();
+    r.open(at).unwrap();
+    let lines = format!("DX de Q9XYZ: 14074.0 {call} FT8 1832Z\r\n").repeat(count);
+    r.wire(at, "in", lines.as_bytes()).unwrap();
+    r.close(at, "cancelled").unwrap();
+    ReplayStream::new(Cursor::new(r.into_inner()), false).unwrap()
+}
+#[test]
+fn replay_pacing_ties_continuations_completion_and_isolated_errors() {
+    // QGDXC-TUI-0002 QGDXC-TUI-0003 QGDXC-TUI-0010 QGDXC-TUI-0014 QGDXC-TUI-0060
+    let mut scheduler = Schedule::new(vec![
+        Ok(recording(2.0, "Q1ABC", 20)),
+        Ok(recording(1.0, "Q2ABC", 1)),
+        Ok(recording(2.0, "Q3ABC", 1)),
+        Err("broken\u{202e}".into()),
+    ]);
+    let mut m = Model::new(args(&["one", "two", "three", "four"]));
+    assert!(matches!(scheduler.poll(0.0), Some((3, Message::Error(_)))));
+    assert!(scheduler.poll(0.999).is_none());
+    let mut events = vec![];
+    let mut complete = vec![];
+    for now in [1.0, 1.999, 2.0, 100.0] {
+        while let Some((source, message)) = scheduler.poll(now) {
+            match message {
+                Message::Event(e) => {
+                    if e.kind == "spot" {
+                        events.push(source);
+                    }
+                    m.receive(source, e, Duration::from_secs_f64(now));
+                }
+                Message::Complete => {
+                    complete.push(source);
+                    m.sources[source].complete = true;
+                }
+                _ => {}
+            }
+        }
+        if now < 2.0 {
+            assert_eq!(m.total, 1);
+        }
+    }
+    assert_eq!(events, [vec![1], vec![0; 20], vec![2]].concat());
+    assert_eq!(complete, [1, 0, 2]);
+    assert!(scheduler.done());
+    assert!(scheduler.poll(1000.0).is_none());
+    assert!(text(&grid(&m, 100, 24), 2).contains("COMPLETE"));
+    assert_eq!(m.sources[0].state, "disconnected");
+    let mut invalid = Schedule::new(vec![Ok(ReplayStream::new(Cursor::new(b"{\"t\":0,\"note\":\"qg-dxc configuration: {\\\"call\\\":\\\"Q1ABC\\\",\\\"profile\\\":\\\"arcluster\\\"}\"}\ninvalid\n".to_vec()),false).unwrap()),Ok(recording(0.0,"Q4ABC",1))]);
+    let mut errors = 0;
+    let mut spots = 0;
+    while let Some((_, message)) = invalid.poll(100.0) {
+        match message {
+            Message::Error(_) => errors += 1,
+            Message::Event(e) if e.kind == "spot" => spots += 1,
+            _ => {}
+        }
+    }
+    assert_eq!((errors, spots), (1, 1));
+}
+#[test]
+fn bounded_source_send_blocks_and_unrelated_session_progresses() {
+    // QGDXC-TUI-0002 QGDXC-TUI-0052 QGDXC-TUI-0053
+    let (tx, rx) = mpsc::sync_channel(CAPACITY);
+    let mut delivery = Delivery::Tui(tx);
+    for _ in 0..CAPACITY {
+        delivery
+            .enqueue(spot("Q1ABC", 1, ""), false, false)
+            .unwrap();
+    }
+    let (ready, ready_rx) = mpsc::channel();
+    let (done, done_rx) = mpsc::channel();
+    let thread = std::thread::spawn(move || {
+        ready.send(()).unwrap();
+        let result = delivery.enqueue(spot("Q2ABC", 1, ""), false, false);
+        done.send(result).unwrap();
+    });
+    ready_rx.recv().unwrap();
+    assert!(done_rx.recv_timeout(Duration::from_millis(20)).is_err());
+    let (other_tx, other_rx) = mpsc::sync_channel(CAPACITY);
+    let mut session = Session::new(Config::new(
+        "example.invalid".into(),
+        7300,
+        "Q1ABC".into(),
+        Profile::ArCluster,
+    ))
+    .unwrap();
+    session.start(0).unwrap();
+    session.connected(0, 1).unwrap();
+    let mut live = Live {
+        session,
+        socket: None,
+        recorder: None,
+        clock: Instant::now(),
+        json: false,
+        output: Delivery::Tui(other_tx),
+        receiver: None,
+        closing: None,
+        deferred_connect: false,
+        stop: Arc::new(AtomicBool::new(false)),
+    };
+    live.input(b"DX de Q9XYZ: 14074 Q3ABC CW 1832Z\r\n")
+        .unwrap();
+    assert!(matches!(other_rx.try_recv().unwrap().message,Message::Event(e) if e.kind=="spot"));
+    live.input(b"Password:").unwrap();
+    assert_eq!(live.session.state, State::Blocked);
+    rx.recv().unwrap();
+    done_rx
+        .recv_timeout(Duration::from_secs(1))
+        .unwrap()
+        .unwrap();
+    thread.join().unwrap();
+    let remaining: Vec<_> = rx.try_iter().collect();
+    assert_eq!(remaining.len(), CAPACITY);
+    assert!(
+        matches!(&remaining.last().unwrap().message,Message::Event(e) if e.get("call")==Some("Q2ABC"))
+    );
+    let cancel = Arc::new(AtomicBool::new(false));
+    let cancelled = cancel.clone();
+    let (closed, closed_rx) = mpsc::channel();
+    let (_connection_tx, connection_rx) = mpsc::channel();
+    let connector = std::thread::spawn(move || {
+        while !cancelled.load(Ordering::Relaxed) {
+            std::thread::yield_now();
+        }
+        closed.send(()).unwrap();
+    });
+    live.receiver = Some(crate::Connector {
+        rx: connection_rx,
+        cancel,
+        worker: Some(connector),
+    });
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(move || {
+        let _live = live;
+        panic!("synthetic unwind");
+    }));
+    closed_rx.recv_timeout(Duration::from_secs(1)).unwrap();
+    assert!(result.is_err());
+}
+
+#[test]
+fn terminal_state_restores_on_return_error_partial_entry_and_unwind() {
+    // QGDXC-TUI-0052: fake terminal operations, with both initial raw states.
+    use std::sync::Mutex;
+    struct Fake {
+        log: Arc<Mutex<Vec<&'static str>>>,
+        raw: bool,
+        fail: &'static str,
+    }
+    impl Fake {
+        fn record(&mut self, op: &'static str) -> io::Result<()> {
+            self.log.lock().unwrap().push(op);
+            if op == self.fail {
+                Err(io::Error::other("synthetic terminal failure"))
+            } else {
+                Ok(())
+            }
+        }
+    }
+    impl ScreenIo for Fake {
+        fn raw(&mut self) -> io::Result<bool> {
+            self.record("query")?;
+            Ok(self.raw)
+        }
+        fn set_raw(&mut self, enabled: bool) -> io::Result<()> {
+            self.record(if enabled { "raw" } else { "cooked" })
+        }
+        fn enter_screen(&mut self) -> io::Result<()> {
+            self.record("enter")
+        }
+        fn leave_screen(&mut self) -> io::Result<()> {
+            self.record("leave")
+        }
+        fn enter_paste(&mut self) -> io::Result<()> {
+            self.record("paste")
+        }
+        fn leave_paste(&mut self) -> io::Result<()> {
+            self.record("restore-paste")
+        }
+        fn flush(&mut self) -> io::Result<()> {
+            self.record("flush")
+        }
+    }
+    for raw in [false, true] {
+        for outcome in ["return", "error", "panic"] {
+            let log = Arc::new(Mutex::new(vec![]));
+            let operations = log.clone();
+            let _ = std::panic::catch_unwind(move || -> io::Result<()> {
+                let _screen = Screen::enter(Fake {
+                    log: operations,
+                    raw,
+                    fail: "",
+                })?;
+                match outcome {
+                    "panic" => panic!("synthetic interface panic"),
+                    "error" => Err(io::Error::other("synthetic draw failure")),
+                    _ => Ok(()),
+                }
+            });
+            let actual = log.lock().unwrap().clone();
+            let expected = if raw {
+                vec![
+                    "query",
+                    "enter",
+                    "paste",
+                    "flush",
+                    "restore-paste",
+                    "leave",
+                    "flush",
+                ]
+            } else {
+                vec![
+                    "query",
+                    "raw",
+                    "enter",
+                    "paste",
+                    "flush",
+                    "restore-paste",
+                    "leave",
+                    "cooked",
+                    "flush",
+                ]
+            };
+            assert_eq!(actual, expected);
+        }
+    }
+    for (fail, expected) in [
+        ("query", vec!["query", "flush"]),
+        ("raw", vec!["query", "raw", "cooked", "flush"]),
+        (
+            "enter",
+            vec!["query", "raw", "enter", "leave", "cooked", "flush"],
+        ),
+        (
+            "paste",
+            vec![
+                "query",
+                "raw",
+                "enter",
+                "paste",
+                "restore-paste",
+                "leave",
+                "cooked",
+                "flush",
+            ],
+        ),
+        (
+            "flush",
+            vec![
+                "query",
+                "raw",
+                "enter",
+                "paste",
+                "flush",
+                "restore-paste",
+                "leave",
+                "cooked",
+                "flush",
+            ],
+        ),
+    ] {
+        let log = Arc::new(Mutex::new(vec![]));
+        assert!(
+            Screen::enter(Fake {
+                log: log.clone(),
+                raw: false,
+                fail
+            })
+            .is_err()
+        );
+        assert_eq!(*log.lock().unwrap(), expected);
+    }
+    for visible in [false, true] {
+        let mut backend = TestBackend::new(80, 24);
+        if visible {
+            backend.show_cursor().unwrap();
+        } else {
+            backend.hide_cursor().unwrap();
+        }
+        let mut terminal = Terminal::new(backend).unwrap();
+        present(
+            &mut terminal,
+            &Model::new(args(&["one"])),
+            Duration::from_secs(0),
+        )
+        .unwrap();
+        assert_eq!(terminal.backend().cursor_visible(), visible);
+    }
+}
