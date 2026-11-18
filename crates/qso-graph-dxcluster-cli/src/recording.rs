@@ -591,26 +591,71 @@ mod tests {
         assert!(replay.source.pending.is_empty());
         assert_eq!(replay.source.bytes, 0);
     }
+    /// Record a DXSpider login and setup up to, not including, the echo
+    /// command: the point where the session first requests a token.
+    fn dxspider_to_echo_step(r: &mut Recorder<Vec<u8>>, t: f64) {
+        let prompt = "\r\nQ1ABC de Q9XYZ 1-Nov-2026 1832Z dxspider >";
+        r.wire(t, "in", b"login: ").unwrap();
+        r.wire(t, "out", b"Q1ABC\r\n").unwrap();
+        r.wire(
+            t,
+            "in",
+            format!("\r\nCapabilities: ve7cc rbn{prompt}").as_bytes(),
+        )
+        .unwrap();
+        for (cmd, ack) in [
+            ("set/page 0", "Page Length is now 0 lines"),
+            ("set/nobeep", "Beeps are now off"),
+            ("unset/echo", "Echoing disabled"),
+            ("set/ve7cc", "Operation successful"),
+        ] {
+            r.wire(t, "out", format!("{cmd}\r\n").as_bytes()).unwrap();
+            r.wire(t, "in", format!("\r\n{ack}{prompt}").as_bytes())
+                .unwrap();
+        }
+    }
+    fn drain(replay: &mut ReplayStream<std::io::Cursor<Vec<u8>>>) -> Result<(), String> {
+        while replay.next_record()?.is_some() {}
+        Ok(())
+    }
     #[test]
     fn replay_stream_missing_token_does_not_borrow_from_the_next_connection() {
         // QGDXC-REC-0004 QGDXC-SEC-0001
-        let mut r = configured("auto");
-        r.open(0.0).unwrap();
-        r.close(0.0, "cancelled").unwrap();
-        r.open(0.0).unwrap();
-        r.wire(0.0, "out", b"echo QGDXC0000000000000002\r\n")
-            .unwrap();
-        r.close(0.0, "cancelled").unwrap();
-        let mut replay = ReplayStream::new(std::io::Cursor::new(r.writer), false).unwrap();
-        replay.next_record().unwrap();
-        let e = replay.next_record().unwrap_err();
-        assert!(e.contains("connection 1 at record 2"), "{e}");
-        assert!(e.contains("missing recorded readiness token"), "{e}");
-        assert_eq!(replay.source.records.line, 3);
+        for profile in ["auto", "dxspider"] {
+            let mut r = configured(profile);
+            r.open(0.0).unwrap();
+            dxspider_to_echo_step(&mut r, 0.0);
+            r.close(0.0, "cancelled").unwrap();
+            r.open(0.0).unwrap();
+            r.wire(0.0, "out", b"echo QGDXC0000000000000002\r\n")
+                .unwrap();
+            r.close(0.0, "cancelled").unwrap();
+            let mut replay = ReplayStream::new(std::io::Cursor::new(r.writer), false).unwrap();
+            let e = drain(&mut replay).unwrap_err();
+            assert!(e.contains("missing recorded readiness token"), "{e}");
+        }
     }
     #[test]
     fn replay_stream_caps_lookahead_and_does_not_search_for_passive_profiles() {
         // QGDXC-REC-0004 QGDXC-SEC-0001
+        for profile in ["auto", "dxspider"] {
+            let mut r = configured(profile);
+            r.open(0.0).unwrap();
+            dxspider_to_echo_step(&mut r, 0.0);
+            for _ in 0..32 {
+                r.note(0.0, &"x".repeat(65536)).unwrap();
+            }
+            r.wire(0.0, "out", b"echo QGDXC0000000000000001\r\n")
+                .unwrap();
+            r.close(0.0, "cancelled").unwrap();
+            let mut replay = ReplayStream::new(std::io::Cursor::new(r.writer), false).unwrap();
+            let e = drain(&mut replay).unwrap_err();
+            assert!(e.contains("readiness token not found"), "{e}");
+            assert!(e.contains("byte limit"), "{e}");
+            assert!(replay.source.bytes <= LOOKAHEAD_BYTES);
+        }
+        // Passive profiles, and auto before DXSpider is identified, never
+        // search: 2 MiB of notes cannot exhaust a lookahead nobody started.
         for profile in ["auto", "rbn", "arcluster", "cccluster"] {
             let mut r = configured(profile);
             r.open(0.0).unwrap();
@@ -622,18 +667,11 @@ mod tests {
             r.close(0.0, "cancelled").unwrap();
             let mut replay = ReplayStream::new(std::io::Cursor::new(r.writer), false).unwrap();
             replay.next_record().unwrap();
-            if profile == "auto" {
-                let e = replay.next_record().unwrap_err();
-                assert!(e.contains("readiness token not found"), "{e}");
-                assert!(e.contains("byte limit"), "{e}");
-                assert!(replay.source.bytes <= LOOKAHEAD_BYTES);
-            } else {
-                replay.next_record().unwrap();
-                assert_eq!(replay.source.records.line, 2);
-                assert!(replay.source.pending.is_empty());
-                assert_eq!(replay.source.bytes, 0);
-                while replay.next_record().unwrap().is_some() {}
-            }
+            replay.next_record().unwrap();
+            assert_eq!(replay.source.records.line, 2);
+            assert!(replay.source.pending.is_empty());
+            assert_eq!(replay.source.bytes, 0);
+            drain(&mut replay).unwrap();
         }
         // Configuration discovery has the same cap, even without any connection.
         let mut r = Recorder::new(Vec::new(), true).unwrap();
@@ -644,6 +682,52 @@ mod tests {
             .err()
             .unwrap();
         assert!(e.contains("configuration lookahead"), "{e}");
+    }
+    #[test]
+    fn auto_recordings_of_passive_servers_replay() {
+        // QGDXC-DSP-0004 QGDXC-REC-0004: a live auto session that detects RBN,
+        // AR-Cluster or CC Cluster sends no echo, and its recording replays.
+        for (login, ready, server) in [
+            (
+                "Please enter your call: ",
+                "\r\nHello, Q1ABC! Connected.\r\nQ1ABC de RELAY 1-Nov-2026 18:32Z >\r\n",
+                "rbn",
+            ),
+            (
+                "Please enter your call: \r\n",
+                "\r\nHello   Q1ABC\r\nQ1ABC de Q9XYZ 1-Nov 1832Z arc6>\r\n",
+                "arcluster",
+            ),
+        ] {
+            let mut r = configured("auto");
+            r.open(0.0).unwrap();
+            r.wire(0.1, "in", login.as_bytes()).unwrap();
+            r.wire(0.1, "out", b"Q1ABC\r\n").unwrap();
+            r.wire(0.2, "in", ready.as_bytes()).unwrap();
+            r.wire(
+                0.3,
+                "in",
+                b"DX de Q2ABC-#:   7024.0  Q3ABC        CW    16 dB  21 WPM  CQ      1832Z\r\n",
+            )
+            .unwrap();
+            r.close(1.0, "cancelled").unwrap();
+            let mut replay = ReplayStream::new(std::io::Cursor::new(r.writer), false).unwrap();
+            let mut events = vec![];
+            while let Some((_, _, batch)) = replay.next_record().unwrap() {
+                events.extend(batch);
+            }
+            let json: Vec<String> = events.iter().map(Event::json).collect();
+            assert!(
+                json.iter()
+                    .any(|e| e.contains(&format!("\"server_type\":\"{server}\""))),
+                "{server}: {json:?}"
+            );
+            assert!(
+                json.iter()
+                    .any(|e| e.contains("\"reason\":\"setup_complete\"")),
+                "{server}: {json:?}"
+            );
+        }
     }
     fn wire(replay: &mut Replay, t: f64, dir: &str, bytes: &[u8]) -> Vec<Event> {
         replay
