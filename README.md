@@ -1,7 +1,7 @@
 <!-- SPDX-License-Identifier: GPL-3.0-or-later -->
 # QG DX Cluster
 
-Read live DX spots as typed events, or replay a recorded session offline.
+Watch DX spots from several nodes in one terminal, read typed events, or replay a recorded session offline.
 
 QG DX Cluster is for radio operators who want a terminal feed and developers who
 need a receive-only Rust protocol engine. It supports DXSpider, AR-Cluster,
@@ -30,7 +30,16 @@ qg-dxc connect example.invalid 7300 --call Q1ABC --profile auto
 qg-dxc connect example.invalid 7300 --call Q1ABC --profile cccluster --json
 qg-dxc connect example.invalid 7300 --call Q1ABC --record session.ndjson --retain-third-party-data
 qg-dxc replay session.ndjson --json
+qg-dxc tui --call Q1ABC --node example.invalid:7300/auto
+qg-dxc tui --replay session.ndjson --replay second-session.ndjson
 ```
+
+For operators watching several feeds, `qg-dxc tui` combines up to eight sources
+in a newest-first spot list with a status line for each source. Display filters
+select bands, modes, callsigns, and human or skimmer spots. Press `?` for keys;
+`p` pauses scrolling while reception continues. Use repeated `--node` options
+with one `--call`, or repeated `--replay` options for paced offline playback.
+The interface requires terminal input and output. See [Annex F](spec/annex-f-tui.md).
 
 Recording is opt-in; exact recording also requires the explicit retention flag.
 Replay opens only the specified local file. The same retention flag also applies

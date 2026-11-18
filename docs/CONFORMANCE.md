@@ -159,3 +159,7 @@ and private DNS names in README prose, decoded vector byte members, and inline
 encoded fixtures. They cover absolute DNS spelling, case variations, endpoint
 ports, quotes, brackets, and sentence punctuation while retaining permitted
 documentation addresses and example names.
+
+Inspection: QGDXC-TUI-0031. The display-mode derivation in
+`crates/qso-graph-dxcluster-cli/src/tui/model.rs` reads only structured mode
+and comment words; it does not inspect frequency.

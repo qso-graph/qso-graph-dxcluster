@@ -1166,6 +1166,321 @@
         "stricter-window-lines",
         "stricter-window-duration"
       ]
+    },
+    "QGDXC-TUI-0001": {
+      "tests": [
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/tui/tests.rs",
+          "name": "configuration_validates_all_sources_before_io"
+        }
+      ],
+      "vectors": []
+    },
+    "QGDXC-TUI-0002": {
+      "tests": [
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/tui/tests.rs",
+          "name": "bounded_source_send_blocks_and_unrelated_session_progresses"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/tui/tests.rs",
+          "name": "replay_pacing_ties_continuations_completion_and_isolated_errors"
+        }
+      ],
+      "vectors": []
+    },
+    "QGDXC-TUI-0003": {
+      "tests": [
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/tui/tests.rs",
+          "name": "replay_pacing_ties_continuations_completion_and_isolated_errors"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/tui/tests.rs",
+          "name": "replay_configuration_rejects_directory_before_open"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/tui/tests.rs",
+          "name": "replay_configuration_rejects_stalled_fifo_before_open",
+          "platform": "linux"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/tui/tests.rs",
+          "name": "replay_error_aborts_and_finalizes_current_connection_once"
+        }
+      ],
+      "vectors": []
+    },
+    "QGDXC-TUI-0004": {
+      "tests": [
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/tui/tests.rs",
+          "name": "labels_resolve_rendered_collisions_in_argument_order"
+        }
+      ],
+      "vectors": []
+    },
+    "QGDXC-TUI-0005": {
+      "tests": [
+        {
+          "file": "crates/qso-graph-dxcluster-cli/tests/tui.rs",
+          "name": "nonterminal_refusal_opens_no_source_and_emits_no_escape"
+        }
+      ],
+      "vectors": []
+    },
+    "QGDXC-TUI-0010": {
+      "tests": [
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/tui/tests.rs",
+          "name": "retention_filters_pause_scroll_and_eviction"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/tui/tests.rs",
+          "name": "replay_pacing_ties_continuations_completion_and_isolated_errors"
+        }
+      ],
+      "vectors": []
+    },
+    "QGDXC-TUI-0011": {
+      "tests": [
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/tui/tests.rs",
+          "name": "hostile_scalars_cannot_write_outside_field_cells"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/tui/tests.rs",
+          "name": "every_band_edge_and_original_mode_precedence"
+        }
+      ],
+      "vectors": []
+    },
+    "QGDXC-TUI-0012": {
+      "tests": [
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/tui/tests.rs",
+          "name": "retention_filters_pause_scroll_and_eviction"
+        }
+      ],
+      "vectors": []
+    },
+    "QGDXC-TUI-0013": {
+      "tests": [
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/tui/tests.rs",
+          "name": "hostile_scalars_cannot_write_outside_field_cells"
+        }
+      ],
+      "vectors": []
+    },
+    "QGDXC-TUI-0014": {
+      "tests": [
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/tui/tests.rs",
+          "name": "configuration_validates_all_sources_before_io"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/tui/tests.rs",
+          "name": "replay_pacing_ties_continuations_completion_and_isolated_errors"
+        }
+      ],
+      "vectors": []
+    },
+    "QGDXC-TUI-0020": {
+      "tests": [
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/tui/tests.rs",
+          "name": "every_band_edge_and_original_mode_precedence"
+        }
+      ],
+      "vectors": []
+    },
+    "QGDXC-TUI-0030": {
+      "tests": [
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/tui/tests.rs",
+          "name": "every_band_edge_and_original_mode_precedence"
+        }
+      ],
+      "vectors": []
+    },
+    "QGDXC-TUI-0031": {
+      "tests": [],
+      "vectors": []
+    },
+    "QGDXC-TUI-0040": {
+      "tests": [
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/tui/tests.rs",
+          "name": "retention_filters_pause_scroll_and_eviction"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/tui/tests.rs",
+          "name": "filters_accept_exact_kind_and_listed_other_unknown_mode_rows"
+        }
+      ],
+      "vectors": []
+    },
+    "QGDXC-TUI-0041": {
+      "tests": [
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/tui/tests.rs",
+          "name": "synthetic_keys_edit_transactionally_and_quit_every_mode"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/tui/tests.rs",
+          "name": "wildcard_pathological_processing_growth_is_bounded"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/tui/tests.rs",
+          "name": "callsign_key_limit_rejects_whole_edit_and_keeps_ctrl_c_responsive"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster-cli/tests/tui.rs",
+          "name": "raw_pasted_keys_keep_ctrl_c_responsive_without_enabling_bracketed_paste",
+          "platform": "linux"
+        }
+      ],
+      "vectors": []
+    },
+    "QGDXC-TUI-0042": {
+      "tests": [
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/tui/tests.rs",
+          "name": "retention_filters_pause_scroll_and_eviction"
+        }
+      ],
+      "vectors": []
+    },
+    "QGDXC-TUI-0043": {
+      "tests": [
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/tui/tests.rs",
+          "name": "synthetic_keys_edit_transactionally_and_quit_every_mode"
+        }
+      ],
+      "vectors": []
+    },
+    "QGDXC-TUI-0050": {
+      "tests": [
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/tui/tests.rs",
+          "name": "status_layout_small_resize_and_redraw_clock"
+        }
+      ],
+      "vectors": []
+    },
+    "QGDXC-TUI-0051": {
+      "tests": [
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/tui/tests.rs",
+          "name": "synthetic_keys_edit_transactionally_and_quit_every_mode"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/tui/tests.rs",
+          "name": "retention_filters_pause_scroll_and_eviction"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/tui/tests.rs",
+          "name": "callsign_key_limit_rejects_whole_edit_and_keeps_ctrl_c_responsive"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster-cli/tests/tui.rs",
+          "name": "raw_pasted_keys_keep_ctrl_c_responsive_without_enabling_bracketed_paste",
+          "platform": "linux"
+        }
+      ],
+      "vectors": []
+    },
+    "QGDXC-TUI-0052": {
+      "tests": [
+        {
+          "file": "crates/qso-graph-dxcluster-cli/tests/tui.rs",
+          "name": "nonterminal_refusal_opens_no_source_and_emits_no_escape"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/tui/tests.rs",
+          "name": "terminal_state_restores_on_return_error_partial_entry_and_unwind"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/tui/sources.rs",
+          "name": "noncancellable_sources_share_shutdown_deadline_after_terminal_restore"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/tui/sources.rs",
+          "name": "full_queue_shutdown_restores_terminal_and_completes_workers_on_all_exits"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/tui/tests.rs",
+          "name": "replay_configuration_rejects_stalled_fifo_before_open",
+          "platform": "linux"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/tui/tests.rs",
+          "name": "replay_error_aborts_and_finalizes_current_connection_once"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/recording.rs",
+          "name": "replay_abort_finalizes_pending_cr_partial_line_and_telnet_once"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster-cli/tests/tui.rs",
+          "name": "raw_pasted_keys_keep_ctrl_c_responsive_without_enabling_bracketed_paste",
+          "platform": "linux"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/tui/sources.rs",
+          "name": "schedule_cancel_aborts_pending_cr_partial_line_and_telnet_once"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/recording.rs",
+          "name": "replay_abort_cancels_recorded_retry_once"
+        }
+      ],
+      "vectors": []
+    },
+    "QGDXC-TUI-0053": {
+      "tests": [
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/tui/tests.rs",
+          "name": "bounded_source_send_blocks_and_unrelated_session_progresses"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/tui/tests.rs",
+          "name": "status_layout_small_resize_and_redraw_clock"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/tui/sources.rs",
+          "name": "full_queue_shutdown_restores_terminal_and_completes_workers_on_all_exits"
+        }
+      ],
+      "vectors": []
+    },
+    "QGDXC-TUI-0054": {
+      "tests": [
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/tui/tests.rs",
+          "name": "status_layout_small_resize_and_redraw_clock"
+        }
+      ],
+      "vectors": []
+    },
+    "QGDXC-TUI-0060": {
+      "tests": [
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/tui/tests.rs",
+          "name": "hostile_scalars_cannot_write_outside_field_cells"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/tui/tests.rs",
+          "name": "replay_pacing_ties_continuations_completion_and_isolated_errors"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/tui/tests.rs",
+          "name": "synthetic_keys_edit_transactionally_and_quit_every_mode"
+        }
+      ],
+      "vectors": []
     }
   },
   "scenarios": {

@@ -4,6 +4,7 @@ use qso_graph_dxcluster::{model::escape, *};
 use qso_graph_dxcluster_cli::recording;
 use recording::{Recorder, ReplayStream};
 mod output;
+mod tui;
 use output::Output;
 use std::{
     fs::File,
@@ -16,7 +17,7 @@ use std::{
     },
     time::{Duration, Instant},
 };
-const HELP: &str = "qg-dxc reads live DX spots for radio operators and application developers.\n\nUsage:\n  qg-dxc connect <host> <port> --call <CALL> [--profile auto|dxspider|arcluster|cccluster|rbn]\n                 [--record <file>] [--retain-third-party-data] [--json]\n  qg-dxc replay <file> [--json] [--retain-third-party-data]\n\nReceive-only. Supply your own node and operator identity. No node directory or password support.\nRecording requires --retain-third-party-data. Replay never opens a socket.\n";
+const HELP: &str = "qg-dxc reads live DX spots for radio operators and application developers.\n\nUsage:\n  qg-dxc connect <host> <port> --call <CALL> [--profile auto|dxspider|arcluster|cccluster|rbn]\n                 [--record <file>] [--retain-third-party-data] [--json]\n  qg-dxc tui --call <CALL> --node <host>:<port>[/<profile>] [--node …]\n  qg-dxc tui --replay <file> [--replay …]\n  qg-dxc replay <file> [--json] [--retain-third-party-data]\n\nReceive-only. Supply your own node and operator identity. No node directory or password support.\nRecording requires --retain-third-party-data. Replay never opens a socket.\nTUI combines live feeds or paced recordings in one filterable spot list for operators.\nTUI requires terminal input and output; press ? for keys.\n";
 fn main() -> std::process::ExitCode {
     let mut retain = false;
     match run(&mut retain) {
@@ -68,6 +69,9 @@ fn run(retention: &mut bool) -> Result<u8, String> {
     if args == ["--version"] {
         println!("qg-dxc 0.1.0");
         return Ok(0);
+    }
+    if args[0] == "tui" {
+        return tui::run(&args[1..]);
     }
     let json = args.iter().any(|a| a == "--json");
     if args[0] == "replay" {
@@ -189,6 +193,52 @@ enum SendError {
 struct Connector {
     rx: mpsc::Receiver<io::Result<TcpStream>>,
     cancel: Arc<AtomicBool>,
+    worker: Option<std::thread::JoinHandle<()>>,
+}
+impl Drop for Connector {
+    fn drop(&mut self) {
+        self.cancel.store(true, Ordering::Relaxed);
+        if let Some(worker) = self.worker.take() {
+            let _ = worker.join();
+        }
+    }
+}
+enum Delivery {
+    Closed,
+    Text(Output),
+    Tui(mpsc::SyncSender<tui::sources::Envelope>),
+}
+impl Delivery {
+    fn flush(&mut self) -> Result<(), String> {
+        match self {
+            Self::Text(o) => o.flush(),
+            Self::Tui(_) | Self::Closed => Ok(()),
+        }
+    }
+    fn backpressured(&self) -> bool {
+        match self {
+            Self::Text(o) => o.backpressured(),
+            Self::Tui(_) | Self::Closed => false,
+        }
+    }
+    fn enqueue(&mut self, event: Event, json: bool, retain: bool) -> Result<(), String> {
+        match self {
+            Self::Closed => Ok(()),
+            Self::Text(o) => o.enqueue(rendered(&event, json, retain)),
+            Self::Tui(tx) => tx
+                .send(tui::sources::Envelope {
+                    order: 0,
+                    message: tui::sources::Message::Event(event),
+                })
+                .map_err(|_| "interface closed".to_owned()),
+        }
+    }
+    fn finish(self, cancelled: impl Fn() -> bool) -> Result<(), String> {
+        match self {
+            Self::Text(o) => o.finish(cancelled),
+            Self::Tui(_) | Self::Closed => Ok(()),
+        }
+    }
 }
 struct Live {
     session: Session,
@@ -196,11 +246,23 @@ struct Live {
     recorder: Option<Recorder<File>>,
     clock: Instant,
     json: bool,
-    output: Output,
+    output: Delivery,
     receiver: Option<Connector>,
     closing: Option<Connector>,
     deferred_connect: bool,
     stop: Arc<AtomicBool>,
+}
+impl Drop for Live {
+    fn drop(&mut self) {
+        self.output = Delivery::Closed;
+        if let Ok(batch) = self.session.cancel(self.now()) {
+            let _ = self.batch(batch);
+        }
+        if let Some(socket) = self.socket.take() {
+            let _ = socket.shutdown(std::net::Shutdown::Both);
+        }
+        let _ = self.record_close("cancelled");
+    }
 }
 impl Live {
     fn now(&self) -> u64 {
@@ -240,11 +302,8 @@ impl Live {
             .unwrap_or("cancelled")
             .to_owned();
         let rendering = b.events.into_iter().try_for_each(|e| {
-            self.output.enqueue(rendered(
-                &e,
-                self.json,
-                self.session.config.retain_third_party_data,
-            ))
+            self.output
+                .enqueue(e, self.json, self.session.config.retain_third_party_data)
         });
         for a in b.actions {
             match a {
@@ -279,7 +338,7 @@ impl Live {
                     let stop = self.stop.clone();
                     let cancelled = Arc::new(AtomicBool::new(false));
                     let worker_cancel = cancelled.clone();
-                    std::thread::spawn(move || {
+                    let worker = std::thread::spawn(move || {
                         let result = (|| {
                             let start = Instant::now();
                             let addresses: Vec<_> =
@@ -300,6 +359,7 @@ impl Live {
                     self.receiver = Some(Connector {
                         rx,
                         cancel: cancelled,
+                        worker: Some(worker),
                     });
                 }
                 Action::Close { .. } => {
@@ -426,6 +486,21 @@ fn connect(config: Config, recorder: Option<Recorder<File>>, json: bool) -> Resu
     let handler = stop.clone();
     ctrlc::set_handler(move || handler.store(true, Ordering::Relaxed))
         .map_err(|e| e.to_string())?;
+    run_live(
+        config,
+        recorder,
+        json,
+        stop,
+        Delivery::Text(Output::new(io::stdout())),
+    )
+}
+fn run_live(
+    config: Config,
+    recorder: Option<Recorder<File>>,
+    json: bool,
+    stop: Arc<AtomicBool>,
+    output: Delivery,
+) -> Result<u8, String> {
     let session = Session::new(config).map_err(str::to_owned)?;
     let mut live = Live {
         session,
@@ -433,7 +508,7 @@ fn connect(config: Config, recorder: Option<Recorder<File>>, json: bool) -> Resu
         recorder,
         clock: Instant::now(),
         json,
-        output: Output::new(io::stdout()),
+        output,
         receiver: None,
         closing: None,
         deferred_connect: false,
@@ -568,7 +643,8 @@ fn connect(config: Config, recorder: Option<Recorder<File>>, json: bool) -> Resu
     live.record_close("cancelled")?;
     drop(live.recorder.take());
     let stop = live.stop.clone();
-    let drained = live.output.finish(|| stop.load(Ordering::Relaxed));
+    let drained = std::mem::replace(&mut live.output, Delivery::Closed)
+        .finish(|| stop.load(Ordering::Relaxed));
     if stop.load(Ordering::Relaxed) {
         return Ok(130);
     }
@@ -702,7 +778,7 @@ mod tests {
             recorder: None,
             clock: Instant::now(),
             json: false,
-            output: Output::new(Count(count.clone())),
+            output: Delivery::Text(Output::new(Count(count.clone()))),
             receiver: None,
             closing: None,
             deferred_connect: false,
@@ -717,7 +793,9 @@ mod tests {
                 live.drain_input().unwrap();
             }
         }
-        live.output.finish(|| false).unwrap();
+        std::mem::replace(&mut live.output, Delivery::Closed)
+            .finish(|| false)
+            .unwrap();
         assert_eq!(count.load(Ordering::Relaxed), INPUT_BYTES);
     }
     #[test]
@@ -756,7 +834,7 @@ mod tests {
             recorder: Some(recorder),
             clock: Instant::now() - Duration::from_millis(5000),
             json: false,
-            output,
+            output: Delivery::Text(output),
             receiver: None,
             closing: None,
             deferred_connect: false,
@@ -774,8 +852,12 @@ mod tests {
         assert_eq!(last["reason"], "timeout");
         // Disconnecting the test writer releases every subsequent write.
         drop(resume);
-        assert!(live.output.finish(|| false).is_err());
-        drop(live.recorder);
+        assert!(
+            std::mem::replace(&mut live.output, Delivery::Closed)
+                .finish(|| false)
+                .is_err()
+        );
+        drop(live.recorder.take());
         std::fs::remove_file(path).unwrap();
     }
     #[test]
