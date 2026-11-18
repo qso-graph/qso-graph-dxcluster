@@ -7,6 +7,7 @@
   of a private node, or e-mail address in a vector, fixture, or example. Public node host names may be
   cited as sources only.
 - Credentials (node passwords) live in the OS credential store; never in code, config, logs, or examples.
+  A secret is never sent over plain Telnet or unverified TLS (QGDXC-SES-0003).
 - The library is sans-I/O: it never opens sockets, files or processes. The CLI `qg-dxc` owns the socket.
 - Everything a node sends is untrusted: bounded line lengths, control characters never passed to a
   terminal, fuzzed parsers, nothing from the stream ever executed or sent back as a command.
