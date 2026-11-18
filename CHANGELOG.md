@@ -1,7 +1,12 @@
 <!-- SPDX-License-Identifier: GPL-3.0-or-later -->
 # Changelog
 
-## Unreleased 0.1.0
+## [0.1.0]
+
+- Add a terminal spot list that merges several cluster nodes and Reverse Beacon
+  Network feeds, with display filters and offline replay.
+- Add signed platform archives, Linux packages, and a manual release workflow
+  that publishes the library and CLI before tagging the release.
 
 - Request readiness tokens and retry jitter per attempt, using fresh OS randomness
   in the CLI and constant engine storage (QGDXC-DSP-0004, QGDXC-SES-0010).

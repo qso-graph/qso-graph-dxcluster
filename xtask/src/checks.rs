@@ -591,6 +591,13 @@ fn text_sanitized(s: &str) -> bool {
         {
             return false;
         }
+        // Package/checksum utilities and the release filename are not radio identities.
+        if matches!(
+            t.trim_end_matches('.'),
+            "sha256sum" | "rpm2cpio" | "SHA256SUMS.txt" | "dist/SHA256SUMS.txt"
+        ) {
+            continue;
+        }
         // References to capture basenames are provenance, never endpoint examples.
         if matches!(t, "set/ve7cc" | "ve7cc") {
             continue;
@@ -949,6 +956,43 @@ pub(crate) fn public_file_sanitized(file: &Path, source: &str) -> bool {
             for capture in evidence_captures() {
                 line = line.replace(capture, "capture.ndjson");
             }
+        }
+        // The release owner's GitHub account and certificate attribution are
+        // release metadata, never operator identities in examples or vectors.
+        let owner = ["KI", "7MT"].concat();
+        let owner_lower = owner.to_ascii_lowercase();
+        let trimmed = line.trim();
+        let release_owner_metadata = match file.to_str() {
+            Some(".github/workflows/release.yml") => {
+                trimmed == format!("- name: Only {owner}'s manual main Release publishes")
+                    || trimmed == format!("echo \"- **macOS** (Apple silicon): signed by Greg Beam ({owner}) with an Apple Developer ID, and notarized by Apple.\"")
+                    || trimmed == format!("echo \"- **Windows** (x86_64): signed by Gregory Beam ({owner}).\"")
+            }
+            Some(".github/workflows/binaries.yml") => {
+                trimmed == format!("- name: Signing requires {owner}'s main Release and its exact commit")
+            }
+            Some("docs/RELEASING.md") => {
+                line == format!("{owner} runs `.github/workflows/release.yml` manually from `main`. The workflow")
+            }
+            Some("scripts/release_check.py") => {
+                trimmed == format!("and actor.casefold() == \"{owner_lower}\"")
+                    || trimmed == format!("and triggering_actor.casefold() == \"{owner_lower}\"")
+                    || trimmed == format!("\"\"\"Only {owner}'s manual main Release can sign or publish its exact workflow commit.\"\"\"")
+                    || trimmed == format!("sys.exit(\"Signing and publication require {owner}'s manual main Release and its exact commit\")")
+            }
+            Some("scripts/test_release_check.py") => {
+                trimmed == format!("actor=\"{owner}\", triggering_actor=\"{owner}\")")
+                    || trimmed == format!("for actor in [\"release-bot[bot]\", \"someone\", \"{owner}-other\", \"\"]:")
+                    || trimmed == format!("self.assertTrue(rc.source_allowed(*self.args(actor=\"{owner_lower}\", triggering_actor=\"{owner_lower}\")))")
+            }
+            _ => false,
+        };
+        if release_owner_metadata {
+            line = line.replace(&owner, "Q1ABC").replace(&owner_lower, "Q1ABC");
+        }
+        if file == Path::new("scripts/lint-workflows.py") {
+            // Exact pinned Go module references are package metadata, not email.
+            line = line.replace(&["/actionlint", "@v1.7.11"].concat(), "/actionlint/v1.7.11");
         }
         // Only pinned source citations can contain these upstream identities.
         if file == Path::new("spec/annex-b-dxspider.md") {
@@ -1416,6 +1460,61 @@ mod tests {
             );
         }
     }
+    #[test]
+    fn release_tool_metadata_does_not_exempt_identity_or_email_fixtures() {
+        assert!(text_sanitized("sha256sum dist/SHA256SUMS.txt rpm2cpio"));
+        let filename = "SHA256SUMS.txt";
+        let fixture = serde_json::json!({"call": filename});
+        assert!(!public_file_sanitized(
+            Path::new("vectors/planted.json"),
+            &fixture.to_string()
+        ));
+        let path = Path::new("scripts/lint-workflows.py");
+        let module = ["github.com/rhysd/actionlint/cmd/actionlint", "@v1.7.11"].concat();
+        assert!(public_file_sanitized(path, &module));
+        let email = ["person", "example.invalid"].join("@");
+        assert!(!public_file_sanitized(path, &email));
+        assert!(!public_file_sanitized(Path::new("README.md"), &module));
+    }
+
+    #[test]
+    fn release_owner_metadata_does_not_exempt_callsign_examples() {
+        let owner = ["KI", "7MT"].concat();
+        let workflow = Path::new(".github/workflows/release.yml");
+        let valid = format!("      - name: Only {owner}'s manual main Release publishes");
+        assert!(public_file_sanitized(workflow, &valid));
+        assert!(!public_file_sanitized(Path::new("README.md"), &valid));
+        assert!(!public_file_sanitized(
+            workflow,
+            &format!("{valid}; DX de {owner}: 14025 Q2ABC CQ 1832Z")
+        ));
+        for path in [
+            workflow,
+            Path::new(".github/workflows/binaries.yml"),
+            Path::new("docs/RELEASING.md"),
+            Path::new("scripts/release_check.py"),
+            Path::new("scripts/test_release_check.py"),
+        ] {
+            assert!(!public_file_sanitized(
+                path,
+                &format!("DX de {owner}: 14025 Q2ABC CQ 1832Z")
+            ));
+            assert!(!public_file_sanitized(
+                path,
+                &format!("qg-dxc connect example.invalid 7300 --call {owner}")
+            ));
+            assert!(!public_file_sanitized(
+                path,
+                &serde_json::json!({"call": owner}).to_string()
+            ));
+        }
+        let other = ["W", "1", "ABC"].concat();
+        assert!(!public_file_sanitized(
+            workflow,
+            &valid.replace(&owner, &other)
+        ));
+    }
+
     #[test]
     fn checks_reject_mutations() {
         // QGDXC-SEC-0004 QGDXC-SEC-0006

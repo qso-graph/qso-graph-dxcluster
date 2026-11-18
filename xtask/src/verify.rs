@@ -17,7 +17,7 @@ pub fn verify() -> Result<(), String> {
     fs::create_dir_all("target/verify").map_err(|e| e.to_string())?;
     let locks = ["Cargo.lock", "fuzz/Cargo.lock"];
     let before = locks.map(crate::input::read);
-    let steps: [(&str, &[&str]); 13] = [
+    let steps: [(&str, &[&str]); 14] = [
         ("fetch", &["xtask", "fetch"]),
         ("fmt", &["fmt", "--all", "--check"]),
         (
@@ -57,6 +57,20 @@ pub fn verify() -> Result<(), String> {
         ("cargo vet", &["xtask", "vet"]),
         ("docs", &["xtask", "docs"]),
         ("rustdoc", &["doc", "--workspace", "--no-deps", "--locked"]),
+        (
+            "cargo package",
+            &[
+                "package",
+                "--locked",
+                "--allow-dirty",
+                "-p",
+                "qso-graph-dxcluster",
+                "-p",
+                "qso-graph-dxcluster-cli",
+                "--config",
+                "patch.crates-io.qso-graph-dxcluster.path=\"crates/qso-graph-dxcluster\"",
+            ],
+        ),
     ];
     let mut results = vec![];
     for (name, args) in steps {
@@ -84,6 +98,39 @@ pub fn verify() -> Result<(), String> {
             eprintln!("{name}: see {path}");
             eprintln!("{}", crate::input::tail(&path).unwrap_or_default());
         }
+        results.push((
+            name.to_owned(),
+            status.to_owned(),
+            format!("{:.2}s", start.elapsed().as_secs_f64()),
+        ));
+    }
+    for (name, script, extra) in [
+        ("release checks", "scripts/test_release_check.py", &[][..]),
+        (
+            "package files",
+            "scripts/package-files.py",
+            &["--check"][..],
+        ),
+        ("workflow lint", "scripts/lint-workflows.py", &[][..]),
+    ] {
+        let start = Instant::now();
+        let path = format!("target/verify/{}.log", name.replace(' ', "-"));
+        let file = fs::File::create(&path).map_err(|e| e.to_string())?;
+        let error = file.try_clone().map_err(|e| e.to_string())?;
+        let result = Command::new("uv")
+            .args(["run", "--no-project", "--python", "3.11", "python", script])
+            .args(extra)
+            .stdout(file)
+            .stderr(error)
+            .stdin(Stdio::null())
+            .status();
+        let status = if result.is_ok_and(|s| s.success()) {
+            "PASS"
+        } else {
+            eprintln!("{name}: see {path}");
+            eprintln!("{}", crate::input::tail(&path).unwrap_or_default());
+            "FAIL"
+        };
         results.push((
             name.to_owned(),
             status.to_owned(),

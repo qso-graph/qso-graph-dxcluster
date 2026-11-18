@@ -12,7 +12,7 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 jobs:
-  ci-all-green:
+  verify:
     name: ci-all-green (${{ matrix.os }})
     strategy:
       fail-fast: false
@@ -27,6 +27,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
       - name: Pinned toolchain
         run: rustup show active-toolchain || rustup toolchain install
       - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
@@ -46,6 +47,9 @@ jobs:
         run: |
           rustup toolchain install nightly-2026-10-30 --profile minimal --component rustfmt --component clippy
           cargo install cargo-fuzz --version 0.13.2 --locked --quiet
+      - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+        with:
+          enable-cache: false
       - name: Verify
         run: cargo xtask verify
       - name: Retain verification logs
@@ -55,3 +59,30 @@ jobs:
           name: verification-${{ matrix.os }}
           path: target/verify/
           if-no-files-found: ignore
+
+  # Exercise unsigned assembly on all release platforms before merging.
+  binaries:
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+    uses: ./.github/workflows/binaries.yml
+    with:
+      sha: ${{ github.event.pull_request.head.sha || github.sha }}
+      sign: false
+
+  ci-all-green:
+    name: ci-all-green
+    needs: [verify, binaries]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Every job passed
+        env:
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          echo "results: $RESULTS"
+          for result in $RESULTS; do
+            [ "$result" = success ] || { echo "a job did not pass: $result"; exit 1; }
+          done

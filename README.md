@@ -1,18 +1,27 @@
 <!-- SPDX-License-Identifier: GPL-3.0-or-later -->
 # QG DX Cluster
 
-Watch DX spots from several nodes in one terminal, read typed events, or replay a recorded session offline.
+An old-school DX cluster terminal built in modern Rust, for radio operators who
+want several cluster nodes and the Reverse Beacon Network in one live,
+filterable spot list. `qg-dxc` brings the feeds together in your terminal. It is
+receive-only and never sends a password.
 
-QG DX Cluster is for radio operators who want a terminal feed and developers who
-need a receive-only Rust protocol engine. It supports DXSpider, AR-Cluster,
-CC Cluster, and direct Reverse Beacon Network feeds, with automatic profile
-detection. The library handles framing, profile recognition, startup, and retry
-policy; the `qg-dxc` application owns TCP and recording.
+Download a single self-contained program for macOS, Windows, or Linux from
+[GitHub Releases](https://github.com/qso-graph/qso-graph-dxcluster/releases).
+Unpack it and run `qg-dxc --help`. Or install from crates.io:
+
+```sh
+cargo install qso-graph-dxcluster-cli
+```
+
+For developers, `qso-graph-dxcluster` is a sans-I/O Rust library with no runtime
+dependencies. It handles framing, profile recognition, startup, and retry policy;
+the application owns I/O. It supports DXSpider, AR-Cluster, CC Cluster, and direct
+Reverse Beacon Network feeds, with automatic profile detection.
 
 Events preserve received evidence and distinguish spots, announcements, talk,
 WWV/WCY reports, prompts, and connection changes. Default privacy handling and
 terminal escaping follow [QGDXC-SEC-0003 and QGDXC-SEC-0005](spec/QGDXC-SPEC-001.md).
-The library has no runtime dependencies and performs no I/O.
 
 Install from source with Rust 1.99.1:
 
