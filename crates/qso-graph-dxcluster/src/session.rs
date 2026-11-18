@@ -408,17 +408,11 @@ impl Session {
         if self.attempt >= values::MAX_INTEGER {
             return Err("attempt limit");
         }
-        if matches!(self.config.profile, Profile::Auto | Profile::DxSpider) {
-            self.needs_token = true;
-            b.actions.push(Action::ReadinessToken {
-                attempt: self.attempt + 1,
-            });
-            return Ok(());
-        }
         self.begin_supplied(b)
     }
-    /// Complete the QGDXC-DSP-0004 request. The caller owns token uniqueness
-    /// across attempts; the engine retains only the current token.
+    /// Complete the QGDXC-DSP-0004 request, made only when DXSpider setup
+    /// reaches its echo step. The caller owns token uniqueness across
+    /// attempts; the engine retains only the current token.
     pub fn readiness_token(
         &mut self,
         now: u64,
@@ -426,7 +420,7 @@ impl Session {
         token: String,
     ) -> Result<Batch, &'static str> {
         self.at(now)?;
-        if !self.needs_token || attempt != self.attempt + 1 {
+        if !self.needs_token || attempt != self.attempt || self.state != State::Setup {
             return Err("unexpected readiness token");
         }
         if !values::token(&token) || token == self.token {
@@ -435,7 +429,8 @@ impl Session {
         self.token = token;
         self.needs_token = false;
         let mut b = Batch::default();
-        self.begin_supplied(&mut b)?;
+        self.pending = Some(self.command());
+        self.admit(&mut b)?;
         Ok(b)
     }
     fn begin_supplied(&mut self, b: &mut Batch) -> Result<(), &'static str> {
@@ -446,6 +441,7 @@ impl Session {
             .ok_or("attempt limit")?;
         self.terminal = None;
         self.terminal_evidence = None;
+        self.needs_token = false;
         self.profile = self.config.profile;
         self.evidence = None;
         self.setup_step = 0;
@@ -703,6 +699,14 @@ impl Session {
                     self.setup_step += 1;
                     if self.profile == Profile::CcCluster || self.setup_step == 5 {
                         self.ready(Some(&e), b);
+                    } else if self.setup_step == 4 {
+                        // QGDXC-DSP-0004: only a DXSpider echo step needs a
+                        // token, so other servers, including ones found by
+                        // auto detection, never request one.
+                        self.needs_token = true;
+                        b.actions.push(Action::ReadinessToken {
+                            attempt: self.attempt,
+                        });
                     } else {
                         self.pending = Some(self.command());
                         self.admit(b)?;
@@ -976,9 +980,13 @@ mod tests {
         let mut capacities = None;
         let mut parser_reset = None;
         for attempt in 1..=8192 {
-            assert_eq!(request.actions, [Action::ReadinessToken { attempt }]);
-            s.readiness_token(now, attempt, format!("QGDXC{attempt:016X}"))
-                .unwrap();
+            // Auto detection of a non-DXSpider server requests no token.
+            assert!(
+                !request
+                    .actions
+                    .iter()
+                    .any(|a| matches!(a, Action::ReadinessToken { .. }))
+            );
             s.connected(now, attempt).unwrap();
             for byte in b"Please enter your call: \nQ1ABC de RELAY 1-Nov-2026 18:32Z >" {
                 s.input(now, attempt, *byte, None).unwrap();
@@ -1010,51 +1018,107 @@ mod tests {
         }
     }
 
+    /// Drive a real DXSpider login and setup until the echo step, firing
+    /// pacing as it comes due. Returns the batches seen and the final time.
+    fn dxspider_to_echo_step(s: &mut Session, attempt: u64) -> (Vec<Batch>, u64) {
+        let mut now = 0;
+        let mut seen = vec![s.connected(now, attempt).unwrap()];
+        let prompt = "\nQ1ABC de Q9XYZ 1-Nov-2026 1832Z dxspider >";
+        let replies = [
+            "login: ".to_owned(),
+            format!("\nCapabilities: ve7cc rbn{prompt}"),
+            format!("\nPage Length is now 0 lines{prompt}"),
+            format!("\nBeeps are now off{prompt}"),
+            format!("\nEchoing disabled{prompt}"),
+            format!("\nOperation successful{prompt}"),
+        ];
+        for reply in replies {
+            while let Some(d) = s.deadline(Timer::Pacing) {
+                now = d;
+                seen.push(s.fire(Timer::Pacing, now).unwrap());
+            }
+            for byte in reply.bytes() {
+                seen.push(s.input(now, attempt, byte, None).unwrap());
+            }
+        }
+        (seen, now)
+    }
+
     #[test]
-    fn attempt_resource_requests_validate_and_cancel() {
-        let mut s = Session::new(Config::new(
-            "example.invalid".into(),
-            7300,
-            "Q1ABC".into(),
-            Profile::Auto,
-        ))
-        .unwrap();
-        s.start(0).unwrap();
-        assert!(
-            s.readiness_token(0, 2, "QGDXC0000000000000001".into())
-                .is_err()
-        );
-        assert!(s.readiness_token(0, 1, "bad".into()).is_err());
-        assert!(s.retry_jitter(0, 0).is_err());
-        s.cancel(0).unwrap();
-        assert!(
-            s.readiness_token(0, 1, "QGDXC0000000000000001".into())
-                .is_err()
-        );
-        s.start(0).unwrap();
-        s.readiness_token(0, 1, "QGDXC0000000000000001".into())
+    fn readiness_token_requested_only_at_dxspider_echo_step() {
+        // QGDXC-DSP-0004 QGDXC-REC-0004
+        for profile in [Profile::Auto, Profile::DxSpider] {
+            let mut s = Session::new(Config::new(
+                "example.invalid".into(),
+                7300,
+                "Q1ABC".into(),
+                profile,
+            ))
             .unwrap();
-        s.transport_end(1, 1, "transport_error").unwrap();
-        assert!(s.retry_jitter(1, 1001).is_err());
-        s.retry_jitter(1, 1000).unwrap();
-        assert_eq!(s.deadline(Timer::Retry), Some(6001));
-        s.fire(Timer::Retry, 6001).unwrap();
-        assert!(
-            s.readiness_token(6001, 2, "QGDXC0000000000000001".into())
-                .is_err()
-        );
-        s.cancel(6001).unwrap();
-        assert!(s.next_timer().is_none());
-        assert!(
-            s.readiness_token(6001, 2, "QGDXC0000000000000002".into())
-                .is_err()
-        );
-        s.start(6001).unwrap();
-        s.readiness_token(6001, 2, "QGDXC0000000000000002".into())
-            .unwrap();
-        s.transport_end(6001, 2, "eof").unwrap();
-        s.cancel(6001).unwrap();
-        assert!(s.retry_jitter(6001, 0).is_err());
-        assert!(s.next_timer().is_none());
+            let started = s.start(0).unwrap();
+            assert!(
+                !started
+                    .actions
+                    .iter()
+                    .any(|a| matches!(a, Action::ReadinessToken { .. }))
+            );
+            assert!(
+                s.readiness_token(0, 1, "QGDXC0000000000000001".into())
+                    .is_err()
+            );
+            let (seen, mut now) = dxspider_to_echo_step(&mut s, 1);
+            assert_eq!(s.state, State::Setup);
+            let requests: Vec<_> = seen
+                .iter()
+                .flat_map(|b| &b.actions)
+                .filter(|a| matches!(a, Action::ReadinessToken { .. }))
+                .collect();
+            assert_eq!(requests, [&Action::ReadinessToken { attempt: 1 }]);
+            let sent: Vec<_> = seen
+                .iter()
+                .flat_map(|b| &b.actions)
+                .filter_map(|a| match a {
+                    Action::Output { bytes, .. } => {
+                        Some(String::from_utf8_lossy(bytes).into_owned())
+                    }
+                    _ => None,
+                })
+                .collect();
+            assert_eq!(
+                sent,
+                [
+                    "Q1ABC\r\n",
+                    "set/page 0\r\n",
+                    "set/nobeep\r\n",
+                    "unset/echo\r\n",
+                    "set/ve7cc\r\n"
+                ]
+            );
+            assert!(
+                s.readiness_token(now, 2, "QGDXC0000000000000001".into())
+                    .is_err()
+            );
+            assert!(s.readiness_token(now, 1, "bad".into()).is_err());
+            let mut b = s
+                .readiness_token(now, 1, "QGDXC0000000000000001".into())
+                .unwrap();
+            if let Some(d) = s.deadline(Timer::Pacing) {
+                now = d;
+                b = s.fire(Timer::Pacing, now).unwrap();
+            }
+            assert!(b.actions.contains(&Action::Output {
+                attempt: 1,
+                bytes: b"echo QGDXC0000000000000001\r\n".to_vec(),
+            }));
+            assert!(
+                s.readiness_token(now, 1, "QGDXC0000000000000002".into())
+                    .is_err()
+            );
+            s.cancel(now).unwrap();
+            assert!(
+                s.readiness_token(now, 1, "QGDXC0000000000000002".into())
+                    .is_err()
+            );
+        }
     }
 }

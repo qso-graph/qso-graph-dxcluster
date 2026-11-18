@@ -62,7 +62,9 @@ fn json_event(e: Event) -> Value {
     serde_json::from_str(&e.json()).expect("event JSON")
 }
 struct Inputs {
-    tokens: std::vec::IntoIter<String>,
+    // QGDXC-DSP-0004: tokens are per attempt (attempt N takes entry N-1), so
+    // an attempt that never reaches DXSpider's echo step consumes none.
+    tokens: Vec<String>,
     jitter: std::vec::IntoIter<u64>,
 }
 fn trace(
@@ -80,7 +82,9 @@ fn trace(
     for a in b.actions {
         let supplied = match a {
             Action::ReadinessToken { attempt } => engine.readiness_token(at, attempt,
-                inputs.tokens.next().ok_or("missing readiness token for connection attempt")?),
+                usize::try_from(attempt).ok().and_then(|n| n.checked_sub(1))
+                    .and_then(|n| inputs.tokens.get(n)).cloned()
+                    .ok_or("missing readiness token for connection attempt")?),
             Action::RetryJitter { .. } => engine.retry_jitter(at,
                 inputs.jitter.next().ok_or("missing retry jitter")?),
             a => {
@@ -149,7 +153,7 @@ pub fn execute(v: &Value) -> Result<Trace, String> {
         return Err("invalid or repeated readiness tokens".into());
     }
     let mut inputs = Inputs {
-        tokens: tokens.into_iter(),
+        tokens,
         jitter: jitter.into_iter(),
     };
     let mut engine = Session::new(cfg).map_err(str::to_owned)?;
@@ -545,12 +549,22 @@ mod tests {
         assert_eq!(connects.len(), 2);
         assert_eq!(connects[1]["elapsed_ms"], 5006);
         assert_eq!(connects[1]["action"]["attempt"], 2);
-        let mut missing_token = v.clone();
-        missing_token["tokens"].as_array_mut().unwrap().pop();
-        assert_eq!(
-            super::execute(&missing_token).unwrap_err(),
-            "missing readiness token for connection attempt"
-        );
+        // Attempts that never reach DXSpider's echo step consume no token.
+        let mut no_tokens = v.clone();
+        no_tokens["tokens"] = json!([]);
+        super::execute(&no_tokens).unwrap();
+        for id in ["startup-auto-dxspider", "startup-dxspider-dxspider"] {
+            let mut missing_token = crate::scenarios::vectors()
+                .into_iter()
+                .find(|v| v["id"] == id)
+                .unwrap();
+            super::execute(&missing_token).unwrap();
+            missing_token["tokens"] = json!([]);
+            assert_eq!(
+                super::execute(&missing_token).unwrap_err(),
+                "missing readiness token for connection attempt"
+            );
+        }
         let mut missing_jitter = v.clone();
         missing_jitter["jitter_ms"] = json!([]);
         assert_eq!(
