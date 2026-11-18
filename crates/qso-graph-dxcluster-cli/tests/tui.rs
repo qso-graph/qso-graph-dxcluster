@@ -47,6 +47,9 @@ with tempfile.TemporaryDirectory(prefix='qg-dxc-input-') as directory:
         master, slave = pty.openpty()
         fcntl.ioctl(slave, termios.TIOCSWINSZ, struct.pack('HHHH', 24, 80, 0, 0))
         before = termios.tcgetattr(slave)
+        # macOS revokes descriptors of a controlling terminal when its session
+        # leader exits, so read the restored mode through a fresh descriptor.
+        slave_name = os.ttyname(slave)
         process = subprocess.Popen([sys.argv[1], 'tui', '--replay', recording],
             stdin=slave, stdout=slave, stderr=slave, start_new_session=True,
             preexec_fn=lambda: fcntl.ioctl(slave, termios.TIOCSCTTY, 0))
@@ -71,7 +74,11 @@ with tempfile.TemporaryDirectory(prefix='qg-dxc-input-') as directory:
                 read_available(.02)
             assert process.poll() == 0, ('Ctrl-C stalled or failed', count, process.poll())
             read_available(0)
-            assert termios.tcgetattr(slave) == before, 'input mode was not restored'
+            check = os.open(slave_name, os.O_RDWR | os.O_NOCTTY)
+            try:
+                assert termios.tcgetattr(check) == before, 'input mode was not restored'
+            finally:
+                os.close(check)
             assert b'\x1b[?1049l' in captured, 'alternate screen was not restored'
             for sequence in [b'\x1b[?2004s', b'\x1b[?2004h', b'\x1b[?2004r']:
                 assert sequence not in captured, ('bracketed paste changed', sequence)
