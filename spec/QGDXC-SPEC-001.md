@@ -16,7 +16,7 @@ This document is independent of a particular Rust API or terminal interface.
 |---|---|---|
 | `QGDXC-GEN-0001` | The key words MUST, MUST NOT, REQUIRED, SHALL, SHALL NOT, SHOULD, SHOULD NOT, RECOMMENDED, MAY, and OPTIONAL have the meanings in [RFC 2119](https://www.rfc-editor.org/rfc/rfc2119) when uppercase. | Inspection |
 | `QGDXC-GEN-0002` | Each normative rule MUST have one defining `QGDXC-<AREA>-NNNN` ID; other locations MUST cite that ID instead of restating its obligation. A requirement's explicitly incorporated field or layout table is part of that requirement. | Inspection |
-| `QGDXC-GEN-0003` | A conformance claim MUST identify specification version, conformance class, supported server profiles, and optional features. The requirements in incorporated Annexes A–E apply to the declared classes and profiles. | Inspection |
+| `QGDXC-GEN-0003` | A conformance claim MUST identify specification version, conformance class, supported server profiles, and optional features. The requirements in incorporated Annexes A–F apply to the declared classes and profiles. | Inspection |
 | `QGDXC-GEN-0004` | Server-specific interpretations MUST be supported by a pinned source location or a named capture and one-based record number. Unsupported server claims MUST be marked **UNCONFIRMED**, informative, and excluded from automatic session actions and typed semantic mappings. | Inspection |
 | `QGDXC-GEN-0005` | This profile MUST be receive-only: application output is limited to caller-configured login, the annex's session setup and readiness exchanges, and disconnect. Spot posting, arbitrary command construction, event encoding, and re-encoding are outside this profile. | Inspection |
 
@@ -36,6 +36,7 @@ verify a future implementation, not checks already passed.
 | VEC | Vectors and conformance: §7 |
 | EVT | Event model: Annex A |
 | DSP, ARC, CCC, RBN | Server profiles: Annexes B, C, D, E |
+| TUI | `qg-dxc tui` terminal interface: Annex F |
 
 An *input chunk* is an arbitrary slice of received bytes, not a line. A *line*
 is a framed content byte sequence. A *prompt fragment* is recognized before a
@@ -44,9 +45,10 @@ transition. A *session action* requests transport work from the caller; an event
 does not authorize that work. *Ready* means the profile's startup exchange has
 completed, not that the server authenticated the operator or delivers all spots.
 
-Server-side filter languages are future annex material. Client display filters,
-deduplication, node directories, historical query interfaces, and spot aggregation
-policy are outside this draft. Saved node filters can limit the received feed.
+Server-side filter languages are future annex material. Client display filters
+and the merged multi-node view of `qg-dxc tui` are defined by
+[Annex F](annex-f-tui.md). Deduplication, node directories, historical query
+interfaces, and spot aggregation policy are outside this draft. Saved node filters can limit the received feed.
 
 ## 1. Sans-I/O boundary
 
@@ -420,6 +422,7 @@ its later `cancel_timer`.
 - [Annex C: AR-Cluster](annex-c-arcluster.md)
 - [Annex D: CC Cluster](annex-d-cccluster.md)
 - [Annex E: Reverse Beacon Network](annex-e-rbn.md)
+- [Annex F: `qg-dxc tui`, the terminal interface](annex-f-tui.md)
 
 Capture citations refer to the supplied 2026-11-16 evidence set by basename and
 physical record number, including notes. A frame split across records cites all
