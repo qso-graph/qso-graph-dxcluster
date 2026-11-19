@@ -591,6 +591,13 @@ fn text_sanitized(s: &str) -> bool {
         {
             return false;
         }
+        // Package/checksum utilities and the release filename are not radio identities.
+        if matches!(
+            t.trim_end_matches('.'),
+            "sha256sum" | "rpm2cpio" | "SHA256SUMS.txt" | "dist/SHA256SUMS.txt"
+        ) {
+            continue;
+        }
         // References to capture basenames are provenance, never endpoint examples.
         if matches!(t, "set/ve7cc" | "ve7cc") {
             continue;
@@ -913,6 +920,62 @@ fn rust_fixture_text(source: &str) -> String {
         })
         .collect()
 }
+/// ADIF 3.1.7 Mode/Submode names shaped like callsigns, exempted only as quoted
+/// names in the TUI's recognized-mode list. Written in pieces so this file holds none.
+const ADIF_CALL_SHAPED_MODES: &[&[&str]] = &[
+    &["8", "PSK", "1000", "F"],
+    &["8", "PSK", "1200", "F"],
+    &["8", "PSK", "125", "F"],
+    &["8", "PSK", "125", "FL"],
+    &["8", "PSK", "250", "F"],
+    &["8", "PSK", "250", "FL"],
+    &["8", "PSK", "500", "F"],
+    &["C", "4", "FM"],
+    &["FST", "4", "W"],
+    &["JT", "4", "A"],
+    &["JT", "4", "B"],
+    &["JT", "4", "C"],
+    &["JT", "4", "D"],
+    &["JT", "4", "E"],
+    &["JT", "4", "F"],
+    &["JT", "4", "G"],
+    &["JT", "65", "A"],
+    &["JT", "65", "B"],
+    &["JT", "65", "B", "2"],
+    &["JT", "65", "C"],
+    &["JT", "65", "C", "2"],
+    &["JT", "6", "M"],
+    &["JT", "9", "A"],
+    &["JT", "9", "B"],
+    &["JT", "9", "C"],
+    &["JT", "9", "D"],
+    &["JT", "9", "E"],
+    &["JT", "9", "F"],
+    &["JT", "9", "G"],
+    &["JT", "9", "H"],
+    &["PSK", "1000", "RC", "2"],
+    &["PSK", "125", "RC", "10"],
+    &["PSK", "125", "RC", "12"],
+    &["PSK", "125", "RC", "16"],
+    &["PSK", "125", "RC", "4"],
+    &["PSK", "125", "RC", "5"],
+    &["PSK", "250", "RC", "2"],
+    &["PSK", "250", "RC", "3"],
+    &["PSK", "250", "RC", "5"],
+    &["PSK", "250", "RC", "6"],
+    &["PSK", "250", "RC", "7"],
+    &["PSK", "2", "K"],
+    &["PSK", "500", "RC", "2"],
+    &["PSK", "500", "RC", "3"],
+    &["PSK", "500", "RC", "4"],
+    &["PSK", "63", "F"],
+    &["PSK", "63", "RC", "10"],
+    &["PSK", "63", "RC", "20"],
+    &["PSK", "63", "RC", "32"],
+    &["PSK", "63", "RC", "4"],
+    &["PSK", "63", "RC", "5"],
+    &["PSK", "800", "RC", "2"],
+];
 pub(crate) fn public_file_sanitized(file: &Path, source: &str) -> bool {
     if file
         .extension()
@@ -949,6 +1012,60 @@ pub(crate) fn public_file_sanitized(file: &Path, source: &str) -> bool {
             for capture in evidence_captures() {
                 line = line.replace(capture, "capture.ndjson");
             }
+        }
+        // The release owner's GitHub account and certificate attribution are
+        // release metadata, never operator identities in examples or vectors.
+        let owner = ["KI", "7MT"].concat();
+        let owner_lower = owner.to_ascii_lowercase();
+        let trimmed = line.trim();
+        let release_owner_metadata = match file.to_str() {
+            Some(".github/workflows/release.yml") => {
+                trimmed == format!("- name: Only {owner}'s manual main Release publishes")
+                    || trimmed == format!("echo \"- **macOS** (Apple silicon): signed by Greg Beam ({owner}) with an Apple Developer ID, and notarized by Apple.\"")
+                    || trimmed == format!("echo \"- **Windows** (x86_64): signed by Gregory Beam ({owner}).\"")
+            }
+            Some(".github/workflows/binaries.yml") => {
+                trimmed == format!("- name: Signing requires {owner}'s main Release and its exact commit")
+            }
+            Some("docs/RELEASING.md") => {
+                line == format!("{owner} runs `.github/workflows/release.yml` manually from `main`. The workflow")
+            }
+            Some("scripts/release_check.py") => {
+                trimmed == format!("and actor.casefold() == \"{owner_lower}\"")
+                    || trimmed == format!("and triggering_actor.casefold() == \"{owner_lower}\"")
+                    || trimmed == format!("\"\"\"Only {owner}'s manual main Release can sign or publish its exact workflow commit.\"\"\"")
+                    || trimmed == format!("sys.exit(\"Signing and publication require {owner}'s manual main Release and its exact commit\")")
+            }
+            Some("scripts/test_release_check.py") => {
+                trimmed == format!("actor=\"{owner}\", triggering_actor=\"{owner}\")")
+                    || trimmed == format!("for actor in [\"release-bot[bot]\", \"someone\", \"{owner}-other\", \"\"]:")
+                    || trimmed == format!("self.assertTrue(rc.source_allowed(*self.args(actor=\"{owner_lower}\", triggering_actor=\"{owner_lower}\")))")
+            }
+            _ => false,
+        };
+        if release_owner_metadata {
+            line = line.replace(&owner, "Q1ABC").replace(&owner_lower, "Q1ABC");
+        }
+        if file == Path::new("crates/qso-graph-dxcluster-cli/src/tui/model.rs") {
+            // Literals arrive with their quotes and without commas: match whole quoted words.
+            line = line
+                .split(' ')
+                .map(|word| {
+                    if ADIF_CALL_SHAPED_MODES
+                        .iter()
+                        .any(|p| format!("\"{}\"", p.concat()) == word)
+                    {
+                        "\"MODE\""
+                    } else {
+                        word
+                    }
+                })
+                .collect::<Vec<_>>()
+                .join(" ");
+        }
+        if file == Path::new("scripts/lint-workflows.py") {
+            // Exact pinned Go module references are package metadata, not email.
+            line = line.replace(&["/actionlint", "@v1.7.11"].concat(), "/actionlint/v1.7.11");
         }
         // Only pinned source citations can contain these upstream identities.
         if file == Path::new("spec/annex-b-dxspider.md") {
@@ -1417,6 +1534,61 @@ mod tests {
         }
     }
     #[test]
+    fn release_tool_metadata_does_not_exempt_identity_or_email_fixtures() {
+        assert!(text_sanitized("sha256sum dist/SHA256SUMS.txt rpm2cpio"));
+        let filename = "SHA256SUMS.txt";
+        let fixture = serde_json::json!({"call": filename});
+        assert!(!public_file_sanitized(
+            Path::new("vectors/planted.json"),
+            &fixture.to_string()
+        ));
+        let path = Path::new("scripts/lint-workflows.py");
+        let module = ["github.com/rhysd/actionlint/cmd/actionlint", "@v1.7.11"].concat();
+        assert!(public_file_sanitized(path, &module));
+        let email = ["person", "example.invalid"].join("@");
+        assert!(!public_file_sanitized(path, &email));
+        assert!(!public_file_sanitized(Path::new("README.md"), &module));
+    }
+
+    #[test]
+    fn release_owner_metadata_does_not_exempt_callsign_examples() {
+        let owner = ["KI", "7MT"].concat();
+        let workflow = Path::new(".github/workflows/release.yml");
+        let valid = format!("      - name: Only {owner}'s manual main Release publishes");
+        assert!(public_file_sanitized(workflow, &valid));
+        assert!(!public_file_sanitized(Path::new("README.md"), &valid));
+        assert!(!public_file_sanitized(
+            workflow,
+            &format!("{valid}; DX de {owner}: 14025 Q2ABC CQ 1832Z")
+        ));
+        for path in [
+            workflow,
+            Path::new(".github/workflows/binaries.yml"),
+            Path::new("docs/RELEASING.md"),
+            Path::new("scripts/release_check.py"),
+            Path::new("scripts/test_release_check.py"),
+        ] {
+            assert!(!public_file_sanitized(
+                path,
+                &format!("DX de {owner}: 14025 Q2ABC CQ 1832Z")
+            ));
+            assert!(!public_file_sanitized(
+                path,
+                &format!("qg-dxc connect example.invalid 7300 --call {owner}")
+            ));
+            assert!(!public_file_sanitized(
+                path,
+                &serde_json::json!({"call": owner}).to_string()
+            ));
+        }
+        let other = ["W", "1", "ABC"].concat();
+        assert!(!public_file_sanitized(
+            workflow,
+            &valid.replace(&owner, &other)
+        ));
+    }
+
+    #[test]
     fn checks_reject_mutations() {
         // QGDXC-SEC-0004 QGDXC-SEC-0006
         assert!(source_violation("std::{net}", true));
@@ -1524,5 +1696,25 @@ mod privacy_complexity_tests {
         let small = cost(4096).max(std::time::Duration::from_micros(50));
         let large = cost(65536);
         assert!(large < small * 64, "4096: {small:?}, 65536: {large:?}");
+    }
+}
+#[cfg(test)]
+mod adif_mode_exemption {
+    use super::*;
+    #[test]
+    fn exempts_only_quoted_adif_names_in_the_mode_list() {
+        let model = Path::new("crates/qso-graph-dxcluster-cli/src/tui/model.rs");
+        let name = ["JT", "9", "A"].concat();
+        assert!(public_file_sanitized(
+            model,
+            &format!("    \"{name}\", \"FT8\",\n")
+        ));
+        // The same name elsewhere, or a real-shaped call in the list, still fails.
+        assert!(!public_file_sanitized(
+            Path::new("README.md"),
+            &format!("    \"{name}\",\n")
+        ));
+        let call = ["W", "1", "ABC"].concat();
+        assert!(!public_file_sanitized(model, &format!("    \"{call}\",\n")));
     }
 }

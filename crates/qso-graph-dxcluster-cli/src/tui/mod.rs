@@ -5,9 +5,10 @@ mod render;
 pub(crate) mod sources;
 #[cfg(test)]
 mod tests;
+mod theme;
 use config::Options;
 use crossterm::{
-    cursor::{RestorePosition, SavePosition},
+    cursor::{Hide, RestorePosition, SavePosition, Show},
     event::{self, Event, KeyCode, KeyEventKind, KeyModifiers},
     execute,
     terminal::{self, EnterAlternateScreen, LeaveAlternateScreen},
@@ -28,8 +29,8 @@ use std::{
 };
 
 // QGDXC-TUI-0052: keep the saved terminal state in a guard established before
-// the first mutation. Rendering never changes cursor visibility, so both an
-// initially hidden cursor and an initially visible cursor remain as they were.
+// the first mutation. The cursor is hidden while the interface owns the screen
+// and shown on exit: a terminal cannot report its earlier cursor visibility.
 trait ScreenIo {
     fn raw(&mut self) -> io::Result<bool>;
     fn set_raw(&mut self, enabled: bool) -> io::Result<()>;
@@ -50,10 +51,10 @@ impl ScreenIo for SystemScreen {
         }
     }
     fn enter_screen(&mut self) -> io::Result<()> {
-        execute!(io::stdout(), SavePosition, EnterAlternateScreen)
+        execute!(io::stdout(), SavePosition, EnterAlternateScreen, Hide)
     }
     fn leave_screen(&mut self) -> io::Result<()> {
-        execute!(io::stdout(), LeaveAlternateScreen, RestorePosition)
+        execute!(io::stdout(), Show, LeaveAlternateScreen, RestorePosition)
     }
     fn flush(&mut self) -> io::Result<()> {
         io::stdout().flush()
@@ -109,6 +110,7 @@ pub fn input(event: Event) -> Option<Input> {
             Some(match key.code {
                 KeyCode::Char(c) => Input::Char(c),
                 KeyCode::Backspace => Input::Backspace,
+                KeyCode::Tab => Input::Tab,
                 KeyCode::Enter => Input::Enter,
                 KeyCode::Esc => Input::Escape,
                 KeyCode::Up => Input::Up,
@@ -122,8 +124,7 @@ pub fn input(event: Event) -> Option<Input> {
         _ => None,
     }
 }
-// Manual frame presentation preserves cursor visibility (the default draw method
-// would hide it). The same renderer is exercised with TestBackend in unit tests.
+// Manual frame presentation leaves cursor visibility to the screen guard. The same renderer is exercised with TestBackend in unit tests.
 fn present<B: Backend>(
     terminal: &mut Terminal<B>,
     model: &Model,
@@ -168,7 +169,20 @@ pub fn run(args: &[String]) -> Result<u8, String> {
         let screen = Screen::enter(SystemScreen)?;
         let mut terminal = Terminal::new(CrosstermBackend::new(io::stdout()))?;
         let origin = Instant::now();
-        let mut model = Model::new(options.labels.clone());
+        let mut model = Model::new(
+            options.labels.clone(),
+            options.keep_human,
+            options.keep_skimmer,
+        );
+        model.appearance.theme = options.theme;
+        model.appearance.depth = theme::Depth::detect(
+            &std::env::var("COLORTERM").unwrap_or_default(),
+            &std::env::var("TERM").unwrap_or_default(),
+        );
+        model.utc_epoch = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
         let mut interface = Interface {
             _screen: screen,
             workers: Workers::new(stop.clone()),
@@ -179,11 +193,9 @@ pub fn run(args: &[String]) -> Result<u8, String> {
             interface.workers.drain(&mut model, origin);
             let now = origin.elapsed();
             if redraw.due(now) {
-                model.page = terminal
-                    .size()?
-                    .height
-                    .saturating_sub(model.sources.len() as u16 + 5)
-                    .max(1) as usize;
+                let size = terminal.size()?;
+                model.page =
+                    render::list_rows(size.width, size.height, model.sources.len()).max(1) as usize;
                 present(&mut terminal, &model, now)?;
             }
             if event::poll(Duration::from_millis(5))?

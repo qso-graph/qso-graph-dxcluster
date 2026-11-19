@@ -1,12 +1,15 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //! Pure display state. No clock, terminal, transport, or file access.
+use super::theme::Appearance;
 use qso_graph_dxcluster::{Event, Value, privacy};
 use std::{
     collections::{BTreeSet, VecDeque},
     time::Duration,
 };
 
-pub const LIMIT: usize = 10_000;
+pub const DEFAULT_KEEP: usize = 100;
+pub const MIN_KEEP: usize = 10;
+pub const MAX_KEEP: usize = 10_000;
 // QGDXC-TUI-0020: ADIF 3.1.7 Band limits, converted exactly from MHz to Hz.
 pub const BANDS: &[(&str, u64, u64)] = &[
     ("2190m", 135700, 137800),
@@ -46,9 +49,230 @@ pub const BANDS: &[(&str, u64, u64)] = &[
 pub const MODES: &[&str] = &[
     "CW", "SSB", "AM", "FM", "FT8", "FT4", "RTTY", "other", "unknown",
 ];
+/// Every ADIF 3.1.7 Mode and Submode name that is a single word (import-only names
+/// excluded). A spot's mode is one of these words in its comment, never its frequency.
 const RECOGNIZED: &[&str] = &[
-    "CW", "SSB", "USB", "LSB", "AM", "FM", "FT8", "FT4", "RTTY", "PSK31", "PSK63", "JT65", "JS8",
-    "MSK144", "Q65", "SSTV",
+    "8PSK1000",
+    "8PSK1000F",
+    "8PSK1200F",
+    "8PSK125",
+    "8PSK125F",
+    "8PSK125FL",
+    "8PSK250",
+    "8PSK250F",
+    "8PSK250FL",
+    "8PSK500",
+    "8PSK500F",
+    "AM",
+    "AMTORFEC",
+    "ARDOP",
+    "ASCI",
+    "ATV",
+    "C4FM",
+    "CHIP",
+    "CHIP128",
+    "CHIP64",
+    "CLO",
+    "CONTESTI",
+    "CW",
+    "DIGITALVOICE",
+    "DMR",
+    "DOM-M",
+    "DOM11",
+    "DOM16",
+    "DOM22",
+    "DOM4",
+    "DOM44",
+    "DOM5",
+    "DOM8",
+    "DOM88",
+    "DOMINO",
+    "DOMINOEX",
+    "DOMINOF",
+    "DSTAR",
+    "DYNAMIC",
+    "FAX",
+    "FM",
+    "FMHELL",
+    "FREEDATA",
+    "FREEDV",
+    "FSK",
+    "FSK31",
+    "FSK441",
+    "FSKH105",
+    "FSKH245",
+    "FSKHELL",
+    "FSQCALL",
+    "FST4",
+    "FST4W",
+    "FT2",
+    "FT4",
+    "FT8",
+    "GTOR",
+    "HELL",
+    "HELL80",
+    "HELLX5",
+    "HELLX9",
+    "HFSK",
+    "ISCAT",
+    "ISCAT-A",
+    "ISCAT-B",
+    "JS8",
+    "JT4",
+    "JT44",
+    "JT4A",
+    "JT4B",
+    "JT4C",
+    "JT4D",
+    "JT4E",
+    "JT4F",
+    "JT4G",
+    "JT65",
+    "JT65A",
+    "JT65B",
+    "JT65B2",
+    "JT65C",
+    "JT65C2",
+    "JT6M",
+    "JT9",
+    "JT9-1",
+    "JT9-10",
+    "JT9-2",
+    "JT9-30",
+    "JT9-5",
+    "JT9A",
+    "JT9B",
+    "JT9C",
+    "JT9D",
+    "JT9E",
+    "JT9F",
+    "JT9G",
+    "JT9H",
+    "JTMS",
+    "LSB",
+    "M17",
+    "MFSK",
+    "MFSK11",
+    "MFSK128",
+    "MFSK128L",
+    "MFSK16",
+    "MFSK22",
+    "MFSK31",
+    "MFSK32",
+    "MFSK4",
+    "MFSK64",
+    "MFSK64L",
+    "MFSK8",
+    "MSK144",
+    "MT63",
+    "MTONE",
+    "NAVTEX",
+    "OFDM",
+    "OLIVIA",
+    "OPERA",
+    "OPERA-BEACON",
+    "OPERA-QSO",
+    "PAC",
+    "PAC2",
+    "PAC3",
+    "PAC4",
+    "PAX",
+    "PAX2",
+    "PCW",
+    "PKT",
+    "PSK",
+    "PSK10",
+    "PSK1000",
+    "PSK1000RC2",
+    "PSK125",
+    "PSK125RC10",
+    "PSK125RC12",
+    "PSK125RC16",
+    "PSK125RC4",
+    "PSK125RC5",
+    "PSK250",
+    "PSK250RC2",
+    "PSK250RC3",
+    "PSK250RC5",
+    "PSK250RC6",
+    "PSK250RC7",
+    "PSK2K",
+    "PSK31",
+    "PSK500",
+    "PSK500RC2",
+    "PSK500RC3",
+    "PSK500RC4",
+    "PSK63",
+    "PSK63F",
+    "PSK63RC10",
+    "PSK63RC20",
+    "PSK63RC32",
+    "PSK63RC4",
+    "PSK63RC5",
+    "PSK800RC2",
+    "PSKAM10",
+    "PSKAM31",
+    "PSKAM50",
+    "PSKFEC31",
+    "PSKHELL",
+    "Q15",
+    "Q65",
+    "QPSK125",
+    "QPSK250",
+    "QPSK31",
+    "QPSK500",
+    "QPSK63",
+    "QRA64",
+    "QRA64A",
+    "QRA64B",
+    "QRA64C",
+    "QRA64D",
+    "QRA64E",
+    "RIBBIT_PIX",
+    "RIBBIT_SMS",
+    "ROS",
+    "ROS-EME",
+    "ROS-HF",
+    "ROS-MF",
+    "RTTY",
+    "RTTYM",
+    "SCAMP_FAST",
+    "SCAMP_OO",
+    "SCAMP_OO_SLW",
+    "SCAMP_SLOW",
+    "SCAMP_VSLOW",
+    "SIM31",
+    "SITORB",
+    "SLOWHELL",
+    "SSB",
+    "SSTV",
+    "T10",
+    "THOR",
+    "THOR-M",
+    "THOR100",
+    "THOR11",
+    "THOR16",
+    "THOR22",
+    "THOR25X4",
+    "THOR4",
+    "THOR5",
+    "THOR50X1",
+    "THOR50X2",
+    "THOR8",
+    "THRB",
+    "THRBX",
+    "THRBX1",
+    "THRBX2",
+    "THRBX4",
+    "THROB1",
+    "THROB2",
+    "THROB4",
+    "TOR",
+    "USB",
+    "V4",
+    "VOI",
+    "WINMOR",
+    "WSPR",
 ];
 pub fn band(hz: u64) -> &'static str {
     BANDS
@@ -210,7 +434,19 @@ impl Filters {
         )
     }
 }
+pub const CHART_BANDS: [&str; 11] = [
+    "160m", "80m", "60m", "40m", "30m", "20m", "17m", "15m", "12m", "10m", "6m",
+];
+
+// One counter bucket per arrival second, independent of spot retention and filters.
+#[derive(Default)]
+pub struct Bucket {
+    pub second: u64,
+    pub sources: [u64; 8],
+    pub bands: [u64; 11],
+}
 pub struct Spot {
+    pub born: Duration,
     pub id: u64,
     pub source: usize,
     pub event: Event,
@@ -218,6 +454,7 @@ pub struct Spot {
     pub mode: String,
 }
 pub struct Status {
+    pub retry_at: Option<Duration>,
     pub label: String,
     pub state: String,
     pub reason: String,
@@ -231,14 +468,14 @@ pub struct Status {
 impl Status {
     pub fn line(&self, now: Duration) -> String {
         format!(
-            "{} {} {} {} spots:{} age:{}{}{} {}",
+            "{} {} {} {} spots:{}{}{}{} {}",
             self.label,
             self.state,
             self.reason,
             self.server,
             self.count,
             self.last
-                .map(|at| now.saturating_sub(at).as_secs().to_string())
+                .map(|at| format!(" age:{}", now.saturating_sub(at).as_secs()))
                 .unwrap_or_default(),
             if self.complete { " COMPLETE" } else { "" },
             if self.hidden { " HIDDEN" } else { "" },
@@ -250,6 +487,7 @@ impl Status {
 pub enum Input {
     Char(char),
     Backspace,
+    Tab,
     Enter,
     Escape,
     Up,
@@ -261,6 +499,11 @@ pub enum Input {
 }
 pub enum Editor {
     Normal,
+    Limits {
+        values: [String; 2],
+        cursor: usize,
+        error: String,
+    },
     Calls {
         text: String,
         error: String,
@@ -274,7 +517,14 @@ pub enum Editor {
     Help,
 }
 pub struct Model {
+    pub appearance: Appearance,
+    pub utc_epoch: u64,
+    pub activity: VecDeque<Bucket>,
     pub spots: VecDeque<Spot>,
+    keep_human: usize,
+    keep_skimmer: usize,
+    pub kept_human: usize,
+    pub kept_skimmer: usize,
     pub sources: Vec<Status>,
     pub total: u64,
     pub filters: Filters,
@@ -286,12 +536,20 @@ pub struct Model {
     pub page: usize,
 }
 impl Model {
-    pub fn new(labels: Vec<String>) -> Self {
+    pub fn new(labels: Vec<String>, keep_human: usize, keep_skimmer: usize) -> Self {
         Self {
+            appearance: Appearance::default(),
+            utc_epoch: 0,
+            activity: VecDeque::new(),
             spots: VecDeque::new(),
+            keep_human,
+            keep_skimmer,
+            kept_human: 0,
+            kept_skimmer: 0,
             sources: labels
                 .into_iter()
                 .map(|label| Status {
+                    retry_at: None,
                     label: sanitize(&label),
                     state: String::new(),
                     reason: String::new(),
@@ -318,6 +576,12 @@ impl Model {
         privacy::apply(&mut event, false);
         let status = &mut self.sources[source];
         if event.kind == "connection_state" {
+            status.retry_at = match event.fields.get("retry_in_ms") {
+                Some(Value::Integer(ms)) if *ms >= 0 => {
+                    Some(now.saturating_add(Duration::from_millis(*ms as u64)))
+                }
+                _ => None,
+            };
             status.server = event.server_type.name().into();
             status.state = event.get("state").unwrap_or_default().into();
             status.reason = event.get("reason").unwrap_or_default().into();
@@ -325,17 +589,57 @@ impl Model {
             status.count += 1;
             status.last = Some(now);
             self.total += 1;
+            while self
+                .activity
+                .front()
+                .is_some_and(|b| now.as_secs().saturating_sub(b.second) >= 900)
+            {
+                self.activity.pop_front();
+            }
+            if self
+                .activity
+                .back()
+                .is_none_or(|b| b.second != now.as_secs())
+            {
+                self.activity.push_back(Bucket {
+                    second: now.as_secs(),
+                    ..Bucket::default()
+                });
+            }
+            let bucket = self.activity.back_mut().expect("arrival bucket");
+            bucket.sources[source] += 1;
+            if let Some(index) = CHART_BANDS
+                .iter()
+                .position(|b| *b == band(frequency(&event)))
+            {
+                bucket.bands[index] += 1;
+            }
             let spot = Spot {
+                born: now,
                 id: self.total,
                 source,
                 band: band(frequency(&event)),
                 mode: mode(&event),
                 event,
             };
-            self.spots.push_front(spot);
-            if self.spots.len() > LIMIT {
-                self.spots.pop_back();
+            // QGDXC-TUI-0012: unknown kinds share the skimmer allowance.
+            let human = spot.event.get("spot_kind") == Some("human");
+            let (kept, limit) = if human {
+                (&mut self.kept_human, self.keep_human)
+            } else {
+                (&mut self.kept_skimmer, self.keep_skimmer)
+            };
+            if *kept == limit {
+                let oldest = self
+                    .spots
+                    .iter()
+                    .rposition(|s| (s.event.get("spot_kind") == Some("human")) == human)
+                    .expect("retained kind at capacity");
+                self.spots.remove(oldest);
+            } else {
+                *kept += 1;
             }
+            self.spots.push_front(spot);
             self.clamp(!self.paused);
         }
     }
@@ -344,6 +648,27 @@ impl Model {
             .iter()
             .filter(|s| !self.sources[s.source].hidden && self.filters.accepts(s))
             .collect()
+    }
+    fn set_limits(&mut self, human: usize, skimmer: usize) {
+        self.keep_human = human;
+        self.keep_skimmer = skimmer;
+        self.kept_human = 0;
+        self.kept_skimmer = 0;
+        // QGDXC-TUI-0012: retain the newest of each kind, including while paused.
+        self.spots.retain(|spot| {
+            let (kept, limit) = if spot.event.get("spot_kind") == Some("human") {
+                (&mut self.kept_human, human)
+            } else {
+                (&mut self.kept_skimmer, skimmer)
+            };
+            if *kept < limit {
+                *kept += 1;
+                true
+            } else {
+                false
+            }
+        });
+        self.clamp(false);
     }
     pub fn offset(&self, matching: &[&Spot]) -> usize {
         self.top
@@ -357,15 +682,16 @@ impl Model {
         } else {
             let retained = self
                 .top
-                .and_then(|id| self.spots.front()?.id.checked_sub(id))
-                .and_then(|offset| usize::try_from(offset).ok())
-                .and_then(|offset| self.spots.get(offset));
+                .and_then(|id| self.spots.iter().find(|s| s.id == id));
             if !retained.is_some_and(|s| accepts(&s)) {
                 self.top = self.spots.iter().rev().find(accepts).map(|s| s.id);
             }
         }
     }
 
+    pub fn paused_new(&self) -> u64 {
+        self.total - self.pause_total
+    }
     pub fn summary(&self) -> String {
         format!(
             "retained:{} received:{}{}",
@@ -402,6 +728,38 @@ impl Model {
             return;
         }
         match &mut self.editor {
+            Editor::Limits {
+                values,
+                cursor,
+                error,
+            } => match input {
+                Input::Escape => self.editor = Editor::Normal,
+                Input::Up => *cursor = cursor.saturating_sub(1),
+                Input::Down => *cursor = (*cursor + 1).min(1),
+                Input::Tab => *cursor = (*cursor + 1) % 2,
+                Input::Backspace => {
+                    values[*cursor].pop();
+                    error.clear();
+                }
+                Input::Char(c) if c.is_ascii_digit() && values[*cursor].len() < 5 => {
+                    values[*cursor].push(c);
+                    error.clear();
+                }
+                Input::Enter => {
+                    let valid = |text: &str| {
+                        text.parse::<usize>()
+                            .ok()
+                            .filter(|n| (MIN_KEEP..=MAX_KEEP).contains(n))
+                    };
+                    if let (Some(human), Some(skimmer)) = (valid(&values[0]), valid(&values[1])) {
+                        self.set_limits(human, skimmer);
+                        self.editor = Editor::Normal;
+                    } else {
+                        *error = "Limits must be 10 to 10,000".into();
+                    }
+                }
+                _ => {}
+            },
             Editor::Calls {
                 text,
                 error,
@@ -468,6 +826,14 @@ impl Model {
             }
             Editor::Normal => match input {
                 Input::Char('q') => self.quit = true,
+                Input::Char('l') => {
+                    self.editor = Editor::Limits {
+                        values: [self.keep_human.to_string(), self.keep_skimmer.to_string()],
+                        cursor: 0,
+                        error: String::new(),
+                    };
+                }
+                Input::Char('t') => self.appearance.theme = self.appearance.theme.next(),
                 Input::Char('b' | 'm') => {
                     let is_band = matches!(input, Input::Char('b'));
                     let selected = if is_band {
@@ -525,6 +891,17 @@ impl Model {
                     }
                     .min(matching.len().saturating_sub(1));
                     self.top = matching.get(index).map(|s| s.id);
+                    // Scrolling away from the newest spot holds the view, as `p` does;
+                    // Home returns to the newest spot and live updating.
+                    if matches!(input, Input::Home) {
+                        if self.paused {
+                            self.paused = false;
+                            self.clamp(true);
+                        }
+                    } else if index > 0 && !self.paused {
+                        self.paused = true;
+                        self.pause_total = self.total;
+                    }
                 }
                 _ => {}
             },

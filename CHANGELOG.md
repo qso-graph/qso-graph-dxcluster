@@ -1,7 +1,24 @@
 <!-- SPDX-License-Identifier: GPL-3.0-or-later -->
 # Changelog
 
-## Unreleased 0.1.0
+## [Unreleased]
+
+## [0.1.0]
+
+- Add a runtime Limits editor (`l`) for both TUI spot caps, with immediate
+  per-kind eviction when lowered, including while paused (`QGDXC-TUI-0012`).
+
+- Add independent TUI spot retention with `--keep-human` and `--keep-skimmer`
+  (100 each by default, 10–10,000 each), per-kind eviction, and retained counts
+  in the bottom border (`QGDXC-TUI-0012`, `QGDXC-TUI-0070`).
+
+- Scrolling down the TUI spot list holds the view while spots keep arriving;
+  Home returns to the newest spots (`QGDXC-TUI-0051`).
+
+- Add a terminal spot list that merges several cluster nodes and Reverse Beacon
+  Network feeds, with display filters and offline replay.
+- Add signed platform archives, Linux packages, and a manual release workflow
+  that publishes the library and CLI before tagging the release.
 
 - Request readiness tokens and retry jitter per attempt, using fresh OS randomness
   in the CLI and constant engine storage (QGDXC-DSP-0004, QGDXC-SES-0010).

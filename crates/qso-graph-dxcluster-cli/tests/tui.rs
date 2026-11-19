@@ -1,6 +1,46 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 use std::process::{Command, Stdio};
 #[test]
+fn retention_usage_errors_name_flag_and_range_before_terminal_checks() {
+    // QGDXC-TUI-0012
+    for flag in ["--keep-human", "--keep-skimmer"] {
+        for value in ["9", "10001"] {
+            let output = Command::new(env!("CARGO_BIN_EXE_qg-dxc"))
+                .args(["tui", "--replay", "Cargo.toml", flag, value])
+                .output()
+                .unwrap();
+            assert_eq!(output.status.code(), Some(1));
+            assert!(output.stdout.is_empty());
+            let error = String::from_utf8(output.stderr).unwrap();
+            assert!(
+                error.contains(flag) && error.contains("10..=10000"),
+                "{error}"
+            );
+        }
+    }
+}
+
+#[test]
+fn help_describes_retention_options() {
+    // QGDXC-TUI-0012
+    let output = Command::new(env!("CARGO_BIN_EXE_qg-dxc"))
+        .arg("--help")
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+    let help = String::from_utf8(output.stdout).unwrap();
+    for value in [
+        "--keep-human N",
+        "--keep-skimmer N",
+        "100 each",
+        "10..=10000",
+        "l to edit limits",
+    ] {
+        assert!(help.contains(value), "{help}");
+    }
+}
+
+#[test]
 fn nonterminal_refusal_opens_no_source_and_emits_no_escape() {
     // QGDXC-TUI-0005 QGDXC-TUI-0052
     for arguments in [
@@ -28,7 +68,7 @@ fn nonterminal_refusal_opens_no_source_and_emits_no_escape() {
 #[cfg(unix)]
 #[test]
 fn raw_pasted_keys_keep_ctrl_c_responsive_without_enabling_bracketed_paste() {
-    // QGDXC-TUI-0041 QGDXC-TUI-0051 QGDXC-TUI-0052
+    // QGDXC-TUI-0012 QGDXC-TUI-0041 QGDXC-TUI-0051 QGDXC-TUI-0052
     let output = Command::new("python3")
         .arg("-c")
         .arg(
@@ -43,7 +83,7 @@ with tempfile.TemporaryDirectory(prefix='qg-dxc-input-') as directory:
             {'t': 3600, 'conn': 'close', 'reason': 'cancelled'},
         ]:
             file.write(json.dumps(record) + '\n')
-    for count in [335, 336]:
+    for entry in [b'/' + b'Q' * 335, b'/' + b'Q' * 336, b'l' + b'9' * 336 + b'\r']:
         master, slave = pty.openpty()
         fcntl.ioctl(slave, termios.TIOCSWINSZ, struct.pack('HHHH', 24, 80, 0, 0))
         before = termios.tcgetattr(slave)
@@ -63,16 +103,17 @@ with tempfile.TemporaryDirectory(prefix='qg-dxc-input-') as directory:
                         raise
         try:
             deadline = time.monotonic() + 5
-            while b'retained:0' not in captured and time.monotonic() < deadline:
+            # Blank cells can be skipped with cursor moves, so wait for fixed text.
+            while b' QG DX Cluster ' not in captured and time.monotonic() < deadline:
                 read_available(.05)
-            assert b'retained:0' in captured, bytes(captured)
+            assert b' QG DX Cluster ' in captured, bytes(captured)
             # The terminal sends pasted text as raw key bytes under QGDXC-TUI-0041.
             # No synthetic Paste event bypasses the input decoder.
-            os.write(master, b'/' + b'Q' * count + b'\x03')
+            os.write(master, entry + b'\x03')
             deadline = time.monotonic() + 3
             while process.poll() is None and time.monotonic() < deadline:
                 read_available(.02)
-            assert process.poll() == 0, ('Ctrl-C stalled or failed', count, process.poll())
+            assert process.poll() == 0, ('Ctrl-C stalled or failed', entry, process.poll())
             read_available(0)
             check = os.open(slave_name, os.O_RDWR | os.O_NOCTTY)
             try:
@@ -80,6 +121,9 @@ with tempfile.TemporaryDirectory(prefix='qg-dxc-input-') as directory:
             finally:
                 os.close(check)
             assert b'\x1b[?1049l' in captured, 'alternate screen was not restored'
+            hide, show = captured.find(b'\x1b[?25l'), captured.rfind(b'\x1b[?25h')
+            assert hide != -1, 'cursor was not hidden'
+            assert show > hide, 'cursor was not shown again on exit'
             for sequence in [b'\x1b[?2004s', b'\x1b[?2004h', b'\x1b[?2004r']:
                 assert sequence not in captured, ('bracketed paste changed', sequence)
         finally:

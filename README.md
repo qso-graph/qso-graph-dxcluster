@@ -1,18 +1,27 @@
 <!-- SPDX-License-Identifier: GPL-3.0-or-later -->
 # QG DX Cluster
 
-Watch DX spots from several nodes in one terminal, read typed events, or replay a recorded session offline.
+An old-school DX cluster terminal built in modern Rust, for radio operators who
+want several cluster nodes and the Reverse Beacon Network in one live,
+filterable spot list. `qg-dxc` brings the feeds together in your terminal. It is
+receive-only and never sends a password.
 
-QG DX Cluster is for radio operators who want a terminal feed and developers who
-need a receive-only Rust protocol engine. It supports DXSpider, AR-Cluster,
-CC Cluster, and direct Reverse Beacon Network feeds, with automatic profile
-detection. The library handles framing, profile recognition, startup, and retry
-policy; the `qg-dxc` application owns TCP and recording.
+Download a single self-contained program for macOS, Windows, or Linux from
+[GitHub Releases](https://github.com/qso-graph/qso-graph-dxcluster/releases).
+Unpack it and run `qg-dxc --help`. Or install from crates.io:
+
+```sh
+cargo install qso-graph-dxcluster-cli
+```
+
+For developers, `qso-graph-dxcluster` is a sans-I/O Rust library with no runtime
+dependencies. It handles framing, profile recognition, startup, and retry policy;
+the application owns I/O. It supports DXSpider, AR-Cluster, CC Cluster, and direct
+Reverse Beacon Network feeds, with automatic profile detection.
 
 Events preserve received evidence and distinguish spots, announcements, talk,
 WWV/WCY reports, prompts, and connection changes. Default privacy handling and
 terminal escaping follow [QGDXC-SEC-0003 and QGDXC-SEC-0005](spec/QGDXC-SPEC-001.md).
-The library has no runtime dependencies and performs no I/O.
 
 Install from source with Rust 1.99.1:
 
@@ -36,8 +45,16 @@ qg-dxc tui --replay session.ndjson --replay second-session.ndjson
 
 For operators watching several feeds, `qg-dxc tui` combines up to eight sources
 in a newest-first spot list with a status line for each source. Display filters
-select bands, modes, callsigns, and human or skimmer spots. Press `?` for keys;
-`p` pauses scrolling while reception continues. Use repeated `--node` options
+select bands, modes, callsigns, and human or skimmer spots. Retention defaults
+to 100 human and 100 skimmer spots; `--keep-human N` and `--keep-skimmer N`
+set each cap independently (10–10,000 each), so a skimmer flood keeps human
+spots intact (`QGDXC-TUI-0012`). Press `l` to edit both caps while the TUI runs.
+Lowering a cap immediately removes that kind’s oldest spots, including while paused.
+Press `?` for keys;
+Scrolling down holds your place while reception continues, and Home returns to the newest spots; `p` pauses and resumes too, and `t` cycles the five themes.
+Use `--theme color|daylight|phosphor|amber|mono` to choose a theme at startup.
+The responsive layout, activity charts, `NO_COLOR` behavior, and terminal color
+selection follow `QGDXC-TUI-0070`–`QGDXC-TUI-0073` in Annex F. Use repeated `--node` options
 with one `--call`, or repeated `--replay` options for paced offline playback.
 The interface requires terminal input and output. See [Annex F](spec/annex-f-tui.md).
 

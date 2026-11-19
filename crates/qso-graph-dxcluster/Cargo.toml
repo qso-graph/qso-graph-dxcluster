@@ -7,5 +7,10 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
+readme = "README.md"
+keywords = ["ham-radio", "dx-cluster", "rbn", "terminal", "protocol"]
+categories = ["network-programming", "parser-implementations"]
+# Conformance vectors and integration tests stay in the repository.
+include = ["src/**/*.rs", "README.md", "LICENSE"]
 [lints]
 workspace = true
