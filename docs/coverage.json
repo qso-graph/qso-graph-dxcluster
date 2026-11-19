@@ -1238,6 +1238,10 @@
         {
           "file": "crates/qso-graph-dxcluster-cli/src/tui/tests.rs",
           "name": "replay_pacing_ties_continuations_completion_and_isolated_errors"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/tui/tests.rs",
+          "name": "per_kind_eviction_preserves_other_kind_and_paused_anchor"
         }
       ],
       "vectors": []
@@ -1260,6 +1264,30 @@
         {
           "file": "crates/qso-graph-dxcluster-cli/src/tui/tests.rs",
           "name": "retention_filters_pause_scroll_and_eviction"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/tui/tests.rs",
+          "name": "retention_defaults_and_configured_range"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/tui/tests.rs",
+          "name": "per_kind_eviction_preserves_other_kind_and_paused_anchor"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/tui/tests.rs",
+          "name": "unclassified_spots_share_skimmer_retention"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/tui/tests.rs",
+          "name": "activity_charts_and_sparklines_are_independent_of_retention_caps"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster-cli/tests/tui.rs",
+          "name": "retention_usage_errors_name_flag_and_range_before_terminal_checks"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster-cli/tests/tui.rs",
+          "name": "help_describes_retention_options"
         }
       ],
       "vectors": []
@@ -1317,6 +1345,10 @@
         {
           "file": "crates/qso-graph-dxcluster-cli/src/tui/tests.rs",
           "name": "filters_accept_exact_kind_and_listed_other_unknown_mode_rows"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/tui/tests.rs",
+          "name": "per_kind_eviction_preserves_other_kind_and_paused_anchor"
         }
       ],
       "vectors": []
@@ -1392,6 +1424,10 @@
           "file": "crates/qso-graph-dxcluster-cli/tests/tui.rs",
           "name": "raw_pasted_keys_keep_ctrl_c_responsive_without_enabling_bracketed_paste",
           "platform": "linux"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/tui/tests.rs",
+          "name": "per_kind_eviction_preserves_other_kind_and_paused_anchor"
         }
       ],
       "vectors": []
@@ -1507,6 +1543,14 @@
         {
           "file": "crates/qso-graph-dxcluster-cli/src/tui/tests.rs",
           "name": "compact_source_labels_and_header_grammar"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/tui/tests.rs",
+          "name": "unclassified_spots_share_skimmer_retention"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/tui/tests.rs",
+          "name": "activity_charts_and_sparklines_are_independent_of_retention_caps"
         }
       ],
       "vectors": []
@@ -1546,6 +1590,10 @@
         {
           "file": "crates/qso-graph-dxcluster-cli/src/tui/tests.rs",
           "name": "comments_remove_only_exact_visible_typed_prefixes_without_mutation"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/tui/tests.rs",
+          "name": "activity_charts_and_sparklines_are_independent_of_retention_caps"
         }
       ],
       "vectors": []

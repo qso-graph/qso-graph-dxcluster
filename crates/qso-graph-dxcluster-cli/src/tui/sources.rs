@@ -444,7 +444,11 @@ mod tests {
             _screen: screen,
             workers,
         };
-        let mut model = Model::new(vec!["one".into()]);
+        let mut model = Model::new(
+            vec!["one".into()],
+            crate::tui::model::DEFAULT_KEEP,
+            crate::tui::model::DEFAULT_KEEP,
+        );
         model.key(
             input(InputEvent::Key(KeyEvent::new(
                 KeyCode::Char('q'),
@@ -515,7 +519,11 @@ mod tests {
                         _screen: screen,
                         workers,
                     };
-                    let mut model = Model::new(vec!["one".into()]);
+                    let mut model = Model::new(
+                        vec!["one".into()],
+                        crate::tui::model::DEFAULT_KEEP,
+                        crate::tui::model::DEFAULT_KEEP,
+                    );
                     match outcome {
                         "quit" | "ctrl-c" => {
                             let (c, modifiers) = if outcome == "quit" {

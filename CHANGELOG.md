@@ -1,6 +1,12 @@
 <!-- SPDX-License-Identifier: GPL-3.0-or-later -->
 # Changelog
 
+## [Unreleased]
+
+- Add independent TUI spot retention with `--keep-human` and `--keep-skimmer`
+  (100 each by default, 10–10,000 each), per-kind eviction, and retained counts
+  in the bottom border (`QGDXC-TUI-0012`, `QGDXC-TUI-0070`).
+
 ## [0.1.0]
 
 - Add a terminal spot list that merges several cluster nodes and Reverse Beacon

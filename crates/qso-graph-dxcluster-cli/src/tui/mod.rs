@@ -168,7 +168,11 @@ pub fn run(args: &[String]) -> Result<u8, String> {
         let screen = Screen::enter(SystemScreen)?;
         let mut terminal = Terminal::new(CrosstermBackend::new(io::stdout()))?;
         let origin = Instant::now();
-        let mut model = Model::new(options.labels.clone());
+        let mut model = Model::new(
+            options.labels.clone(),
+            options.keep_human,
+            options.keep_skimmer,
+        );
         model.appearance.theme = options.theme;
         model.appearance.depth = theme::Depth::detect(
             &std::env::var("COLORTERM").unwrap_or_default(),

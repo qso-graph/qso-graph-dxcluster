@@ -7,7 +7,9 @@ use std::{
     time::Duration,
 };
 
-pub const LIMIT: usize = 10_000;
+pub const DEFAULT_KEEP: usize = 100;
+pub const MIN_KEEP: usize = 10;
+pub const MAX_KEEP: usize = 10_000;
 // QGDXC-TUI-0020: ADIF 3.1.7 Band limits, converted exactly from MHz to Hz.
 pub const BANDS: &[(&str, u64, u64)] = &[
     ("2190m", 135700, 137800),
@@ -513,6 +515,10 @@ pub struct Model {
     pub utc_epoch: u64,
     pub activity: VecDeque<Bucket>,
     pub spots: VecDeque<Spot>,
+    keep_human: usize,
+    keep_skimmer: usize,
+    pub kept_human: usize,
+    pub kept_skimmer: usize,
     pub sources: Vec<Status>,
     pub total: u64,
     pub filters: Filters,
@@ -524,12 +530,16 @@ pub struct Model {
     pub page: usize,
 }
 impl Model {
-    pub fn new(labels: Vec<String>) -> Self {
+    pub fn new(labels: Vec<String>, keep_human: usize, keep_skimmer: usize) -> Self {
         Self {
             appearance: Appearance::default(),
             utc_epoch: 0,
             activity: VecDeque::new(),
             spots: VecDeque::new(),
+            keep_human,
+            keep_skimmer,
+            kept_human: 0,
+            kept_skimmer: 0,
             sources: labels
                 .into_iter()
                 .map(|label| Status {
@@ -606,10 +616,24 @@ impl Model {
                 mode: mode(&event),
                 event,
             };
-            self.spots.push_front(spot);
-            if self.spots.len() > LIMIT {
-                self.spots.pop_back();
+            // QGDXC-TUI-0012: unknown kinds share the skimmer allowance.
+            let human = spot.event.get("spot_kind") == Some("human");
+            let (kept, limit) = if human {
+                (&mut self.kept_human, self.keep_human)
+            } else {
+                (&mut self.kept_skimmer, self.keep_skimmer)
+            };
+            if *kept == limit {
+                let oldest = self
+                    .spots
+                    .iter()
+                    .rposition(|s| (s.event.get("spot_kind") == Some("human")) == human)
+                    .expect("retained kind at capacity");
+                self.spots.remove(oldest);
+            } else {
+                *kept += 1;
             }
+            self.spots.push_front(spot);
             self.clamp(!self.paused);
         }
     }
@@ -631,9 +655,7 @@ impl Model {
         } else {
             let retained = self
                 .top
-                .and_then(|id| self.spots.front()?.id.checked_sub(id))
-                .and_then(|offset| usize::try_from(offset).ok())
-                .and_then(|offset| self.spots.get(offset));
+                .and_then(|id| self.spots.iter().find(|s| s.id == id));
             if !retained.is_some_and(|s| accepts(&s)) {
                 self.top = self.spots.iter().rev().find(accepts).map(|s| s.id);
             }

@@ -45,7 +45,10 @@ qg-dxc tui --replay session.ndjson --replay second-session.ndjson
 
 For operators watching several feeds, `qg-dxc tui` combines up to eight sources
 in a newest-first spot list with a status line for each source. Display filters
-select bands, modes, callsigns, and human or skimmer spots. Press `?` for keys;
+select bands, modes, callsigns, and human or skimmer spots. Retention defaults
+to 100 human and 100 skimmer spots; `--keep-human N` and `--keep-skimmer N`
+set each cap independently (10–10,000 each), so a skimmer flood keeps human
+spots intact (`QGDXC-TUI-0012`). Press `?` for keys;
 `p` pauses scrolling while reception continues and `t` cycles the five themes.
 Use `--theme color|daylight|phosphor|amber|mono` to choose a theme at startup.
 The responsive layout, activity charts, `NO_COLOR` behavior, and terminal color

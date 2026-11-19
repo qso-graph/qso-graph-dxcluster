@@ -610,7 +610,11 @@ fn dashboard(frame: &mut Frame<'_>, m: &Model, now: Duration) {
         (0, bottom, w),
         false,
         &format!(" {} received ", comma(m.total)),
-        &format!(" {} kept of 10,000 ", comma(m.spots.len() as u64)),
+        &format!(
+            " {} human · {} skimmer ",
+            comma(m.kept_human as u64),
+            comma(m.kept_skimmer as u64)
+        ),
         a,
     );
     footer(frame, area.height - 1, w, m);

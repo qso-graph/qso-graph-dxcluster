@@ -1,6 +1,45 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 use std::process::{Command, Stdio};
 #[test]
+fn retention_usage_errors_name_flag_and_range_before_terminal_checks() {
+    // QGDXC-TUI-0012
+    for flag in ["--keep-human", "--keep-skimmer"] {
+        for value in ["9", "10001"] {
+            let output = Command::new(env!("CARGO_BIN_EXE_qg-dxc"))
+                .args(["tui", "--replay", "Cargo.toml", flag, value])
+                .output()
+                .unwrap();
+            assert_eq!(output.status.code(), Some(1));
+            assert!(output.stdout.is_empty());
+            let error = String::from_utf8(output.stderr).unwrap();
+            assert!(
+                error.contains(flag) && error.contains("10..=10000"),
+                "{error}"
+            );
+        }
+    }
+}
+
+#[test]
+fn help_describes_retention_options() {
+    // QGDXC-TUI-0012
+    let output = Command::new(env!("CARGO_BIN_EXE_qg-dxc"))
+        .arg("--help")
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+    let help = String::from_utf8(output.stdout).unwrap();
+    for value in [
+        "--keep-human N",
+        "--keep-skimmer N",
+        "100 each",
+        "10..=10000",
+    ] {
+        assert!(help.contains(value), "{help}");
+    }
+}
+
+#[test]
 fn nonterminal_refusal_opens_no_source_and_emits_no_escape() {
     // QGDXC-TUI-0005 QGDXC-TUI-0052
     for arguments in [
@@ -63,9 +102,9 @@ with tempfile.TemporaryDirectory(prefix='qg-dxc-input-') as directory:
                         raise
         try:
             deadline = time.monotonic() + 5
-            while b'10,000' not in captured and time.monotonic() < deadline:
+            while b' skimmer ' not in captured and time.monotonic() < deadline:
                 read_available(.05)
-            assert b'10,000' in captured, bytes(captured)
+            assert b' skimmer ' in captured, bytes(captured)
             # The terminal sends pasted text as raw key bytes under QGDXC-TUI-0041.
             # No synthetic Paste event bypasses the input decoder.
             os.write(master, b'/' + b'Q' * count + b'\x03')

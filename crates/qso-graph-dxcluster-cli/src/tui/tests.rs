@@ -126,6 +126,218 @@ fn configuration_validates_all_sources_before_io() {
     );
 }
 #[test]
+fn retention_defaults_and_configured_range() {
+    // QGDXC-TUI-0012
+    let defaults = Options::parse(&args(&["--replay", "Cargo.toml"])).unwrap();
+    assert_eq!((defaults.keep_human, defaults.keep_skimmer), (100, 100));
+    let mut m = Model::new(defaults.labels, defaults.keep_human, defaults.keep_skimmer);
+    for kind in ["human", "skimmer"] {
+        for _ in 0..101 {
+            let mut event = spot("Q1ABC", 14_025_000, "CW");
+            event.set("spot_kind", kind);
+            m.receive(0, event, Duration::ZERO);
+        }
+    }
+    assert_eq!((m.kept_human, m.kept_skimmer), (100, 100));
+    assert_eq!(m.spots.len(), 200);
+    assert_eq!(m.total, 202);
+    for flag in ["--keep-human", "--keep-skimmer"] {
+        for value in ["10", "10000"] {
+            let options = Options::parse(&args(&["--replay", "Cargo.toml", flag, value])).unwrap();
+            assert_eq!(
+                if flag == "--keep-human" {
+                    options.keep_human
+                } else {
+                    options.keep_skimmer
+                },
+                value.parse::<usize>().unwrap()
+            );
+            assert_eq!(
+                if flag == "--keep-human" {
+                    options.keep_skimmer
+                } else {
+                    options.keep_human
+                },
+                100
+            );
+        }
+        for value in [
+            "9",
+            "10001",
+            "0",
+            "-1",
+            "abc",
+            "10.5",
+            "184467440737095516160",
+        ] {
+            let error = Options::parse(&args(&["--replay", "Cargo.toml", flag, value]))
+                .err()
+                .unwrap();
+            assert!(
+                error.contains(flag) && error.contains("10..=10000"),
+                "{error}"
+            );
+        }
+    }
+    let configured = Options::parse(&args(&[
+        "--call",
+        "Q1ABC",
+        "--node",
+        "example.invalid:7300",
+        "--keep-human",
+        "17",
+        "--keep-skimmer",
+        "23",
+    ]))
+    .unwrap();
+    assert_eq!((configured.keep_human, configured.keep_skimmer), (17, 23));
+}
+#[test]
+fn per_kind_eviction_preserves_other_kind_and_paused_anchor() {
+    // QGDXC-TUI-0010 QGDXC-TUI-0012 QGDXC-TUI-0040 QGDXC-TUI-0051
+    let mut m = Model::new(args(&["human", "skimmer"]), 10, 12);
+    for _ in 0..10 {
+        m.receive(0, spot("Q1HUM", 14_025_000, "CW"), Duration::ZERO);
+    }
+    key(&mut m, KeyCode::Char('p'));
+    for _ in 0..200 {
+        let mut event = spot("Q2SKM", 7_025_000, "CW");
+        event.set("spot_kind", "skimmer");
+        m.receive(1, event, Duration::from_secs(1));
+        // Plant-and-prove target: a shared FIFO cap must evict these humans.
+        assert_eq!(
+            m.spots
+                .iter()
+                .filter(|s| s.event.get("spot_kind") == Some("human"))
+                .count(),
+            10
+        );
+        assert_eq!(m.top, Some(10));
+        assert!(m.spots.len() <= 22);
+    }
+    assert_eq!((m.kept_human, m.kept_skimmer), (10, 12));
+    assert_eq!(
+        m.spots.iter().map(|s| s.id).collect::<Vec<_>>(),
+        (199..=210).rev().chain((1..=10).rev()).collect::<Vec<_>>()
+    );
+    assert_eq!(m.paused_new(), 200);
+    key(&mut m, KeyCode::Down);
+    assert_eq!(m.top, Some(9));
+    key(&mut m, KeyCode::Up);
+    assert_eq!(m.top, Some(10));
+    for _ in 0..200 {
+        m.receive(0, spot("Q3HUM", 14_025_000, "CW"), Duration::from_secs(2));
+    }
+    assert_eq!((m.kept_human, m.kept_skimmer), (10, 12));
+    assert_eq!(
+        m.spots.iter().map(|s| s.id).collect::<Vec<_>>(),
+        (401..=410)
+            .rev()
+            .chain((199..=210).rev())
+            .collect::<Vec<_>>()
+    );
+    assert_eq!(m.top, Some(199));
+    assert_eq!(m.paused_new(), 400);
+    key(&mut m, KeyCode::Char('k'));
+    assert_eq!(m.matching().len(), 10);
+    assert_eq!(m.top, Some(410));
+    key(&mut m, KeyCode::Char('k'));
+    assert_eq!(m.matching().len(), 12);
+    assert_eq!(m.top, Some(210));
+    key(&mut m, KeyCode::Char('c'));
+    key(&mut m, KeyCode::Char('p'));
+    assert_eq!(m.top, Some(410));
+}
+#[test]
+fn unclassified_spots_share_skimmer_retention() {
+    // QGDXC-TUI-0012
+    let mut m = Model::new(args(&["one"]), 10, 10);
+    m.receive(0, spot("Q1HUM", 14_025_000, "CW"), Duration::ZERO);
+    for i in 0..11 {
+        let mut event = spot("Q2UNK", 7_025_000, "CW");
+        if i % 2 == 0 {
+            event.fields.remove("spot_kind");
+        } else {
+            event.set("spot_kind", "unknown");
+        }
+        m.receive(0, event, Duration::ZERO);
+    }
+    assert_eq!((m.kept_human, m.kept_skimmer), (1, 10));
+    assert_eq!(
+        m.spots.iter().map(|s| s.id).collect::<Vec<_>>(),
+        (3..=12).rev().chain([1]).collect::<Vec<_>>()
+    );
+    let mut event = spot("Q3SKM", 7_025_000, "CW");
+    event.set("spot_kind", "skimmer");
+    m.receive(0, event, Duration::ZERO);
+    assert_eq!((m.kept_human, m.kept_skimmer), (1, 10));
+    assert!(!m.spots.iter().any(|s| s.id == 3));
+    assert_eq!(m.spots.back().unwrap().id, 1);
+    let wide = grid(&m, 120, 36);
+    assert!(text(&wide, 34).contains("1 human · 10 skimmer"));
+}
+#[test]
+fn activity_charts_and_sparklines_are_independent_of_retention_caps() {
+    // QGDXC-TUI-0073 QGDXC-TUI-0012 QGDXC-TUI-0070
+    let mut small = Model::new(args(&["human", "skimmer"]), 10, 12);
+    let mut large = Model::new(args(&["human", "skimmer"]), 10000, 10000);
+    for m in [&mut small, &mut large] {
+        key(m, KeyCode::Char('p'));
+        m.filters.bands = Some(BTreeSet::new());
+        m.sources[1].hidden = true;
+        for (second, count) in [(1, 12), (61, 24), (121, 48)] {
+            for source in [0, 1] {
+                for _ in 0..count {
+                    let mut event = spot(
+                        "Q1ABC",
+                        if source == 0 { 14_025_000 } else { 7_025_000 },
+                        "CW",
+                    );
+                    event.set("spot_kind", if source == 0 { "human" } else { "skimmer" });
+                    m.receive(source, event, Duration::from_secs(second));
+                }
+            }
+        }
+        assert_eq!(m.total, 168);
+        assert_eq!(m.paused_new(), 168);
+        assert_eq!(
+            m.sources.iter().map(|s| s.count).collect::<Vec<_>>(),
+            [84, 84]
+        );
+    }
+    assert_eq!(small.spots.len(), 22);
+    assert_eq!(large.spots.len(), 168);
+    assert_eq!(small.activity.len(), large.activity.len());
+    for (a, b) in small.activity.iter().zip(&large.activity) {
+        assert_eq!(
+            (a.second, a.sources, a.bands),
+            (b.second, b.sources, b.bands)
+        );
+    }
+    let buffers: Vec<_> = [&small, &large]
+        .into_iter()
+        .map(|m| {
+            let mut terminal = Terminal::new(TestBackend::new(120, 36)).unwrap();
+            present(&mut terminal, m, Duration::from_secs(130)).unwrap();
+            terminal.backend().buffer().clone()
+        })
+        .collect();
+    for buffer in &buffers {
+        assert!(text(buffer, 0).contains("96/min"));
+        let spark: String = text(buffer, 0)
+            .chars()
+            .filter(|c| "▁▂▃▄▅▆▇█".contains(*c))
+            .collect();
+        assert_eq!(spark, format!("{}▂▄█", "▁".repeat(9)));
+    }
+    // Compare the complete source and bands panels, with both source sparklines.
+    for y in 1..8 {
+        for x in 0..120 {
+            assert_eq!(buffers[0][(x, y)], buffers[1][(x, y)]);
+        }
+    }
+}
+#[test]
 fn labels_resolve_rendered_collisions_in_argument_order() {
     // QGDXC-TUI-0004 QGDXC-TUI-0013
     assert_eq!(
@@ -207,7 +419,7 @@ fn every_band_edge_and_original_mode_precedence() {
 #[test]
 fn retention_filters_pause_scroll_and_eviction() {
     // QGDXC-TUI-0010 QGDXC-TUI-0012 QGDXC-TUI-0040 QGDXC-TUI-0042 QGDXC-TUI-0051
-    let mut m = Model::new(args(&["one", "two"]));
+    let mut m = Model::new(args(&["one", "two"]), DEFAULT_KEEP, DEFAULT_KEEP);
     for source in [0, 1] {
         m.receive(
             source,
@@ -251,16 +463,16 @@ fn retention_filters_pause_scroll_and_eviction() {
     key(&mut m, KeyCode::Char('2'));
     assert_eq!(m.matching().len(), 1);
     assert_eq!(m.top, Some(1));
-    for _ in 0..LIMIT + 1 {
+    for _ in 0..DEFAULT_KEEP + 1 {
         m.receive(0, spot("Q1ABC", 1, ""), Duration::from_secs(2));
     }
-    assert_eq!(m.spots.len(), LIMIT);
+    assert_eq!(m.spots.len(), DEFAULT_KEEP);
     assert_eq!(m.top, m.matching().last().map(|s| s.id));
-    assert_eq!(m.sources[0].count, 10002);
+    assert_eq!(m.sources[0].count, 102);
     assert_eq!(m.sources[1].count, 11);
-    assert!(m.summary().contains("retained:10000 received:10013"));
+    assert!(m.summary().contains("retained:100 received:113"));
     key(&mut m, KeyCode::Char('p'));
-    assert_eq!(m.top, Some(10013));
+    assert_eq!(m.top, Some(113));
     key(&mut m, KeyCode::Char('c'));
     assert!(m.sources.iter().all(|s| !s.hidden));
     for kind in [1, 2, 0] {
@@ -271,7 +483,7 @@ fn retention_filters_pause_scroll_and_eviction() {
 #[test]
 fn synthetic_keys_edit_transactionally_and_quit_every_mode() {
     // QGDXC-TUI-0041 QGDXC-TUI-0043 QGDXC-TUI-0051 QGDXC-TUI-0060
-    let mut m = Model::new(args(&["one"]));
+    let mut m = Model::new(args(&["one"]), DEFAULT_KEEP, DEFAULT_KEEP);
     key(&mut m, KeyCode::Char('/'));
     for c in "q1*,q2?".chars() {
         key(&mut m, KeyCode::Char(c));
@@ -347,7 +559,7 @@ fn synthetic_keys_edit_transactionally_and_quit_every_mode() {
     key(&mut m, KeyCode::Enter);
     assert!(m.filters.calls.is_empty());
     for open in ['/', 'b', 'm', '?', 'x'] {
-        let mut m = Model::new(args(&["one"]));
+        let mut m = Model::new(args(&["one"]), DEFAULT_KEEP, DEFAULT_KEEP);
         key(&mut m, KeyCode::Char(open));
         let event = Event::Key(event::KeyEvent::new(
             KeyCode::Char('c'),
@@ -442,7 +654,7 @@ fn hostile_scalars_cannot_write_outside_field_cells() {
             assert_eq!(buffer[(3 + i as u16, 1)].symbol(), c.to_string());
         }
     }
-    let mut m = Model::new(args(&["source-1234567890"]));
+    let mut m = Model::new(args(&["source-1234567890"]), DEFAULT_KEEP, DEFAULT_KEEP);
     m.receive(
         0,
         spot("Q12345678901234567890", 14_349_950, "\x1b[2J FT8 界"),
@@ -468,7 +680,7 @@ fn hostile_scalars_cannot_write_outside_field_cells() {
 #[test]
 fn status_layout_small_resize_and_redraw_clock() {
     // QGDXC-TUI-0050 QGDXC-TUI-0053 QGDXC-TUI-0054 QGDXC-TUI-0060
-    let mut m = Model::new(args(&["one", "two"]));
+    let mut m = Model::new(args(&["one", "two"]), DEFAULT_KEEP, DEFAULT_KEEP);
     assert_eq!(
         m.sources[0].line(Duration::from_secs(10)),
         "one   unknown spots:0 "
@@ -510,7 +722,7 @@ fn status_layout_small_resize_and_redraw_clock() {
             .contains("age:1")
     );
     for open in ['/', 'b', 'm', '?'] {
-        let mut small = Model::new(args(&["one"]));
+        let mut small = Model::new(args(&["one"]), DEFAULT_KEEP, DEFAULT_KEEP);
         key(&mut small, KeyCode::Char(open));
         small.key_at_size(Input::Char('q'), 79, 23);
         assert!(small.quit);
@@ -551,7 +763,11 @@ fn replay_pacing_ties_continuations_completion_and_isolated_errors() {
         Ok(recording(2.0, "Q3ABC", 1)),
         Err("broken\u{202e}".into()),
     ]);
-    let mut m = Model::new(args(&["one", "two", "three", "four"]));
+    let mut m = Model::new(
+        args(&["one", "two", "three", "four"]),
+        DEFAULT_KEEP,
+        DEFAULT_KEEP,
+    );
     assert!(matches!(scheduler.poll(0.0), Some((3, Message::Error(_)))));
     assert!(scheduler.poll(0.999).is_none());
     let mut events = vec![];
@@ -769,7 +985,7 @@ fn terminal_state_restores_on_return_error_partial_entry_and_unwind() {
         let mut terminal = Terminal::new(backend).unwrap();
         present(
             &mut terminal,
-            &Model::new(args(&["one"])),
+            &Model::new(args(&["one"]), DEFAULT_KEEP, DEFAULT_KEEP),
             Duration::from_secs(0),
         )
         .unwrap();
@@ -780,7 +996,7 @@ fn terminal_state_restores_on_return_error_partial_entry_and_unwind() {
 #[test]
 fn callsign_key_limit_rejects_whole_edit_and_keeps_ctrl_c_responsive() {
     // QGDXC-TUI-0041 QGDXC-TUI-0051
-    let mut m = Model::new(args(&["one"]));
+    let mut m = Model::new(args(&["one"]), DEFAULT_KEEP, DEFAULT_KEEP);
     m.filters.calls = patterns("Q1*").unwrap();
     key(&mut m, KeyCode::Char('/'));
     for _ in 0..3 {
@@ -866,7 +1082,7 @@ fn replay_configuration_rejects_stalled_fifo_before_open() {
 #[test]
 fn filters_accept_exact_kind_and_listed_other_unknown_mode_rows() {
     // QGDXC-TUI-0040: assert row identities, including rejected rows.
-    let mut m = Model::new(args(&["one"]));
+    let mut m = Model::new(args(&["one"]), DEFAULT_KEEP, DEFAULT_KEEP);
     let modes = ["CW", "SSB", "AM", "FM", "FT8", "FT4", "RTTY", "PSK31", ""];
     for (kind, comment) in ["human", "skimmer"]
         .into_iter()
@@ -957,7 +1173,11 @@ fn find(buffer: &Buffer, y: u16, value: &str) -> u16 {
 fn approved_wide_and_compact_content_and_styles() {
     // QGDXC-TUI-0070 QGDXC-TUI-0073 QGDXC-TUI-0060
     use ratatui::style::{Color, Modifier};
-    let mut m = Model::new(args(&["dx.example.org", "rbn.example.org"]));
+    let mut m = Model::new(
+        args(&["dx.example.org", "rbn.example.org"]),
+        DEFAULT_KEEP,
+        DEFAULT_KEEP,
+    );
     m.utc_epoch = 1_790_000_000;
     let mut ready = ClusterEvent::new(Profile::Rbn, "connection_state");
     ready.set("state", "ready");
@@ -1010,10 +1230,13 @@ fn approved_wide_and_compact_content_and_styles() {
             .modifier
             .contains(Modifier::BOLD)
     );
-    assert!(text(&wide, 34).contains("2 kept of 10,000"));
+    assert!(text(&wide, 34).contains("1 human · 1 skimmer"));
+    assert!(text(&wide, 34).contains("2 received"));
     assert!(text(&wide, 35).contains("t theme"));
     assert!(text(&wide, 35).ends_with("color "));
     let compact = grid(&m, 80, 24);
+    assert!(text(&compact, 22).contains("1 human · 1 skimmer"));
+    assert!(text(&compact, 22).contains("2 received"));
     assert!(text(&compact, 1).contains("¹○ dx"));
     assert!(text(&compact, 2).contains("spots newest first"));
     assert!(text(&compact, 3).contains("Comment"));
@@ -1043,6 +1266,7 @@ fn approved_wide_and_compact_content_and_styles() {
         let paused = grid(&m, w, h);
         assert!(text(&paused, title).contains("PAUSED"));
         assert!(text(&paused, h - 3).contains("band:1 mode:1 call:1 kind:human hidden:1"));
+        assert!(text(&paused, h - 2).contains("2 human · 1 skimmer"));
     }
 }
 #[test]
@@ -1056,7 +1280,7 @@ fn no_color_override_theme_cycle_and_depth() {
         Theme::initial(Some(Theme::Daylight), Some("1")),
         Theme::Daylight
     );
-    let mut m = Model::new(args(&["dx.example.org"]));
+    let mut m = Model::new(args(&["dx.example.org"]), DEFAULT_KEEP, DEFAULT_KEEP);
     m.appearance.theme = Theme::initial(None, Some("1"));
     m.receive(0, spot("Q1ABC", 14_074_000, "FT8"), Duration::from_secs(10));
     for (w, h) in [(120, 36), (80, 24)] {
@@ -1118,7 +1342,7 @@ fn no_color_override_theme_cycle_and_depth() {
 fn activity_retry_highlight_and_optional_fields_use_typed_data() {
     // QGDXC-TUI-0073 QGDXC-TUI-0070
     use ratatui::style::Color;
-    let mut m = Model::new(args(&["dx.example.org"]));
+    let mut m = Model::new(args(&["dx.example.org"]), DEFAULT_KEEP, DEFAULT_KEEP);
     let mut retry = ClusterEvent::new(Profile::Rbn, "connection_state");
     retry.set("state", "backoff");
     retry.set("retry_in_ms", qso_graph_dxcluster::Value::Integer(12500));
@@ -1147,10 +1371,14 @@ fn activity_retry_highlight_and_optional_fields_use_typed_data() {
     assert_eq!(m.activity.len(), 900);
     m.sources[0].hidden = true;
     assert!(text(&grid(&m, 120, 36), 2).contains("off"));
-    let eight = Model::new((1..=8).map(|n| format!("source{n}.example.org")).collect());
+    let eight = Model::new(
+        (1..=8).map(|n| format!("source{n}.example.org")).collect(),
+        DEFAULT_KEEP,
+        DEFAULT_KEEP,
+    );
     for (w, h) in [(100, 24), (120, 36), (80, 24)] {
         let b = grid(&eight, w, h);
-        assert!(text(&b, h - 2).contains("kept of 10,000"));
+        assert!(text(&b, h - 2).contains("0 human · 0 skimmer"));
         assert!(render::list_rows(w, h, 8) > 0);
     }
 }
@@ -1158,7 +1386,7 @@ fn activity_retry_highlight_and_optional_fields_use_typed_data() {
 #[test]
 fn source_details_are_plain_english_and_only_for_nonready_sources() {
     // QGDXC-TUI-0050 QGDXC-TUI-0070 QGDXC-TUI-0060
-    let mut m = Model::new(args(&["one", "two"]));
+    let mut m = Model::new(args(&["one", "two"]), DEFAULT_KEEP, DEFAULT_KEEP);
     for source in &mut m.sources {
         source.state = "ready".into();
         source.reason = "setup_complete".into();
@@ -1238,7 +1466,7 @@ fn source_details_are_plain_english_and_only_for_nonready_sources() {
 fn zero_spark_cells_keep_full_extent_and_dim_style() {
     // QGDXC-TUI-0070 QGDXC-TUI-0073 QGDXC-TUI-0060
     use theme::Role;
-    let mut m = Model::new(args(&["one", "two"]));
+    let mut m = Model::new(args(&["one", "two"]), DEFAULT_KEEP, DEFAULT_KEEP);
     for (w, h) in [(120, 36), (80, 24)] {
         let buffer = grid(&m, w, h);
         let start = find(&buffer, 0, "▁▁▁▁▁▁▁▁▁▁▁▁");
@@ -1343,7 +1571,7 @@ fn comments_remove_only_exact_visible_typed_prefixes_without_mutation() {
             "CW 19 dB 1000 WPM CQ",
         ),
     ] {
-        let mut m = Model::new(args(&["one"]));
+        let mut m = Model::new(args(&["one"]), DEFAULT_KEEP, DEFAULT_KEEP);
         let mut event = spot("Q1ABC", 14_025_000, comment);
         event.set("mode", mode);
         event.set("snr_db", Value::Integer(snr));
@@ -1370,7 +1598,7 @@ fn comments_remove_only_exact_visible_typed_prefixes_without_mutation() {
         assert_eq!(actual.trim_end(), clip(comment, 79 - x, false).trim_end());
         assert_eq!(m.spots[0].event, original);
     }
-    let mut m = Model::new(args(&["one"]));
+    let mut m = Model::new(args(&["one"]), DEFAULT_KEEP, DEFAULT_KEEP);
     m.receive(
         0,
         spot("Q1ABC", 14_025_000, "CW 19 dB 17 WPM CQ"),
@@ -1382,7 +1610,7 @@ fn comments_remove_only_exact_visible_typed_prefixes_without_mutation() {
 #[test]
 fn compact_source_labels_and_header_grammar() {
     // QGDXC-TUI-0070 QGDXC-TUI-0060
-    let mut m = Model::new(args(&["q1abc", "q2xyz"]));
+    let mut m = Model::new(args(&["q1abc", "q2xyz"]), DEFAULT_KEEP, DEFAULT_KEEP);
     for (count, grammar) in [
         (0, "0 sources live"),
         (1, "1 source live"),
@@ -1410,7 +1638,11 @@ fn adif_modes_full_source_labels_and_blank_unknown_mode() {
         mode(&spot("Q1ABC", 7_153_000, "FB SIGNAL UP UP")),
         "unknown"
     );
-    let mut m = Model::new(args(&["dxnode.example.org", "rbn.example.org"]));
+    let mut m = Model::new(
+        args(&["dxnode.example.org", "rbn.example.org"]),
+        DEFAULT_KEEP,
+        DEFAULT_KEEP,
+    );
     m.receive(
         0,
         spot("Q1HUM", 7_153_000, "FB SIGNAL UP UP"),
