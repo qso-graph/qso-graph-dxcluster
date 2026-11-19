@@ -16,7 +16,7 @@ include = ["src/**/*.rs", "README.md", "LICENSE"]
 name = "qg-dxc"
 path = "src/main.rs"
 [dependencies]
-qso-graph-dxcluster = { path = "../qso-graph-dxcluster", version = "=0.1.1" }
+qso-graph-dxcluster = { path = "../qso-graph-dxcluster", version = "=0.1.2" }
 serde_json = "=1.0.145"
 ctrlc = "=3.5.1"
 getrandom = "=0.4.3"

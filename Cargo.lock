@@ -525,11 +525,11 @@ dependencies = [
 
 [[package]]
 name = "qso-graph-dxcluster"
-version = "0.1.1"
+version = "0.1.2"
 
 [[package]]
 name = "qso-graph-dxcluster-cli"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "crossterm",
  "ctrlc",
@@ -925,7 +925,7 @@ dependencies = [
 
 [[package]]
 name = "xtask"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "qso-graph-dxcluster",
  "qso-graph-dxcluster-cli",
