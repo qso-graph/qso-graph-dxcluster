@@ -51,7 +51,7 @@ set each cap independently (10–10,000 each), so a skimmer flood keeps human
 spots intact (`QGDXC-TUI-0012`). Press `l` to edit both caps while the TUI runs.
 Lowering a cap immediately removes that kind’s oldest spots, including while paused.
 Press `?` for keys;
-`p` pauses scrolling while reception continues and `t` cycles the five themes.
+Scrolling down holds your place while reception continues, and Home returns to the newest spots; `p` pauses and resumes too, and `t` cycles the five themes.
 Use `--theme color|daylight|phosphor|amber|mono` to choose a theme at startup.
 The responsive layout, activity charts, `NO_COLOR` behavior, and terminal color
 selection follow `QGDXC-TUI-0070`–`QGDXC-TUI-0073` in Annex F. Use repeated `--node` options

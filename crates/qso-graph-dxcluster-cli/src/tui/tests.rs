@@ -1948,3 +1948,28 @@ fn adif_modes_full_source_labels_and_blank_unknown_mode() {
     assert!(!unknown.contains('~'), "{unknown}");
     assert!(row("Q2PSK").contains("PSK125 "), "{}", row("Q2PSK"));
 }
+#[test]
+fn scrolling_down_holds_the_view_and_home_resumes() {
+    // QGDXC-TUI-0051
+    let mut m = Model::new(args(&["one"]), 100, 100);
+    for (i, call) in ["Q1AAA", "Q1BBB", "Q1CCC"].into_iter().enumerate() {
+        m.receive(
+            0,
+            spot(call, 14_074_000, "FT8"),
+            Duration::from_secs(i as u64),
+        );
+    }
+    key(&mut m, KeyCode::Down);
+    assert!(m.paused, "scrolling down must pause");
+    let held = m.top;
+    m.receive(0, spot("Q1NEW", 14_074_000, "FT8"), Duration::from_secs(9));
+    assert_eq!(m.top, held, "a new spot must not move a scrolled view");
+    assert_eq!(m.paused_new(), 1);
+    key(&mut m, KeyCode::Home);
+    assert!(!m.paused, "Home must resume");
+    let newest = m.matching().first().map(|s| s.id);
+    assert_eq!(m.top, newest);
+    // At the newest spot, Up neither pauses nor moves.
+    key(&mut m, KeyCode::Up);
+    assert!(!m.paused);
+}

@@ -3,6 +3,8 @@
 
 ## [Unreleased]
 
+## [0.1.0]
+
 - Add a runtime Limits editor (`l`) for both TUI spot caps, with immediate
   per-kind eviction when lowered, including while paused (`QGDXC-TUI-0012`).
 
@@ -10,7 +12,8 @@
   (100 each by default, 10–10,000 each), per-kind eviction, and retained counts
   in the bottom border (`QGDXC-TUI-0012`, `QGDXC-TUI-0070`).
 
-## [0.1.0]
+- Scrolling down the TUI spot list holds the view while spots keep arriving;
+  Home returns to the newest spots (`QGDXC-TUI-0051`).
 
 - Add a terminal spot list that merges several cluster nodes and Reverse Beacon
   Network feeds, with display filters and offline replay.

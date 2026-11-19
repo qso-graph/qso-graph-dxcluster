@@ -891,6 +891,17 @@ impl Model {
                     }
                     .min(matching.len().saturating_sub(1));
                     self.top = matching.get(index).map(|s| s.id);
+                    // Scrolling away from the newest spot holds the view, as `p` does;
+                    // Home returns to the newest spot and live updating.
+                    if matches!(input, Input::Home) {
+                        if self.paused {
+                            self.paused = false;
+                            self.clamp(true);
+                        }
+                    } else if index > 0 && !self.paused {
+                        self.paused = true;
+                        self.pause_total = self.total;
+                    }
                 }
                 _ => {}
             },
