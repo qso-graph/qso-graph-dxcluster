@@ -3,6 +3,11 @@
 
 ## [Unreleased]
 
+## [0.1.1]
+
+- Name the Linux packages `qso-graph-dxcluster`, like the other QSO Graph
+  packages; they still install the `qg-dxc` command.
+
 ## [0.1.0]
 
 - Add a runtime Limits editor (`l`) for both TUI spot caps, with immediate
