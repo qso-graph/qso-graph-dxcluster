@@ -80,6 +80,9 @@ with tempfile.TemporaryDirectory(prefix='qg-dxc-input-') as directory:
             finally:
                 os.close(check)
             assert b'\x1b[?1049l' in captured, 'alternate screen was not restored'
+            hide, show = captured.find(b'\x1b[?25l'), captured.rfind(b'\x1b[?25h')
+            assert hide != -1, 'cursor was not hidden'
+            assert show > hide, 'cursor was not shown again on exit'
             for sequence in [b'\x1b[?2004s', b'\x1b[?2004h', b'\x1b[?2004r']:
                 assert sequence not in captured, ('bracketed paste changed', sequence)
         finally:

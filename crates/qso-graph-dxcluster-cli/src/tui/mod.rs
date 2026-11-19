@@ -8,7 +8,7 @@ mod tests;
 mod theme;
 use config::Options;
 use crossterm::{
-    cursor::{RestorePosition, SavePosition},
+    cursor::{Hide, RestorePosition, SavePosition, Show},
     event::{self, Event, KeyCode, KeyEventKind, KeyModifiers},
     execute,
     terminal::{self, EnterAlternateScreen, LeaveAlternateScreen},
@@ -29,8 +29,8 @@ use std::{
 };
 
 // QGDXC-TUI-0052: keep the saved terminal state in a guard established before
-// the first mutation. Rendering never changes cursor visibility, so both an
-// initially hidden cursor and an initially visible cursor remain as they were.
+// the first mutation. The cursor is hidden while the interface owns the screen
+// and shown on exit: a terminal cannot report its earlier cursor visibility.
 trait ScreenIo {
     fn raw(&mut self) -> io::Result<bool>;
     fn set_raw(&mut self, enabled: bool) -> io::Result<()>;
@@ -51,10 +51,10 @@ impl ScreenIo for SystemScreen {
         }
     }
     fn enter_screen(&mut self) -> io::Result<()> {
-        execute!(io::stdout(), SavePosition, EnterAlternateScreen)
+        execute!(io::stdout(), SavePosition, EnterAlternateScreen, Hide)
     }
     fn leave_screen(&mut self) -> io::Result<()> {
-        execute!(io::stdout(), LeaveAlternateScreen, RestorePosition)
+        execute!(io::stdout(), Show, LeaveAlternateScreen, RestorePosition)
     }
     fn flush(&mut self) -> io::Result<()> {
         io::stdout().flush()
@@ -123,8 +123,7 @@ pub fn input(event: Event) -> Option<Input> {
         _ => None,
     }
 }
-// Manual frame presentation preserves cursor visibility (the default draw method
-// would hide it). The same renderer is exercised with TestBackend in unit tests.
+// Manual frame presentation leaves cursor visibility to the screen guard. The same renderer is exercised with TestBackend in unit tests.
 fn present<B: Backend>(
     terminal: &mut Terminal<B>,
     model: &Model,
