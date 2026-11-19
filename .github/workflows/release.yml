@@ -300,7 +300,7 @@ jobs:
             echo
             echo "- **macOS** (Apple silicon): signed by Greg Beam (KI7MT) with an Apple Developer ID, and notarized by Apple."
             echo "- **Windows** (x86_64): signed by Gregory Beam (KI7MT)."
-            echo "- **Linux** (x86_64, arm64): one program for every distribution, and \`.deb\` and \`.rpm\` packages."
+            echo "- **Linux** (x86_64, arm64): one program for every distribution, and \`.deb\` and \`.rpm\` packages; or install it from QSO Graph's signed apt and dnf repositories: <https://github.com/qso-graph/qso-graph-packages>."
             echo
             echo "The specification this release implements, QGDXC-SPEC-001 and its annexes: **qgdxc-spec-${VERSION}.tar.gz**."
             echo

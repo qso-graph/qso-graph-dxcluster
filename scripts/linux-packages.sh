@@ -22,7 +22,7 @@ case "$platform" in
 esac
 here=$(cd "$(dirname "$0")/.." && pwd)
 pkg_version=${version/-beta./\~beta.}
-name=qg-dxc
+name=qso-graph-dxcluster
 summary="Receive-only DX cluster and RBN client for the terminal"
 export SOURCE_DATE_EPOCH=${SOURCE_DATE_EPOCH:-$(git -C "$here" log -1 --format=%ct)}
 mkdir -p "$out"

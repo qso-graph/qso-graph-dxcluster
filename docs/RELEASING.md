@@ -68,7 +68,7 @@ checksums, and creates the GitHub Release last. Merging publishes nothing.
 Downloads target macOS Apple silicon, Linux x86_64 and arm64 with static musl,
 and Windows x86_64 with a static CRT. Builds reject Linux dynamic linking,
 non-system macOS libraries, and Windows DLLs outside the explicit system allowlist.
-Linux packages are named `qg-dxc`; each architecture has a `.deb` and an `.rpm`.
+Linux packages are named `qso-graph-dxcluster` and install the `qg-dxc` command; each architecture has a `.deb` and an `.rpm`.
 
 A stopped release can be rerun. An existing crates.io version must have the same
 package checksum, and an existing tag must point to the same commit. Existing
