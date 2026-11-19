@@ -1004,7 +1004,7 @@ fn approved_wide_and_compact_content_and_styles() {
     assert_eq!(wide[(1, skimmer_y)].symbol(), " ");
     let snr_x = find(&wide, skimmer_y, "27dB");
     assert_eq!(wide[(snr_x, skimmer_y)].fg, Color::Rgb(127, 217, 98));
-    assert!(text(&wide, skimmer_y).contains("24  ²rbn"));
+    assert!(text(&wide, skimmer_y).contains("24  rbn"));
     assert!(
         !wide[(find(&wide, skimmer_y, "Q2SKM"), skimmer_y)]
             .modifier
@@ -1399,4 +1399,34 @@ fn compact_source_labels_and_header_grammar() {
     let compact = grid(&m, 80, 24);
     assert!(text(&compact, 1).contains("¹● q1abc 0"));
     assert!(text(&compact, 1).contains("²● q2xyz 0"));
+}
+#[test]
+fn adif_modes_full_source_labels_and_blank_unknown_mode() {
+    // QGDXC-TUI-0070
+    assert_eq!(mode(&spot("Q1ABC", 475_000, "MFSK")), "MFSK");
+    assert_eq!(mode(&spot("Q1ABC", 7_073_000, "mfsk16 cq")), "MFSK16");
+    assert_eq!(mode(&spot("Q1ABC", 7_073_000, "olivia cq")), "OLIVIA");
+    assert_eq!(
+        mode(&spot("Q1ABC", 7_153_000, "FB SIGNAL UP UP")),
+        "unknown"
+    );
+    let mut m = Model::new(args(&["dxnode.example.org", "rbn.example.org"]));
+    m.receive(
+        0,
+        spot("Q1HUM", 7_153_000, "FB SIGNAL UP UP"),
+        Duration::ZERO,
+    );
+    m.receive(0, spot("Q2PSK", 14_070_000, "PSK125 cq"), Duration::ZERO);
+    let wide = grid(&m, 120, 36);
+    let row = |call: &str| {
+        (10..34)
+            .map(|y| text(&wide, y))
+            .find(|t| t.contains(call))
+            .unwrap()
+    };
+    let unknown = row("Q1HUM");
+    assert!(!unknown.contains("unk"), "{unknown}");
+    assert!(unknown.contains("  dxnode "), "{unknown}");
+    assert!(!unknown.contains('~'), "{unknown}");
+    assert!(row("Q2PSK").contains("PSK125 "), "{}", row("Q2PSK"));
 }

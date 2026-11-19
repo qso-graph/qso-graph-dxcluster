@@ -582,7 +582,7 @@ fn dashboard(frame: &mut Frame<'_>, m: &Model, now: Duration) {
     for y in title_y + 1..bottom {
         sides(frame, 0, y, w, a);
     }
-    spot_header(frame, title_y + 1, w, wide, a);
+    spot_header(frame, title_y + 1, w, wide, a, source_width(m));
     let matching = m.matching();
     for (i, spot) in matching
         .iter()
@@ -615,7 +615,7 @@ fn dashboard(frame: &mut Frame<'_>, m: &Model, now: Duration) {
     );
     footer(frame, area.height - 1, w, m);
 }
-fn spot_header(frame: &mut Frame<'_>, y: u16, w: u16, wide: bool, a: Appearance) {
+fn spot_header(frame: &mut Frame<'_>, y: u16, w: u16, wide: bool, a: Appearance, src: usize) {
     let mut row = Row::new(frame, 1, y, w - 2);
     let style = a.style(Role::Heading).add_modifier(Modifier::UNDERLINED);
     row.ui(" ", style);
@@ -624,12 +624,12 @@ fn spot_header(frame: &mut Frame<'_>, y: u16, w: u16, wide: bool, a: Appearance)
             ("UTC", 4, 2, false),
             ("Freq kHz", 9, 2, true),
             ("DX", 10, 1, false),
-            ("Spotter", 11, 2, false),
+            ("Spotter", SPOTTER_WIDE, 2, false),
             ("Band", 4, 2, false),
-            ("Mode", 4, 2, false),
+            ("Mode", MODE_WIDE, 2, false),
             ("SNR", 5, 2, true),
             ("WPM", 3, 2, true),
-            ("Src", 4, 2, false),
+            ("Src", src, 2, false),
         ]
     } else {
         vec![
@@ -700,7 +700,7 @@ fn spot_row(
     row.ui(" ", a.style(Role::Text));
     row.safe(
         spot.event.get("spotter_call").unwrap_or_default(),
-        if wide { 11 } else { 10 },
+        if wide { SPOTTER_WIDE } else { 10 },
         false,
         a.style(Role::Spotter),
         true,
@@ -708,7 +708,18 @@ fn spot_row(
     row.ui(if wide { "  " } else { " " }, a.style(Role::Text));
     row.safe(spot.band, 4, false, a.style(band_role(spot.band)), true);
     row.ui(if wide { "  " } else { " " }, a.style(Role::Text));
-    row.safe(&spot.mode, 4, false, a.style(mode_role(&spot.mode)), true);
+    let mode = if spot.mode == "unknown" {
+        ""
+    } else {
+        spot.mode.as_str()
+    };
+    row.safe(
+        mode,
+        if wide { MODE_WIDE } else { 4 },
+        false,
+        a.style(mode_role(&spot.mode)),
+        true,
+    );
     row.ui(if wide { "  " } else { " " }, a.style(Role::Text));
     if wide {
         let snr = integer(spot, "snr_db");
@@ -729,14 +740,9 @@ fn spot_row(
         };
         row.safe(&speed, 3, true, a.style(Role::Dim), true);
         row.ui("  ", a.style(Role::Text));
-        row.ui(SUP[spot.source], a.style(Role::Dim));
         row.safe(
-            m.sources[spot.source]
-                .label
-                .split('.')
-                .next()
-                .unwrap_or_default(),
-            3,
+            short_label(&m.sources[spot.source].label),
+            source_width(m),
             false,
             a.style(Role::Dim),
             true,
@@ -754,6 +760,20 @@ fn spot_row(
 }
 // Remove only a prefix corroborated by fields visible in this layout. Borrowing
 // the original suffix preserves its text and leaves retained/recorded data alone.
+const SPOTTER_WIDE: usize = 12;
+const MODE_WIDE: usize = 6;
+fn short_label(label: &str) -> &str {
+    label.split('.').next().unwrap_or_default()
+}
+/// The Src column fits the longest source label, between 3 and 8 characters.
+pub(crate) fn source_width(m: &Model) -> usize {
+    m.sources
+        .iter()
+        .map(|s| short_label(&s.label).len())
+        .max()
+        .unwrap_or(3)
+        .clamp(3, 8)
+}
 fn display_comment(spot: &Spot, wide: bool) -> &str {
     let original = spot.event.get("comment").unwrap_or_default();
     if !wide {
@@ -766,7 +786,7 @@ fn display_comment(spot: &Spot, wide: bool) -> &str {
     }
     let derive = || {
         let (mode, rest) = token(original);
-        if Some(mode) != spot.event.get("mode") || mode != spot.mode || mode.len() > 4 {
+        if Some(mode) != spot.event.get("mode") || mode != spot.mode || mode.len() > MODE_WIDE {
             return None;
         }
         let (snr, rest) = token(rest);
