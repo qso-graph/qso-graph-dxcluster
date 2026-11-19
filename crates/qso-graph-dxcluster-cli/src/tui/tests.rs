@@ -40,6 +40,292 @@ fn text(buffer: &Buffer, y: u16) -> String {
 fn key(model: &mut Model, code: KeyCode) {
     model.key(input(Event::Key(event::KeyEvent::new(code, KeyModifiers::NONE))).unwrap());
 }
+fn limit_entry(model: &mut Model, value: &str) {
+    for _ in 0..5 {
+        key(model, KeyCode::Backspace);
+    }
+    for c in value.chars() {
+        key(model, KeyCode::Char(c));
+    }
+}
+#[test]
+fn limits_editor_opens_edits_commits_and_cancels() {
+    // QGDXC-TUI-0012 QGDXC-TUI-0051 QGDXC-TUI-0060
+    let mut m = Model::new(args(&["one"]), 100, 23);
+    key(&mut m, KeyCode::Char('l'));
+    for width in [80, 120] {
+        let screen = grid(&m, width, 24);
+        assert!(text(&screen, 0).starts_with("Limits:"));
+        assert!(text(&screen, 3).starts_with("> Human: 100"));
+        assert!(text(&screen, 4).contains("Skimmer: 23"));
+    }
+    key(&mut m, KeyCode::Up);
+    limit_entry(&mut m, "10");
+    for c in ['q', 't', 'l', '-', ' ', 'é', '٢'] {
+        key(&mut m, KeyCode::Char(c));
+    }
+    assert!(!m.quit);
+    key(&mut m, KeyCode::Down);
+    key(&mut m, KeyCode::Down);
+    limit_entry(&mut m, "100009");
+    assert!(text(&grid(&m, 80, 24), 4).starts_with("> Skimmer: 10000"));
+    key(&mut m, KeyCode::Backspace);
+    key(&mut m, KeyCode::Char('0'));
+    key(&mut m, KeyCode::Tab);
+    assert!(text(&grid(&m, 80, 24), 3).starts_with("> Human: 10"));
+    key(&mut m, KeyCode::Tab);
+    key(&mut m, KeyCode::Up);
+    assert!(text(&grid(&m, 80, 24), 3).starts_with("> Human: 10"));
+    key(&mut m, KeyCode::Enter);
+    assert!(matches!(m.editor, Editor::Normal));
+    key(&mut m, KeyCode::Char('l'));
+    assert!(matches!(&m.editor, Editor::Limits { values, .. } if values == &["10", "10000"]));
+    limit_entry(&mut m, "999");
+    key(&mut m, KeyCode::Tab);
+    limit_entry(&mut m, "500");
+    key(&mut m, KeyCode::Esc);
+    key(&mut m, KeyCode::Char('l'));
+    assert!(matches!(&m.editor, Editor::Limits { values, .. } if values == &["10", "10000"]));
+}
+
+#[test]
+fn limits_invalid_entry_keeps_both_caps_and_shows_error() {
+    // QGDXC-TUI-0012 QGDXC-TUI-0051 QGDXC-TUI-0060
+    for field in [0, 1] {
+        for invalid in ["", "0", "9", "10001", "99999"] {
+            let mut m = Model::new(args(&["one"]), 17, 23);
+            for _ in 0..17 {
+                m.receive(0, spot("Q1HUM", 14_025_000, "CW"), Duration::ZERO);
+            }
+            key(&mut m, KeyCode::Char('l'));
+            limit_entry(&mut m, if field == 0 { invalid } else { "10" });
+            key(&mut m, KeyCode::Tab);
+            limit_entry(&mut m, if field == 1 { invalid } else { "10" });
+            key(&mut m, KeyCode::Enter);
+            assert!(matches!(m.editor, Editor::Limits { .. }));
+            assert_eq!(m.spots.len(), 17);
+            for width in [80, 120] {
+                assert!(text(&grid(&m, width, 24), 22).contains("Limits must be 10 to 10,000"));
+            }
+            key(&mut m, KeyCode::Esc);
+            key(&mut m, KeyCode::Char('l'));
+            assert!(matches!(&m.editor, Editor::Limits { values, .. } if values == &["17", "23"]));
+            key(&mut m, KeyCode::Tab);
+            limit_entry(&mut m, "9");
+            key(&mut m, KeyCode::Enter);
+            m.key(
+                input(Event::Key(event::KeyEvent::new(
+                    KeyCode::Char('c'),
+                    KeyModifiers::CONTROL,
+                )))
+                .unwrap(),
+            );
+            assert!(m.quit);
+        }
+    }
+    // A rejected edit can be corrected and committed without reopening.
+    let mut m = Model::new(args(&["one"]), 17, 23);
+    key(&mut m, KeyCode::Char('l'));
+    limit_entry(&mut m, "9");
+    key(&mut m, KeyCode::Enter);
+    limit_entry(&mut m, "10000");
+    key(&mut m, KeyCode::Enter);
+    assert!(matches!(m.editor, Editor::Normal));
+    key(&mut m, KeyCode::Char('l'));
+    assert!(matches!(&m.editor, Editor::Limits { values, .. } if values == &["10000", "23"]));
+}
+
+#[test]
+fn runtime_limits_evict_oldest_per_kind_and_preserve_activity_and_pause() {
+    // QGDXC-TUI-0010 QGDXC-TUI-0012 QGDXC-TUI-0051 QGDXC-TUI-0073
+    for paused in [false, true] {
+        for human in [false, true] {
+            for evicted_anchor in [false, true] {
+                let mut m = Model::new(args(&["human", "skimmer"]), 20, 20);
+                for i in 0..12 {
+                    m.receive(0, spot("Q1HUM", 14_025_000, "CW"), Duration::from_secs(i));
+                    let mut event = spot("Q2SKM", 7_025_000, "CW");
+                    event.set("spot_kind", "skimmer");
+                    m.receive(1, event, Duration::from_secs(i));
+                }
+                if paused {
+                    key(&mut m, KeyCode::Char('p'));
+                }
+                m.top = Some(if evicted_anchor {
+                    if human { 1 } else { 2 }
+                } else {
+                    24
+                });
+                key(&mut m, KeyCode::Char('l'));
+                // Reception continues in the editor, including unclassified spots.
+                for kind in [Some("skimmer"), None] {
+                    m.receive(0, spot("Q3NEW", 14_025_000, "CW"), Duration::from_secs(12));
+                    let mut event = spot("Q4UNK", 7_025_000, "CW");
+                    event.fields.remove("spot_kind");
+                    if let Some(kind) = kind {
+                        event.set("spot_kind", kind);
+                    }
+                    m.receive(1, event, Duration::from_secs(12));
+                }
+                let anchor = m.top;
+                let activity: Vec<_> = m
+                    .activity
+                    .iter()
+                    .map(|b| (b.second, b.sources, b.bands))
+                    .collect();
+                let summary = (
+                    m.total,
+                    m.sources[0].count,
+                    m.sources[1].count,
+                    m.paused_new(),
+                );
+                let before: Vec<_> = m.spots.iter().map(|s| s.id).collect();
+                limit_entry(&mut m, if human { "10" } else { "20" });
+                key(&mut m, KeyCode::Tab);
+                limit_entry(&mut m, if human { "20" } else { "10" });
+                key(&mut m, KeyCode::Enter);
+                // Plant-and-prove target: trimming the newest must fail this exact order assertion.
+                let expected: Vec<_> = before
+                    .into_iter()
+                    .filter(|id| {
+                        let same_kind = (*id % 2 == 1) == human;
+                        !same_kind || *id >= 9
+                    })
+                    .collect();
+                assert_eq!(m.spots.iter().map(|s| s.id).collect::<Vec<_>>(), expected);
+                assert_eq!(
+                    (m.kept_human, m.kept_skimmer),
+                    if human { (10, 14) } else { (14, 10) }
+                );
+                assert_eq!(
+                    m.top,
+                    if paused && evicted_anchor {
+                        expected.last().copied()
+                    } else {
+                        anchor
+                    }
+                );
+                assert_eq!(m.paused, paused);
+                assert_eq!(
+                    (
+                        m.total,
+                        m.sources[0].count,
+                        m.sources[1].count,
+                        m.paused_new()
+                    ),
+                    summary
+                );
+                assert_eq!(
+                    m.activity
+                        .iter()
+                        .map(|b| (b.second, b.sources, b.bands))
+                        .collect::<Vec<_>>(),
+                    activity
+                );
+                // Future arrivals use the committed cap, rather than the startup cap.
+                let mut event = spot("Q5NEW", 28_025_000, "CW");
+                event.set("spot_kind", if human { "human" } else { "skimmer" });
+                m.receive(0, event, Duration::from_secs(13));
+                assert_eq!(
+                    (m.kept_human, m.kept_skimmer),
+                    if human { (10, 14) } else { (14, 10) }
+                );
+                let before: Vec<_> = m.spots.iter().map(|s| s.id).collect();
+                key(&mut m, KeyCode::Char('l'));
+                limit_entry(&mut m, "40");
+                key(&mut m, KeyCode::Tab);
+                limit_entry(&mut m, "40");
+                key(&mut m, KeyCode::Enter);
+                assert_eq!(m.spots.iter().map(|s| s.id).collect::<Vec<_>>(), before);
+                m.receive(0, spot("Q6NEW", 14_025_000, "CW"), Duration::from_secs(14));
+                let mut event = spot("Q7NEW", 7_025_000, "CW");
+                event.set("spot_kind", "skimmer");
+                m.receive(1, event, Duration::from_secs(14));
+                assert_eq!(
+                    (m.kept_human, m.kept_skimmer),
+                    if human { (11, 15) } else { (15, 11) }
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn limits_footer_and_help_fit_compact_and_wide_layouts() {
+    // QGDXC-TUI-0012 QGDXC-TUI-0070 QGDXC-TUI-0060
+    use ratatui::style::Modifier;
+    let mut m = Model::new(args(&["one"]), DEFAULT_KEEP, DEFAULT_KEEP);
+    for _ in 0..5 {
+        for paused in [false, true] {
+            m.paused = paused;
+            for width in [80, 120] {
+                let screen = grid(&m, width, 24);
+                let footer = text(&screen, 23);
+                for hint in ["q quit", "b band", "m mode", "/ call", "k kind", "l limits"] {
+                    assert!(footer.contains(hint), "{footer}");
+                }
+                assert!(
+                    footer.contains(if paused { "p resume" } else { "p pause" }),
+                    "{footer}"
+                );
+                assert!(
+                    footer.contains(if width == 80 { "1-8 src" } else { "1-8 source" }),
+                    "{footer}"
+                );
+                let tail = if width == 80 {
+                    "t ?"
+                } else {
+                    "t theme  ? help"
+                };
+                assert!(footer.contains(tail), "{footer}");
+                let theme = format!("{} ", m.appearance.theme.name());
+                assert!(footer.ends_with(&theme), "{footer}");
+                assert!(find(&screen, 23, tail) + (tail.len() as u16) < width - theme.len() as u16);
+                assert!(
+                    screen[(find(&screen, 23, "l limits"), 23)]
+                        .modifier
+                        .contains(Modifier::BOLD)
+                );
+            }
+        }
+        key(&mut m, KeyCode::Char('t'));
+    }
+    key(&mut m, KeyCode::Char('?'));
+    for width in [80, 120] {
+        let help = grid(&m, width, 24);
+        assert!((0..24).any(|y| text(&help, y).contains("l limits")));
+    }
+}
+#[test]
+fn limits_lower_both_caps_even_when_spots_are_hidden_or_filtered() {
+    // QGDXC-TUI-0012 QGDXC-TUI-0040 QGDXC-TUI-0042
+    let mut m = Model::new(args(&["human", "skimmer"]), 20, 20);
+    for _ in 0..12 {
+        m.receive(0, spot("Q1HUM", 14_025_000, "CW"), Duration::ZERO);
+        let mut event = spot("Q2SKM", 7_025_000, "CW");
+        event.set("spot_kind", "skimmer");
+        m.receive(1, event, Duration::ZERO);
+    }
+    m.sources[1].hidden = true;
+    m.filters.bands = Some(BTreeSet::new());
+    m.clamp(true);
+    key(&mut m, KeyCode::Char('p'));
+    key(&mut m, KeyCode::Char('l'));
+    limit_entry(&mut m, "10");
+    key(&mut m, KeyCode::Tab);
+    limit_entry(&mut m, "10");
+    key(&mut m, KeyCode::Enter);
+    assert_eq!((m.kept_human, m.kept_skimmer), (10, 10));
+    assert_eq!(
+        m.spots.iter().map(|s| s.id).collect::<Vec<_>>(),
+        (5..=24).rev().collect::<Vec<_>>()
+    );
+    assert!(m.matching().is_empty());
+    assert!(m.sources[1].hidden);
+    assert_eq!(m.top, None);
+    key(&mut m, KeyCode::Char('c'));
+    assert_eq!(m.matching().len(), 20);
+}
 #[test]
 fn configuration_validates_all_sources_before_io() {
     // QGDXC-TUI-0001 QGDXC-TUI-0014
@@ -558,7 +844,7 @@ fn synthetic_keys_edit_transactionally_and_quit_every_mode() {
     }
     key(&mut m, KeyCode::Enter);
     assert!(m.filters.calls.is_empty());
-    for open in ['/', 'b', 'm', '?', 'x'] {
+    for open in ['/', 'b', 'm', 'l', '?', 'x'] {
         let mut m = Model::new(args(&["one"]), DEFAULT_KEEP, DEFAULT_KEEP);
         key(&mut m, KeyCode::Char(open));
         let event = Event::Key(event::KeyEvent::new(

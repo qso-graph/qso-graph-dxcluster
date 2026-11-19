@@ -1288,6 +1288,26 @@
         {
           "file": "crates/qso-graph-dxcluster-cli/tests/tui.rs",
           "name": "help_describes_retention_options"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/tui/tests.rs",
+          "name": "limits_editor_opens_edits_commits_and_cancels"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/tui/tests.rs",
+          "name": "limits_invalid_entry_keeps_both_caps_and_shows_error"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/tui/tests.rs",
+          "name": "runtime_limits_evict_oldest_per_kind_and_preserve_activity_and_pause"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/tui/tests.rs",
+          "name": "limits_footer_and_help_fit_compact_and_wide_layouts"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/tui/tests.rs",
+          "name": "limits_lower_both_caps_even_when_spots_are_hidden_or_filtered"
         }
       ],
       "vectors": []
@@ -1428,6 +1448,18 @@
         {
           "file": "crates/qso-graph-dxcluster-cli/src/tui/tests.rs",
           "name": "per_kind_eviction_preserves_other_kind_and_paused_anchor"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/tui/tests.rs",
+          "name": "limits_editor_opens_edits_commits_and_cancels"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/tui/tests.rs",
+          "name": "limits_invalid_entry_keeps_both_caps_and_shows_error"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/tui/tests.rs",
+          "name": "runtime_limits_evict_oldest_per_kind_and_preserve_activity_and_pause"
         }
       ],
       "vectors": []
@@ -1551,6 +1583,10 @@
         {
           "file": "crates/qso-graph-dxcluster-cli/src/tui/tests.rs",
           "name": "activity_charts_and_sparklines_are_independent_of_retention_caps"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/tui/tests.rs",
+          "name": "limits_footer_and_help_fit_compact_and_wide_layouts"
         }
       ],
       "vectors": []

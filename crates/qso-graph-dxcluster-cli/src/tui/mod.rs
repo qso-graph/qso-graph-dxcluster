@@ -110,6 +110,7 @@ pub fn input(event: Event) -> Option<Input> {
             Some(match key.code {
                 KeyCode::Char(c) => Input::Char(c),
                 KeyCode::Backspace => Input::Backspace,
+                KeyCode::Tab => Input::Tab,
                 KeyCode::Enter => Input::Enter,
                 KeyCode::Esc => Input::Escape,
                 KeyCode::Up => Input::Up,

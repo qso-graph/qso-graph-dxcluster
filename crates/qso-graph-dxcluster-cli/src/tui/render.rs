@@ -35,6 +35,38 @@ pub fn draw(frame: &mut Frame<'_>, model: &Model, now: Duration) {
         cell.set_style(model.appearance.style(Role::Text));
     }
     match &model.editor {
+        Editor::Limits {
+            values,
+            cursor,
+            error,
+        } => {
+            line(
+                frame,
+                area,
+                0,
+                "Limits: Enter commits, Esc cancels, Ctrl-C quits",
+            );
+            line(
+                frame,
+                area,
+                1,
+                "Up/Down/Tab moves; digits and Backspace edit",
+            );
+            for (index, label) in ["Human", "Skimmer"].iter().enumerate() {
+                line(
+                    frame,
+                    area,
+                    3 + index as u16,
+                    &format!(
+                        "{} {label}: {}",
+                        if index == *cursor { ">" } else { " " },
+                        values[index]
+                    ),
+                );
+            }
+            line(frame, area, area.height - 2, error);
+            return;
+        }
         Editor::Calls { text, error, .. } => {
             line(
                 frame,
@@ -96,10 +128,11 @@ pub fn draw(frame: &mut Frame<'_>, model: &Model, now: Duration) {
                 "q / Ctrl-C: quit   b: bands   m: modes   /: callsign patterns",
                 "k: all/human/skimmer   1-8: hide/show source   c: clear filters",
                 "p: pause/resume scrolling (reception continues)   t: cycle theme",
-                "Up/Down/PageUp/PageDown/Home: scroll   ?: help",
+                "Up/Down/PageUp/PageDown/Home: scroll   l limits   ?: help",
                 "Callsign editor: printable keys are data; Backspace deletes",
                 "Enter commits; Escape cancels. Wildcards: * any run, ? one character",
                 "Band/mode: Up/Down moves, Space toggles, Enter commits, Esc cancels",
+                "Limits: Up/Down/Tab moves, digits/Backspace edit, Enter commits, Esc cancels",
                 "Esc / Enter / ?: return   Ctrl-C quits from every screen",
             ]
             .iter()
@@ -626,19 +659,19 @@ fn spot_header(frame: &mut Frame<'_>, y: u16, w: u16, wide: bool, a: Appearance,
     for (text, width, gap, right) in if wide {
         vec![
             ("UTC", 4, 2, false),
-            ("Freq kHz", 9, 2, true),
+            ("Freq kHz", 9, 2, false),
             ("DX", 10, 1, false),
             ("Spotter", SPOTTER_WIDE, 2, false),
             ("Band", 4, 2, false),
             ("Mode", MODE_WIDE, 2, false),
-            ("SNR", 5, 2, true),
-            ("WPM", 3, 2, true),
+            ("SNR", 5, 2, false),
+            ("WPM", 3, 2, false),
             ("Src", src, 2, false),
         ]
     } else {
         vec![
             ("UTC", 4, 1, false),
-            ("kHz", 8, 2, true),
+            ("kHz", 8, 2, false),
             ("DX", 10, 1, false),
             ("Spotter", 10, 1, false),
             ("Band", 4, 1, false),
@@ -830,16 +863,17 @@ fn footer(frame: &mut Frame<'_>, y: u16, w: u16, m: &Model) {
         ("m", "mode"),
         ("/", "call"),
         ("k", "kind"),
-        ("1-8", "source"),
+        ("1-8", if w >= 100 { "source" } else { "src" }),
         ("p", if m.paused { "resume" } else { "pause" }),
-        ("t", "theme"),
-        ("?", "help"),
+        ("l", "limits"),
+        ("t", if w >= 100 { "theme" } else { "" }),
+        ("?", if w >= 100 { "help" } else { "" }),
     ] {
         row.ui(key, a.style(Role::Accent).add_modifier(Modifier::BOLD));
-        row.ui(
-            &format!(" {label}{}", if w >= 100 { "  " } else { " " }),
-            a.style(Role::Dim),
-        );
+        if !label.is_empty() {
+            row.ui(&format!(" {label}"), a.style(Role::Dim));
+        }
+        row.ui(if w >= 100 { "  " } else { " " }, a.style(Role::Dim));
     }
     put(
         frame,

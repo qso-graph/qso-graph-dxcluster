@@ -487,6 +487,7 @@ impl Status {
 pub enum Input {
     Char(char),
     Backspace,
+    Tab,
     Enter,
     Escape,
     Up,
@@ -498,6 +499,11 @@ pub enum Input {
 }
 pub enum Editor {
     Normal,
+    Limits {
+        values: [String; 2],
+        cursor: usize,
+        error: String,
+    },
     Calls {
         text: String,
         error: String,
@@ -643,6 +649,27 @@ impl Model {
             .filter(|s| !self.sources[s.source].hidden && self.filters.accepts(s))
             .collect()
     }
+    fn set_limits(&mut self, human: usize, skimmer: usize) {
+        self.keep_human = human;
+        self.keep_skimmer = skimmer;
+        self.kept_human = 0;
+        self.kept_skimmer = 0;
+        // QGDXC-TUI-0012: retain the newest of each kind, including while paused.
+        self.spots.retain(|spot| {
+            let (kept, limit) = if spot.event.get("spot_kind") == Some("human") {
+                (&mut self.kept_human, human)
+            } else {
+                (&mut self.kept_skimmer, skimmer)
+            };
+            if *kept < limit {
+                *kept += 1;
+                true
+            } else {
+                false
+            }
+        });
+        self.clamp(false);
+    }
     pub fn offset(&self, matching: &[&Spot]) -> usize {
         self.top
             .and_then(|id| matching.iter().position(|s| s.id == id))
@@ -701,6 +728,38 @@ impl Model {
             return;
         }
         match &mut self.editor {
+            Editor::Limits {
+                values,
+                cursor,
+                error,
+            } => match input {
+                Input::Escape => self.editor = Editor::Normal,
+                Input::Up => *cursor = cursor.saturating_sub(1),
+                Input::Down => *cursor = (*cursor + 1).min(1),
+                Input::Tab => *cursor = (*cursor + 1) % 2,
+                Input::Backspace => {
+                    values[*cursor].pop();
+                    error.clear();
+                }
+                Input::Char(c) if c.is_ascii_digit() && values[*cursor].len() < 5 => {
+                    values[*cursor].push(c);
+                    error.clear();
+                }
+                Input::Enter => {
+                    let valid = |text: &str| {
+                        text.parse::<usize>()
+                            .ok()
+                            .filter(|n| (MIN_KEEP..=MAX_KEEP).contains(n))
+                    };
+                    if let (Some(human), Some(skimmer)) = (valid(&values[0]), valid(&values[1])) {
+                        self.set_limits(human, skimmer);
+                        self.editor = Editor::Normal;
+                    } else {
+                        *error = "Limits must be 10 to 10,000".into();
+                    }
+                }
+                _ => {}
+            },
             Editor::Calls {
                 text,
                 error,
@@ -767,6 +826,13 @@ impl Model {
             }
             Editor::Normal => match input {
                 Input::Char('q') => self.quit = true,
+                Input::Char('l') => {
+                    self.editor = Editor::Limits {
+                        values: [self.keep_human.to_string(), self.keep_skimmer.to_string()],
+                        cursor: 0,
+                        error: String::new(),
+                    };
+                }
                 Input::Char('t') => self.appearance.theme = self.appearance.theme.next(),
                 Input::Char('b' | 'm') => {
                     let is_band = matches!(input, Input::Char('b'));
