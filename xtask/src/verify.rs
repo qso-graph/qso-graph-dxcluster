@@ -113,6 +113,12 @@ pub fn verify() -> Result<(), String> {
         ),
         ("workflow lint", "scripts/lint-workflows.py", &[][..]),
     ] {
+        // The release workflow runs these on Linux only, and workflow lint needs Go,
+        // which hosted Linux has. The Linux CI leg runs them; elsewhere they show SKIP.
+        if name != "package files" && !cfg!(target_os = "linux") {
+            results.push((name.to_owned(), "SKIP".into(), "Linux only".into()));
+            continue;
+        }
         let start = Instant::now();
         let path = format!("target/verify/{}.log", name.replace(' ', "-"));
         let file = fs::File::create(&path).map_err(|e| e.to_string())?;
