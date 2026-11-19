@@ -1366,6 +1366,10 @@
         {
           "file": "crates/qso-graph-dxcluster-cli/src/tui/tests.rs",
           "name": "status_layout_small_resize_and_redraw_clock"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/tui/tests.rs",
+          "name": "source_details_are_plain_english_and_only_for_nonready_sources"
         }
       ],
       "vectors": []
@@ -1478,6 +1482,70 @@
         {
           "file": "crates/qso-graph-dxcluster-cli/src/tui/tests.rs",
           "name": "synthetic_keys_edit_transactionally_and_quit_every_mode"
+        }
+      ],
+      "vectors": []
+    },
+    "QGDXC-TUI-0070": {
+      "tests": [
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/tui/tests.rs",
+          "name": "approved_wide_and_compact_content_and_styles"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/tui/tests.rs",
+          "name": "activity_retry_highlight_and_optional_fields_use_typed_data"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/tui/tests.rs",
+          "name": "source_details_are_plain_english_and_only_for_nonready_sources"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/tui/tests.rs",
+          "name": "zero_spark_cells_keep_full_extent_and_dim_style"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/tui/tests.rs",
+          "name": "compact_source_labels_and_header_grammar"
+        }
+      ],
+      "vectors": []
+    },
+    "QGDXC-TUI-0071": {
+      "tests": [
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/tui/tests.rs",
+          "name": "no_color_override_theme_cycle_and_depth"
+        }
+      ],
+      "vectors": []
+    },
+    "QGDXC-TUI-0072": {
+      "tests": [
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/tui/tests.rs",
+          "name": "no_color_override_theme_cycle_and_depth"
+        }
+      ],
+      "vectors": []
+    },
+    "QGDXC-TUI-0073": {
+      "tests": [
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/tui/tests.rs",
+          "name": "approved_wide_and_compact_content_and_styles"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/tui/tests.rs",
+          "name": "activity_retry_highlight_and_optional_fields_use_typed_data"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/tui/tests.rs",
+          "name": "zero_spark_cells_keep_full_extent_and_dim_style"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/tui/tests.rs",
+          "name": "comments_remove_only_exact_visible_typed_prefixes_without_mutation"
         }
       ],
       "vectors": []

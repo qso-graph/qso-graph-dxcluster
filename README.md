@@ -46,7 +46,10 @@ qg-dxc tui --replay session.ndjson --replay second-session.ndjson
 For operators watching several feeds, `qg-dxc tui` combines up to eight sources
 in a newest-first spot list with a status line for each source. Display filters
 select bands, modes, callsigns, and human or skimmer spots. Press `?` for keys;
-`p` pauses scrolling while reception continues. Use repeated `--node` options
+`p` pauses scrolling while reception continues and `t` cycles the five themes.
+Use `--theme color|daylight|phosphor|amber|mono` to choose a theme at startup.
+The responsive layout, activity charts, `NO_COLOR` behavior, and terminal color
+selection follow `QGDXC-TUI-0070`–`QGDXC-TUI-0073` in Annex F. Use repeated `--node` options
 with one `--call`, or repeated `--replay` options for paced offline playback.
 The interface requires terminal input and output. See [Annex F](spec/annex-f-tui.md).
 

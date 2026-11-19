@@ -5,6 +5,7 @@ mod render;
 pub(crate) mod sources;
 #[cfg(test)]
 mod tests;
+mod theme;
 use config::Options;
 use crossterm::{
     cursor::{RestorePosition, SavePosition},
@@ -169,6 +170,15 @@ pub fn run(args: &[String]) -> Result<u8, String> {
         let mut terminal = Terminal::new(CrosstermBackend::new(io::stdout()))?;
         let origin = Instant::now();
         let mut model = Model::new(options.labels.clone());
+        model.appearance.theme = options.theme;
+        model.appearance.depth = theme::Depth::detect(
+            &std::env::var("COLORTERM").unwrap_or_default(),
+            &std::env::var("TERM").unwrap_or_default(),
+        );
+        model.utc_epoch = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
         let mut interface = Interface {
             _screen: screen,
             workers: Workers::new(stop.clone()),
@@ -179,11 +189,9 @@ pub fn run(args: &[String]) -> Result<u8, String> {
             interface.workers.drain(&mut model, origin);
             let now = origin.elapsed();
             if redraw.due(now) {
-                model.page = terminal
-                    .size()?
-                    .height
-                    .saturating_sub(model.sources.len() as u16 + 5)
-                    .max(1) as usize;
+                let size = terminal.size()?;
+                model.page =
+                    render::list_rows(size.width, size.height, model.sources.len()).max(1) as usize;
                 present(&mut terminal, &model, now)?;
             }
             if event::poll(Duration::from_millis(5))?

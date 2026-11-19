@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 use super::model::{clip, sanitize};
+use super::theme::Theme;
 use qso_graph_dxcluster::{Config, Profile};
 use std::{collections::BTreeSet, net::Ipv6Addr, path::Path};
 
@@ -9,11 +10,13 @@ pub enum Source {
     Replay(String),
 }
 pub struct Options {
+    pub theme: Theme,
     pub sources: Vec<Source>,
     pub labels: Vec<String>,
 }
 impl Options {
     pub fn parse(args: &[String]) -> Result<Self, String> {
+        let mut theme = None;
         let mut nodes = vec![];
         let mut replays = vec![];
         let mut call = None;
@@ -25,6 +28,12 @@ impl Options {
                 .filter(|s| !s.starts_with("--"))
                 .ok_or_else(|| format!("configuration: missing value for {flag}"))?;
             match flag.as_str() {
+                "--theme" if theme.is_none() => {
+                    theme = Some(
+                        Theme::parse(value)
+                            .ok_or_else(|| format!("configuration: invalid --theme {value}"))?,
+                    );
+                }
                 "--node" => nodes.push(value.clone()),
                 "--replay" => replays.push(value.clone()),
                 "--call" if call.is_none() => call = Some(value.clone()),
@@ -122,6 +131,12 @@ impl Options {
             }
         }
         Ok(Self {
+            theme: Theme::initial(
+                theme,
+                std::env::var_os("NO_COLOR")
+                    .map(|s| s.to_string_lossy().into_owned())
+                    .as_deref(),
+            ),
             sources,
             labels: labels(&bases),
         })

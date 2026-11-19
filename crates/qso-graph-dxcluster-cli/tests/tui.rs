@@ -63,9 +63,9 @@ with tempfile.TemporaryDirectory(prefix='qg-dxc-input-') as directory:
                         raise
         try:
             deadline = time.monotonic() + 5
-            while b'retained:0' not in captured and time.monotonic() < deadline:
+            while b'10,000' not in captured and time.monotonic() < deadline:
                 read_available(.05)
-            assert b'retained:0' in captured, bytes(captured)
+            assert b'10,000' in captured, bytes(captured)
             # The terminal sends pasted text as raw key bytes under QGDXC-TUI-0041.
             # No synthetic Paste event bypasses the input decoder.
             os.write(master, b'/' + b'Q' * count + b'\x03')

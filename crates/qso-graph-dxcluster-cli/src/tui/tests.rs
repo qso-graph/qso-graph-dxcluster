@@ -280,7 +280,7 @@ fn synthetic_keys_edit_transactionally_and_quit_every_mode() {
     key(&mut m, KeyCode::Char('?'));
     key(&mut m, KeyCode::Enter);
     assert_eq!(m.filters.calls, args(&["Q1*", "Q2?"]));
-    assert!(text(&grid(&m, 80, 24), 1).contains("call:2"));
+    assert!(text(&grid(&m, 80, 24), 2).contains("call:2"));
     key(&mut m, KeyCode::Char('/'));
     key(&mut m, KeyCode::Char('q'));
     assert!(!m.quit);
@@ -304,7 +304,7 @@ fn synthetic_keys_edit_transactionally_and_quit_every_mode() {
     key(&mut m, KeyCode::Char(' '));
     key(&mut m, KeyCode::Enter);
     assert_eq!(m.filters.modes, Some(["CW".into()].into()));
-    assert!(text(&grid(&m, 80, 24), 1).contains("band:1 mode:1 call:2"));
+    assert!(text(&grid(&m, 80, 24), 2).contains("band:1 mode:1 call:2"));
     for entry in [
         "Q1*,,Q2*",
         ",",
@@ -449,19 +449,21 @@ fn hostile_scalars_cannot_write_outside_field_cells() {
         Duration::from_secs(0),
     );
     let buffer = grid(&m, 80, 24);
-    assert_eq!(text(&buffer, 4)[..4].to_owned(), "1832");
+    assert_eq!(
+        text(&buffer, 4).chars().skip(2).take(4).collect::<String>(),
+        "1832"
+    );
     assert!(text(&buffer, 4).contains("14350.0"));
     assert!(text(&buffer, 4).contains("Q12345678~"));
-    assert!(text(&buffer, 4).contains("source-123456789"));
-    assert!(
-        buffer
-            .content
-            .iter()
-            .all(|c| c.symbol().bytes().all(|b| (32..=126).contains(&b)))
-    );
-    let widths = render::widths(80, 16);
-    assert_eq!(widths[8], 0);
-    assert!(widths[..8].iter().all(|w| *w > 0));
+    key(&mut m, KeyCode::Char('?'));
+    assert!(text(&grid(&m, 80, 24), 10).contains("source-123456789"));
+    assert!(buffer.content.iter().all(|c| {
+        c.symbol()
+            .chars()
+            .all(|ch| (' '..='~').contains(&ch) || "╭╮╰╯─│▎●◐○¹²³⁴⁵⁶⁷⁸·▁▂▃▄▅▆▇█".contains(ch))
+    }));
+    assert!(!text(&buffer, 3).contains("SNR"));
+    assert!(!text(&buffer, 3).contains("Src"));
 }
 #[test]
 fn status_layout_small_resize_and_redraw_clock() {
@@ -469,7 +471,7 @@ fn status_layout_small_resize_and_redraw_clock() {
     let mut m = Model::new(args(&["one", "two"]));
     assert_eq!(
         m.sources[0].line(Duration::from_secs(10)),
-        "one   unknown spots:0 age: "
+        "one   unknown spots:0 "
     );
     let mut event = ClusterEvent::new(Profile::Rbn, "connection_state");
     event.set("state", "blocked");
@@ -480,7 +482,10 @@ fn status_layout_small_resize_and_redraw_clock() {
     assert_eq!(m.sources[0].count, 1);
     assert!(m.sources[0].line(Duration::from_secs(10)).contains("age:7"));
     let normal = grid(&m, 80, 24);
-    assert!(text(&normal, 2).contains("blocked retry_exhausted"));
+    key(&mut m, KeyCode::Char('?'));
+    assert!(text(&grid(&m, 80, 24), 10).contains("blocked retry_exhausted"));
+    key(&mut m, KeyCode::Esc);
+    assert!(text(&normal, 1).contains("off"));
     for (width, height) in [(79, 24), (80, 23), (1, 1), (0, 0)] {
         let small = grid(&m, width, height);
         if height > 0 && width > 0 {
@@ -492,7 +497,7 @@ fn status_layout_small_resize_and_redraw_clock() {
     present(&mut terminal, &m, Duration::from_secs(10)).unwrap();
     terminal.backend_mut().resize(80, 24);
     present(&mut terminal, &m, Duration::from_secs(10)).unwrap();
-    assert!(text(terminal.backend().buffer(), 0).starts_with("QG DX Cluster"));
+    assert!(text(terminal.backend().buffer(), 0).starts_with(" QG DX Cluster "));
     m.receive(0, spot("Q1ABC", 1, ""), Duration::from_millis(3900));
     assert!(
         m.sources[0]
@@ -575,7 +580,7 @@ fn replay_pacing_ties_continuations_completion_and_isolated_errors() {
     assert_eq!(complete, [1, 0, 2]);
     assert!(scheduler.done());
     assert!(scheduler.poll(1000.0).is_none());
-    assert!(text(&grid(&m, 100, 24), 2).contains("COMPLETE"));
+    assert!((0..24).any(|y| text(&grid(&m, 100, 24), y).contains("replay finished")));
     assert_eq!(m.sources[0].state, "disconnected");
     let mut invalid = Schedule::new(vec![Ok(ReplayStream::new(Cursor::new(b"{\"t\":0,\"note\":\"qg-dxc configuration: {\\\"call\\\":\\\"Q1ABC\\\",\\\"profile\\\":\\\"arcluster\\\"}\"}\ninvalid\n".to_vec()),false).unwrap()),Ok(recording(0.0,"Q4ABC",1))]);
     let mut errors = 0;
@@ -938,4 +943,460 @@ fn replay_error_aborts_and_finalizes_current_connection_once() {
         assert_eq!((errors, finalized, content), (1, 1, 1), "{suffix:?}");
         assert!(schedule.poll(10000.0).is_none());
     }
+}
+
+fn find(buffer: &Buffer, y: u16, value: &str) -> u16 {
+    let line = text(buffer, y);
+    line[..line
+        .find(value)
+        .unwrap_or_else(|| panic!("missing {value:?} in {line:?}"))]
+        .chars()
+        .count() as u16
+}
+#[test]
+fn approved_wide_and_compact_content_and_styles() {
+    // QGDXC-TUI-0070 QGDXC-TUI-0073 QGDXC-TUI-0060
+    use ratatui::style::{Color, Modifier};
+    let mut m = Model::new(args(&["dx.example.org", "rbn.example.org"]));
+    m.utc_epoch = 1_790_000_000;
+    let mut ready = ClusterEvent::new(Profile::Rbn, "connection_state");
+    ready.set("state", "ready");
+    m.receive(1, ready, Duration::ZERO);
+    let mut skimmer = spot("Q2SKM", 7_025_000, "CW CQ");
+    skimmer.set("spot_kind", "skimmer");
+    skimmer.set("snr_db", qso_graph_dxcluster::Value::Integer(27));
+    skimmer.set("speed", qso_graph_dxcluster::Value::Integer(24));
+    skimmer.set("speed_unit", "wpm");
+    m.receive(1, skimmer, Duration::from_secs(9));
+    m.receive(
+        0,
+        spot("Q1HUM", 14_074_000, "FT8 up 2"),
+        Duration::from_secs(9),
+    );
+    let wide = grid(&m, 120, 36);
+    assert!(text(&wide, 0).contains("1 source live  ·  2 spots  ·  2/min"));
+    assert!(text(&wide, 0).ends_with("Z "));
+    assert!(text(&wide, 1).contains("sources"));
+    assert!(text(&wide, 1).contains("bands"));
+    assert!(text(&wide, 1).contains("last 15 min"));
+    assert!(text(&wide, 3).contains("² ● rbn.example.org"));
+    assert!(text(&wide, 5).contains("160"));
+    assert!(text(&wide, 8).contains("spots newest first"));
+    assert!(text(&wide, 9).contains("SNR"));
+    let human_y = 10;
+    assert_eq!(wide[(1, human_y)].symbol(), "▎");
+    assert_eq!(wide[(1, human_y)].fg, Color::Rgb(255, 180, 84));
+    let band_x = find(&wide, human_y, "20m");
+    // Plant-and-prove target: a regression to the default foreground must fail.
+    assert_eq!(wide[(band_x, human_y)].fg, Color::Rgb(145, 215, 106));
+    assert_eq!(wide[(band_x, human_y)].bg, Color::Rgb(30, 51, 67));
+    let dx_x = find(&wide, human_y, "Q1HUM");
+    assert!(wide[(dx_x, human_y)].modifier.contains(Modifier::BOLD));
+    assert_eq!(wide[(dx_x, human_y)].fg, Color::Rgb(255, 255, 255));
+    assert_eq!(wide[(0, human_y)].bg, Color::Reset);
+    let mode_x = find(&wide, human_y, "FT8");
+    assert_eq!(wide[(mode_x, human_y)].fg, Color::Rgb(212, 166, 255));
+    assert_eq!(wide[(88, 4)].fg, Color::Rgb(145, 215, 106));
+    assert_eq!(wide[(88, 4)].symbol(), "█");
+    assert_eq!(wide[(89, 6)].symbol(), "1");
+    assert_eq!(wide[(50, 33)].bg, Color::Reset);
+    let skimmer_y = 11;
+    assert_eq!(wide[(1, skimmer_y)].symbol(), " ");
+    let snr_x = find(&wide, skimmer_y, "27dB");
+    assert_eq!(wide[(snr_x, skimmer_y)].fg, Color::Rgb(127, 217, 98));
+    assert!(text(&wide, skimmer_y).contains("24  ²rbn"));
+    assert!(
+        !wide[(find(&wide, skimmer_y, "Q2SKM"), skimmer_y)]
+            .modifier
+            .contains(Modifier::BOLD)
+    );
+    assert!(text(&wide, 34).contains("2 kept of 10,000"));
+    assert!(text(&wide, 35).contains("t theme"));
+    assert!(text(&wide, 35).ends_with("color "));
+    let compact = grid(&m, 80, 24);
+    assert!(text(&compact, 1).contains("¹○ dx"));
+    assert!(text(&compact, 2).contains("spots newest first"));
+    assert!(text(&compact, 3).contains("Comment"));
+    for removed in ["SNR", "WPM", "Src"] {
+        assert!(!text(&compact, 3).contains(removed));
+    }
+    assert!(text(&compact, 4).contains("Q1HUM"));
+    assert_eq!(
+        compact[(find(&compact, 4, "20m"), 4)].fg,
+        Color::Rgb(145, 215, 106)
+    );
+    key(&mut m, KeyCode::Char('p'));
+    m.receive(0, spot("Q3NEW", 28_050_000, "CW"), Duration::from_secs(10));
+    for (w, h, title) in [(120, 36, 8), (80, 24, 2)] {
+        let paused = grid(&m, w, h);
+        let x = find(&paused, title, " PAUSED · 1 new ");
+        assert_eq!(paused[(x, title)].bg, Color::Rgb(255, 180, 84));
+        assert_eq!(paused[(x, title)].fg, Color::Rgb(15, 19, 22));
+        assert!(text(&paused, title + 2).contains("Q1HUM"));
+    }
+    m.filters.bands = Some(["20m".into()].into());
+    m.filters.modes = Some(["FT8".into()].into());
+    m.filters.calls = patterns("Q1*").unwrap();
+    m.filters.kind = 1;
+    m.sources[1].hidden = true;
+    for (w, h, title) in [(120, 36, 8), (80, 24, 2)] {
+        let paused = grid(&m, w, h);
+        assert!(text(&paused, title).contains("PAUSED"));
+        assert!(text(&paused, h - 3).contains("band:1 mode:1 call:1 kind:human hidden:1"));
+    }
+}
+#[test]
+fn no_color_override_theme_cycle_and_depth() {
+    // QGDXC-TUI-0071 QGDXC-TUI-0072 QGDXC-TUI-0060
+    use super::theme::{Depth, Theme};
+    use ratatui::style::Color;
+    assert_eq!(Theme::initial(None, Some("")), Theme::Color);
+    assert_eq!(Theme::initial(None, None), Theme::Color);
+    assert_eq!(
+        Theme::initial(Some(Theme::Daylight), Some("1")),
+        Theme::Daylight
+    );
+    let mut m = Model::new(args(&["dx.example.org"]));
+    m.appearance.theme = Theme::initial(None, Some("1"));
+    m.receive(0, spot("Q1ABC", 14_074_000, "FT8"), Duration::from_secs(10));
+    for (w, h) in [(120, 36), (80, 24)] {
+        let mono = grid(&m, w, h);
+        assert!(
+            mono.content
+                .iter()
+                .all(|c| c.fg == Color::Reset && c.bg == Color::Reset)
+        );
+    }
+    for expected in [
+        Theme::Color,
+        Theme::Daylight,
+        Theme::Phosphor,
+        Theme::Amber,
+        Theme::Mono,
+    ] {
+        key(&mut m, KeyCode::Char('t'));
+        assert_eq!(m.appearance.theme, expected);
+        let expected_band = match expected {
+            Theme::Color => Color::Rgb(145, 215, 106),
+            Theme::Daylight => Color::Rgb(47, 138, 47),
+            Theme::Phosphor => Color::Rgb(63, 227, 108),
+            Theme::Amber => Color::Rgb(255, 176, 0),
+            Theme::Mono => Color::Reset,
+        };
+        let themed = grid(&m, 120, 36);
+        assert_eq!(themed[(find(&themed, 10, "20m"), 10)].fg, expected_band);
+        assert!(text(&grid(&m, 120, 36), 35).ends_with(&format!("{} ", expected.name())));
+    }
+    m.appearance.theme = Theme::Color;
+    key(&mut m, KeyCode::Char('/'));
+    key(&mut m, KeyCode::Char('t'));
+    assert_eq!(m.appearance.theme, Theme::Color);
+    assert!(matches!(&m.editor, Editor::Calls{text,..} if text == "t"));
+    key(&mut m, KeyCode::Esc);
+    for (ct, term, expected) in [
+        ("truecolor", "xterm", Depth::TrueColor),
+        ("24bit", "xterm-256color", Depth::TrueColor),
+        ("", "xterm-256color", Depth::Indexed),
+        ("", "vt100", Depth::Ansi),
+    ] {
+        m.appearance.depth = Depth::detect(ct, term);
+        assert_eq!(m.appearance.depth, expected);
+        let buffer = grid(&m, 120, 36);
+        assert!(buffer.content.iter().all(|c| match expected {
+            Depth::TrueColor => !matches!(c.fg, Color::Indexed(_)),
+            Depth::Indexed => !matches!(c.fg, Color::Rgb(..)),
+            Depth::Ansi => !matches!(c.fg, Color::Rgb(..) | Color::Indexed(_)),
+        }));
+    }
+    let valid = Options::parse(&args(&["--replay", "Cargo.toml", "--theme", "amber"])).unwrap();
+    assert_eq!(valid.theme, Theme::Amber);
+    for value in ["bogus", "COLOR", ""] {
+        assert!(Options::parse(&args(&["--replay", "Cargo.toml", "--theme", value])).is_err());
+    }
+}
+#[test]
+fn activity_retry_highlight_and_optional_fields_use_typed_data() {
+    // QGDXC-TUI-0073 QGDXC-TUI-0070
+    use ratatui::style::Color;
+    let mut m = Model::new(args(&["dx.example.org"]));
+    let mut retry = ClusterEvent::new(Profile::Rbn, "connection_state");
+    retry.set("state", "backoff");
+    retry.set("retry_in_ms", qso_graph_dxcluster::Value::Integer(12500));
+    m.receive(0, retry, Duration::ZERO);
+    assert!(text(&grid(&m, 120, 36), 2).contains("retry 3s"));
+    // Text that resembles metrics does not populate the typed columns.
+    m.receive(
+        0,
+        spot("Q1ABC", 14_074_000, "CW 27 dB 24 WPM"),
+        Duration::from_secs(9),
+    );
+    let b = grid(&m, 120, 36);
+    let snr_x = find(&b, 9, "SNR") - 2;
+    assert!((snr_x..snr_x + 10).all(|x| b[(x, 10)].symbol() == " "));
+    let mut terminal = Terminal::new(TestBackend::new(120, 36)).unwrap();
+    present(&mut terminal, &m, Duration::from_secs(12)).unwrap();
+    assert_eq!(terminal.backend().buffer()[(20, 10)].bg, Color::Reset);
+    // Counters survive retention eviction and filtering, with a bounded 15-minute history.
+    for second in 10..=920 {
+        m.receive(
+            0,
+            spot("Q1ABC", 14_074_000, "CW"),
+            Duration::from_secs(second),
+        );
+    }
+    assert_eq!(m.activity.len(), 900);
+    m.sources[0].hidden = true;
+    assert!(text(&grid(&m, 120, 36), 2).contains("off"));
+    let eight = Model::new((1..=8).map(|n| format!("source{n}.example.org")).collect());
+    for (w, h) in [(100, 24), (120, 36), (80, 24)] {
+        let b = grid(&eight, w, h);
+        assert!(text(&b, h - 2).contains("kept of 10,000"));
+        assert!(render::list_rows(w, h, 8) > 0);
+    }
+}
+
+#[test]
+fn source_details_are_plain_english_and_only_for_nonready_sources() {
+    // QGDXC-TUI-0050 QGDXC-TUI-0070 QGDXC-TUI-0060
+    let mut m = Model::new(args(&["one", "two"]));
+    for source in &mut m.sources {
+        source.state = "ready".into();
+        source.reason = "setup_complete".into();
+    }
+    let ready = grid(&m, 120, 36);
+    for y in 4..7 {
+        assert!(
+            text(&ready, y)
+                .chars()
+                .take(60)
+                .all(|c| c == ' ' || c == '│')
+        );
+    }
+    assert!(!(0..36).any(|y| text(&ready, y).contains("age:")));
+    for (state, reason, retry, complete, diagnostic, expected) in [
+        ("connecting", "", None, false, "", "² connecting"),
+        (
+            "backoff",
+            "connection_refused",
+            Some(Duration::from_millis(21001)),
+            false,
+            "",
+            "² retrying in 12s: connection refused",
+        ),
+        (
+            "blocked",
+            "retry_exhausted",
+            None,
+            false,
+            "",
+            "² connection failed: retries exhausted",
+        ),
+        (
+            "ready",
+            "setup_complete",
+            None,
+            true,
+            "",
+            "² replay finished",
+        ),
+        (
+            "ready",
+            "setup_complete",
+            None,
+            false,
+            "invalid recording",
+            "² error: invalid recording",
+        ),
+        (
+            "await_login",
+            "connected",
+            None,
+            false,
+            "",
+            "² waiting for login",
+        ),
+    ] {
+        let source = &mut m.sources[1];
+        source.state = state.into();
+        source.reason = reason.into();
+        source.retry_at = retry;
+        source.complete = complete;
+        source.diagnostic = diagnostic.into();
+        let buffer = grid(&m, 120, 36);
+        assert!(text(&buffer, 4).contains(expected), "{}", text(&buffer, 4));
+        assert!(!text(&buffer, 4).contains("age:"));
+        assert!(!text(&buffer, 5).contains("¹"));
+    }
+    m.sources[1].retry_at = Some(Duration::from_secs(1));
+    m.sources[1].diagnostic.clear();
+    assert!(text(&grid(&m, 120, 36), 4).contains("retrying in 0s"));
+    key(&mut m, KeyCode::Char('?'));
+    assert!(!text(&grid(&m, 120, 36), 10).contains("age:"));
+}
+
+#[test]
+fn zero_spark_cells_keep_full_extent_and_dim_style() {
+    // QGDXC-TUI-0070 QGDXC-TUI-0073 QGDXC-TUI-0060
+    use theme::Role;
+    let mut m = Model::new(args(&["one", "two"]));
+    for (w, h) in [(120, 36), (80, 24)] {
+        let buffer = grid(&m, w, h);
+        let start = find(&buffer, 0, "▁▁▁▁▁▁▁▁▁▁▁▁");
+        for x in start..start + 12 {
+            assert_eq!(buffer[(x, 0)].fg, m.appearance.style(Role::Dim).fg.unwrap());
+        }
+    }
+    let empty = grid(&m, 120, 36);
+    for y in [2, 3] {
+        assert!(text(&empty, y).contains("▁▁▁▁▁▁▁▁"));
+    }
+    m.receive(1, spot("Q1ABC", 14_025_000, "CW"), Duration::from_secs(9));
+    let buffer = grid(&m, 120, 36);
+    for (y, trend) in [(0, "▁▁▁▁▁▁▁▁▁▁▁█"), (3, "▁▁▁▁▁▁▁█")]
+    {
+        let start = find(&buffer, y, trend);
+        let last = start + trend.chars().count() as u16 - 1;
+        for x in start..last {
+            assert_eq!(buffer[(x, y)].fg, m.appearance.style(Role::Dim).fg.unwrap());
+        }
+        assert_eq!(
+            buffer[(last, y)].fg,
+            m.appearance.style(Role::Spark).fg.unwrap()
+        );
+    }
+}
+
+#[test]
+fn comments_remove_only_exact_visible_typed_prefixes_without_mutation() {
+    // QGDXC-TUI-0073 QGDXC-TUI-0060
+    use qso_graph_dxcluster::Value;
+    for (mode, snr, speed, unit, comment, expected) in [
+        ("CW", 19, Some(17), "wpm", "CW    19 dB  17 WPM  CQ", "CQ"),
+        ("CW", -2, Some(17), "wpm", "CW -2 dB 17 WPM DX", "DX"),
+        (
+            "CW",
+            19,
+            Some(17),
+            "wpm",
+            "CW +19 dB 17 WPM BEACON",
+            "BEACON",
+        ),
+        (
+            "CW",
+            19,
+            Some(17),
+            "wpm",
+            "CW 19 dB 17 WPM NCDXF B",
+            "NCDXF B",
+        ),
+        ("FT8", 19, None, "", "FT8 19 dB CQ", "CQ"),
+        ("FT8", 19, None, "", "FT8 19 dB slot CQ", "slot CQ"),
+        (
+            "RTTY",
+            19,
+            Some(45),
+            "bps",
+            "RTTY 19 dB 45 BPS CQ",
+            "45 BPS CQ",
+        ),
+        (
+            "CW",
+            18,
+            Some(17),
+            "wpm",
+            "CW 19 dB 17 WPM CQ",
+            "CW 19 dB 17 WPM CQ",
+        ),
+        (
+            "CW",
+            19,
+            Some(18),
+            "wpm",
+            "CW 19 dB 17 WPM CQ",
+            "CW 19 dB 17 WPM CQ",
+        ),
+        (
+            "CW",
+            19,
+            Some(17),
+            "wpm",
+            "CW 19 dB 17 BPS CQ",
+            "CW 19 dB 17 BPS CQ",
+        ),
+        ("CW", 19, Some(17), "wpm", "CW 19 dB CQ", "CW 19 dB CQ"),
+        ("CW", 19, Some(17), "wpm", "FT8 19 dB CQ", "FT8 19 dB CQ"),
+        ("CW", 19, Some(17), "wpm", "CW CQ", "CW CQ"),
+        (
+            "CW",
+            1000,
+            Some(17),
+            "wpm",
+            "CW 1000 dB 17 WPM CQ",
+            "CW 1000 dB 17 WPM CQ",
+        ),
+        (
+            "CW",
+            19,
+            Some(1000),
+            "wpm",
+            "CW 19 dB 1000 WPM CQ",
+            "CW 19 dB 1000 WPM CQ",
+        ),
+    ] {
+        let mut m = Model::new(args(&["one"]));
+        let mut event = spot("Q1ABC", 14_025_000, comment);
+        event.set("mode", mode);
+        event.set("snr_db", Value::Integer(snr));
+        if let Some(speed) = speed {
+            event.set("speed", Value::Integer(speed));
+            event.set("speed_unit", unit);
+        }
+        let original = event.clone();
+        m.receive(0, event, Duration::ZERO);
+        let wide = grid(&m, 120, 36);
+        let x = find(&wide, 9, "Comment") as usize;
+        assert_eq!(
+            text(&wide, 10)
+                .chars()
+                .skip(x)
+                .take(119 - x)
+                .collect::<String>()
+                .trim_end(),
+            expected
+        );
+        let compact = grid(&m, 80, 24);
+        let x = find(&compact, 3, "Comment") as usize;
+        let actual: String = text(&compact, 4).chars().skip(x).take(79 - x).collect();
+        assert_eq!(actual.trim_end(), clip(comment, 79 - x, false).trim_end());
+        assert_eq!(m.spots[0].event, original);
+    }
+    let mut m = Model::new(args(&["one"]));
+    m.receive(
+        0,
+        spot("Q1ABC", 14_025_000, "CW 19 dB 17 WPM CQ"),
+        Duration::ZERO,
+    );
+    assert!(text(&grid(&m, 120, 36), 10).contains("CW 19 dB 17 WPM CQ"));
+}
+
+#[test]
+fn compact_source_labels_and_header_grammar() {
+    // QGDXC-TUI-0070 QGDXC-TUI-0060
+    let mut m = Model::new(args(&["q1abc", "q2xyz"]));
+    for (count, grammar) in [
+        (0, "0 sources live"),
+        (1, "1 source live"),
+        (2, "2 sources live"),
+    ] {
+        for (i, source) in m.sources.iter_mut().enumerate() {
+            source.state = if i < count { "ready" } else { "connecting" }.into();
+        }
+        for (w, h) in [(120, 36), (80, 24)] {
+            let buffer = grid(&m, w, h);
+            assert!(text(&buffer, 0).contains(grammar));
+        }
+    }
+    let compact = grid(&m, 80, 24);
+    assert!(text(&compact, 1).contains("¹● q1abc 0"));
+    assert!(text(&compact, 1).contains("²● q2xyz 0"));
 }

@@ -21,7 +21,11 @@ This example uses an invented identity and a nonresolving documentation endpoint
 qg-dxc tui --call Q1ABC --node example.invalid:7300/auto
 ```
 
-Repeat `--node` to combine feeds. Press `?` for keys. Filters select bands,
+Repeat `--node` to combine feeds, or use `--replay session.ndjson` for offline
+playback. Press `?` for keys and source details, `p` to pause, and `t` to cycle
+themes. Use `--theme color|daylight|phosphor|amber|mono` at startup. Layout,
+`NO_COLOR`, and color-depth behavior follow Annex F (`QGDXC-TUI-0070` through
+`QGDXC-TUI-0073`). Filters select bands,
 modes, callsigns, and human or skimmer spots. The `connect` command emits events;
 `replay` reads a local recording. Recording is opt-in.
 

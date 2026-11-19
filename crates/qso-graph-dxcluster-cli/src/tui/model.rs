@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //! Pure display state. No clock, terminal, transport, or file access.
+use super::theme::Appearance;
 use qso_graph_dxcluster::{Event, Value, privacy};
 use std::{
     collections::{BTreeSet, VecDeque},
@@ -210,7 +211,19 @@ impl Filters {
         )
     }
 }
+pub const CHART_BANDS: [&str; 11] = [
+    "160m", "80m", "60m", "40m", "30m", "20m", "17m", "15m", "12m", "10m", "6m",
+];
+
+// One counter bucket per arrival second, independent of spot retention and filters.
+#[derive(Default)]
+pub struct Bucket {
+    pub second: u64,
+    pub sources: [u64; 8],
+    pub bands: [u64; 11],
+}
 pub struct Spot {
+    pub born: Duration,
     pub id: u64,
     pub source: usize,
     pub event: Event,
@@ -218,6 +231,7 @@ pub struct Spot {
     pub mode: String,
 }
 pub struct Status {
+    pub retry_at: Option<Duration>,
     pub label: String,
     pub state: String,
     pub reason: String,
@@ -231,14 +245,14 @@ pub struct Status {
 impl Status {
     pub fn line(&self, now: Duration) -> String {
         format!(
-            "{} {} {} {} spots:{} age:{}{}{} {}",
+            "{} {} {} {} spots:{}{}{}{} {}",
             self.label,
             self.state,
             self.reason,
             self.server,
             self.count,
             self.last
-                .map(|at| now.saturating_sub(at).as_secs().to_string())
+                .map(|at| format!(" age:{}", now.saturating_sub(at).as_secs()))
                 .unwrap_or_default(),
             if self.complete { " COMPLETE" } else { "" },
             if self.hidden { " HIDDEN" } else { "" },
@@ -274,6 +288,9 @@ pub enum Editor {
     Help,
 }
 pub struct Model {
+    pub appearance: Appearance,
+    pub utc_epoch: u64,
+    pub activity: VecDeque<Bucket>,
     pub spots: VecDeque<Spot>,
     pub sources: Vec<Status>,
     pub total: u64,
@@ -288,10 +305,14 @@ pub struct Model {
 impl Model {
     pub fn new(labels: Vec<String>) -> Self {
         Self {
+            appearance: Appearance::default(),
+            utc_epoch: 0,
+            activity: VecDeque::new(),
             spots: VecDeque::new(),
             sources: labels
                 .into_iter()
                 .map(|label| Status {
+                    retry_at: None,
                     label: sanitize(&label),
                     state: String::new(),
                     reason: String::new(),
@@ -318,6 +339,12 @@ impl Model {
         privacy::apply(&mut event, false);
         let status = &mut self.sources[source];
         if event.kind == "connection_state" {
+            status.retry_at = match event.fields.get("retry_in_ms") {
+                Some(Value::Integer(ms)) if *ms >= 0 => {
+                    Some(now.saturating_add(Duration::from_millis(*ms as u64)))
+                }
+                _ => None,
+            };
             status.server = event.server_type.name().into();
             status.state = event.get("state").unwrap_or_default().into();
             status.reason = event.get("reason").unwrap_or_default().into();
@@ -325,7 +352,33 @@ impl Model {
             status.count += 1;
             status.last = Some(now);
             self.total += 1;
+            while self
+                .activity
+                .front()
+                .is_some_and(|b| now.as_secs().saturating_sub(b.second) >= 900)
+            {
+                self.activity.pop_front();
+            }
+            if self
+                .activity
+                .back()
+                .is_none_or(|b| b.second != now.as_secs())
+            {
+                self.activity.push_back(Bucket {
+                    second: now.as_secs(),
+                    ..Bucket::default()
+                });
+            }
+            let bucket = self.activity.back_mut().expect("arrival bucket");
+            bucket.sources[source] += 1;
+            if let Some(index) = CHART_BANDS
+                .iter()
+                .position(|b| *b == band(frequency(&event)))
+            {
+                bucket.bands[index] += 1;
+            }
             let spot = Spot {
+                born: now,
                 id: self.total,
                 source,
                 band: band(frequency(&event)),
@@ -366,6 +419,9 @@ impl Model {
         }
     }
 
+    pub fn paused_new(&self) -> u64 {
+        self.total - self.pause_total
+    }
     pub fn summary(&self) -> String {
         format!(
             "retained:{} received:{}{}",
@@ -468,6 +524,7 @@ impl Model {
             }
             Editor::Normal => match input {
                 Input::Char('q') => self.quit = true,
+                Input::Char('t') => self.appearance.theme = self.appearance.theme.next(),
                 Input::Char('b' | 'm') => {
                     let is_band = matches!(input, Input::Char('b'));
                     let selected = if is_band {
