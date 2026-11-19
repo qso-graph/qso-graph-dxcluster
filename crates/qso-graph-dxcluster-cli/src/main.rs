@@ -67,7 +67,7 @@ fn run(retention: &mut bool) -> Result<u8, String> {
         return Ok(0);
     }
     if args == ["--version"] {
-        println!("qg-dxc 0.1.0");
+        println!("qg-dxc {}", env!("CARGO_PKG_VERSION"));
         return Ok(0);
     }
     if args[0] == "tui" {

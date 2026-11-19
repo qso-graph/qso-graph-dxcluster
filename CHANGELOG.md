@@ -3,6 +3,11 @@
 
 ## [Unreleased]
 
+## [0.1.2]
+
+- `qg-dxc --version` reports the version built; 0.1.1 still said 0.1.0. Release
+  builds now fail if the two differ.
+
 ## [0.1.1]
 
 - Name the Linux packages `qso-graph-dxcluster`, like the other QSO Graph

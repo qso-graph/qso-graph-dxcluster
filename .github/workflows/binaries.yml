@@ -150,7 +150,11 @@ jobs:
               [ -z "$bad" ] || { echo "Release error: qg-dxc.exe needs DLLs Windows does not have: $bad"; exit 1; } ;;
           esac
           exe=qg-dxc; [ "$RUNNER_OS" = Windows ] && exe=qg-dxc.exe
-          "$dir/$exe" --version
+          # The program must report the version being built, not a stale literal.
+          want="qg-dxc $(cargo metadata --no-deps --format-version 1 --locked | jq -r '.packages[] | select(.name == "qso-graph-dxcluster-cli") | .version')"
+          got=$("$dir/$exe" --version | tr -d '\r')
+          echo "$got"
+          [ "$got" = "$want" ] || { echo "Release error: qg-dxc --version says '$got', expected '$want'"; exit 1; }
 
       - name: Stage unsigned files
         shell: bash
