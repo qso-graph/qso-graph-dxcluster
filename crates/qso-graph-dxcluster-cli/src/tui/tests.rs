@@ -273,9 +273,9 @@ fn limits_footer_and_help_fit_compact_and_wide_layouts() {
                     "{footer}"
                 );
                 let tail = if width == 80 {
-                    "t ?"
+                    "t M ?"
                 } else {
-                    "t theme  ? help"
+                    "t theme  M map  ? help"
                 };
                 assert!(footer.contains(tail), "{footer}");
                 let theme = format!("{} ", m.appearance.theme.name());
@@ -2128,7 +2128,10 @@ fn sources_screen_lists_every_source_and_fits_small_windows() {
     let mut p = picker_for(30, &[0]);
     let grid = picker_grid(&p, 80, 24);
     assert!(
-        text(&grid, 0).contains(" QG DX Cluster  Sources"),
+        text(&grid, 0).contains(&format!(
+            " QG DX Cluster  v{}  Sources",
+            env!("CARGO_PKG_VERSION")
+        )),
         "{:?}",
         text(&grid, 0)
     );
@@ -2204,4 +2207,175 @@ fn only_new_human_spots_are_highlighted() {
             );
         }
     }
+}
+fn located(call: &str, spotter: &str, hz: i64, kind: &str, grid: Option<&str>) -> ClusterEvent {
+    let mut e = spot(call, hz, "CW");
+    e.set("spotter_call", spotter);
+    e.set("spot_kind", kind);
+    if let Some(g) = grid {
+        e.set("grid", g);
+    }
+    e
+}
+fn map_model() -> Model {
+    let table = qso_graph_dxcluster_cli::prefixes::Prefixes::parse(
+        "Qland: 5: 8: NA: 42.50: 71.00: 5.0: Q1:\n    Q1;\nFarqland: 25: 45: AS: 35.50: -139.00: -9.0: QF:\n    QF;\n",
+    )
+    .unwrap();
+    let mut m = Model::new(args(&["one"]), DEFAULT_KEEP, DEFAULT_KEEP);
+    m.prefixes = Box::leak(Box::new(table));
+    m
+}
+#[test]
+fn map_key_toggles_the_view_and_is_listed() {
+    // QGDXC-TUI-0080
+    let mut m = map_model();
+    assert!(!m.map);
+    assert!(text(&grid(&m, 120, 36), 35).contains("M map"));
+    assert!(text(&grid(&m, 80, 36), 35).contains("t M ?"));
+    // QGDXC-TUI-0070: the version sits beside the logo in both layouts.
+    for wide in [120u16, 80] {
+        let version = concat!(" QG DX Cluster  v", env!("CARGO_PKG_VERSION"), "  0 ");
+        assert!(text(&grid(&m, wide, 36), 0).starts_with(version), "{wide}");
+    }
+    key(&mut m, KeyCode::Char('M'));
+    assert!(m.map);
+    let b = grid(&m, 120, 36);
+    assert!(text(&b, 35).contains("M list"));
+    assert!((0..36).any(|y| text(&b, y).contains("─ map ")));
+    key(&mut m, KeyCode::Char('M'));
+    assert!(!m.map);
+    // Lowercase m is still the mode filter, and M typed into the callsign editor is data.
+    key(&mut m, KeyCode::Char('m'));
+    assert!(matches!(m.editor, Editor::Select { band: false, .. }));
+    key(&mut m, KeyCode::Esc);
+    key(&mut m, KeyCode::Char('/'));
+    key(&mut m, KeyCode::Char('M'));
+    assert!(!m.map);
+    assert!(matches!(&m.editor, Editor::Calls { text, .. } if text == "M"));
+    key(&mut m, KeyCode::Esc);
+    key(&mut m, KeyCode::Char('?'));
+    assert!((0..36).any(|y| text(&grid(&m, 120, 36), y).contains("M: map")));
+}
+#[test]
+fn map_locates_ends_by_grid_then_prefix() {
+    // QGDXC-TUI-0082
+    let mut m = map_model();
+    m.receive(
+        0,
+        located("QF1AA", "Q1ZZ-#", 14_025_000, "skimmer", Some("PM95")),
+        Duration::ZERO,
+    );
+    m.receive(
+        0,
+        located("QF1AA", "Q1ZZ", 14_025_000, "human", None),
+        Duration::ZERO,
+    );
+    m.receive(
+        0,
+        located("QX9ZZ", "Q1ZZ", 14_025_000, "human", None),
+        Duration::ZERO,
+    );
+    m.receive(
+        0,
+        located("QF1AA", "QX9ZZ", 14_025_000, "human", Some("PM95")),
+        Duration::ZERO,
+    );
+    let ends: Vec<_> = m.spots.iter().rev().map(|s| s.ends).collect();
+    let qland = qso_graph_dxcluster_cli::prefixes::Place {
+        lat: 42.5,
+        lon: -71.0,
+    };
+    let (from, to) = ends[0].unwrap();
+    assert_eq!((from.place, from.exact), (qland, false));
+    assert_eq!(
+        (to.place, to.exact),
+        (
+            qso_graph_dxcluster_cli::prefixes::Place {
+                lat: 35.5,
+                lon: 139.0
+            },
+            true
+        )
+    );
+    let (_, to) = ends[1].unwrap();
+    assert_eq!(
+        (to.place, to.exact),
+        (
+            qso_graph_dxcluster_cli::prefixes::Place {
+                lat: 35.5,
+                lon: 139.0
+            },
+            false
+        )
+    );
+    assert_eq!(ends[2], None, "unknown DX prefix and no grid");
+    assert_eq!(ends[3], None, "unknown spotter prefix");
+}
+#[test]
+fn map_paths_follow_filters_age_kind_and_the_cap() {
+    // QGDXC-TUI-0085 QGDXC-TUI-0086
+    use super::render::{HUMAN_PATH, MAX_PATHS, SKIMMER_PATH, map_paths};
+    use super::theme::Role;
+    let mut m = map_model();
+    m.receive(
+        0,
+        located("QF1AA", "Q1ZZ", 14_025_000, "human", None),
+        Duration::ZERO,
+    );
+    m.receive(
+        0,
+        located("QF2AA", "Q1ZZ-#", 7_025_000, "skimmer", None),
+        Duration::ZERO,
+    );
+    let roles =
+        |m: &Model, at: Duration| map_paths(m, at).iter().map(|(_, r)| *r).collect::<Vec<_>>();
+    assert_eq!(roles(&m, Duration::from_secs(1)), [Role::Dim, Role::B20]);
+    assert_eq!(roles(&m, SKIMMER_PATH), [Role::Dim]);
+    assert_eq!(roles(&m, HUMAN_PATH * 2 / 3), [Role::Border]);
+    assert!(roles(&m, HUMAN_PATH).is_empty());
+    // Filters apply: hide 20 m and only the 40 m skimmer path remains.
+    m.filters.bands = Some(["40m".to_owned()].into());
+    assert_eq!(roles(&m, Duration::from_secs(1)), [Role::Dim]);
+    let mut m = Model::new(args(&["one"]), 1_000, 1_000);
+    m.prefixes = map_model().prefixes;
+    for i in 0..(MAX_PATHS + 50) {
+        m.receive(
+            0,
+            located("QF1AA", "Q1ZZ", 14_025_000, "human", None),
+            Duration::from_millis(i as u64),
+        );
+    }
+    assert_eq!(map_paths(&m, Duration::from_secs(1)).len(), MAX_PATHS);
+}
+#[test]
+fn map_draws_paths_over_the_coastline() {
+    // QGDXC-TUI-0081 QGDXC-TUI-0084
+    let mut m = map_model();
+    m.map = true;
+    let empty = grid(&m, 120, 36);
+    assert!(text(&empty, 35).contains("M list"));
+    assert!((0..36).any(|y| text(&empty, y).contains(" 0 paths · M list ")));
+    let coast = (10..33)
+        .flat_map(|y| (1..119).map(move |x| (x, y)))
+        .filter(|&(x, y)| empty[(x, y)].symbol() != " ")
+        .count();
+    assert!(coast > 500, "coastline cells {coast}");
+    m.receive(
+        0,
+        located("QF1AA", "Q1ZZ", 14_025_000, "human", None),
+        Duration::from_secs(10),
+    );
+    let drawn = grid(&m, 120, 36);
+    assert!((0..36).any(|y| text(&drawn, y).contains(" 1 paths · M list ")));
+    let changed = (10..33)
+        .flat_map(|y| (1..119).map(move |x| (x, y)))
+        .filter(|&(x, y)| drawn[(x, y)] != empty[(x, y)])
+        .count();
+    assert!(changed > 20, "path cells {changed}");
+    // The path from 71 W runs north of both ends on its way to 139 E.
+    let rows: Vec<u16> = (10..33)
+        .filter(|&y| (1..119).any(|x| drawn[(x, y)] != empty[(x, y)]))
+        .collect();
+    assert!(rows.iter().min().unwrap() < &14, "{rows:?}");
 }

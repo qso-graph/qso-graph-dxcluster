@@ -127,7 +127,7 @@ pub fn draw(frame: &mut Frame<'_>, model: &Model, now: Duration) {
                 "QG DX Cluster: receive-only multi-source spot viewer",
                 "q / Ctrl-C: quit   b: bands   m: modes   /: callsign patterns",
                 "k: all/human/skimmer   1-8: hide/show source   c: clear filters",
-                "p: pause/resume scrolling (reception continues)   t: cycle theme",
+                "p: pause/resume scrolling (reception continues)   t: theme   M: map",
                 "Up/Down/PageUp/PageDown/Home: scroll   l limits   ?: help",
                 "Callsign editor: printable keys are data; Backspace deletes",
                 "Enter commits; Escape cancels. Wildcards: * any run, ? one character",
@@ -419,6 +419,8 @@ fn dashboard(frame: &mut Frame<'_>, m: &Model, now: Duration) {
     let date_width = if wide { 21 } else { 21.min(w / 3) };
     let mut row = Row::new(frame, 0, 0, w - date_width - 1);
     row.ui(" QG DX Cluster ", a.chip(true));
+    // QGDXC-TUI-0070: the running version, beside the logo.
+    row.ui(concat!(" v", env!("CARGO_PKG_VERSION")), a.style(Role::Dim));
     let live = m.sources.iter().filter(|s| s.state == "ready").count();
     row.ui(
         &format!(
@@ -441,7 +443,10 @@ fn dashboard(frame: &mut Frame<'_>, m: &Model, now: Duration) {
         .filter(|b| now.as_secs().saturating_sub(b.second) < 60)
         .map(|b| b.sources.iter().sum::<u64>())
         .sum();
-    row.ui(&format!("{rate}/min "), a.style(Role::Text));
+    // Compact: the version needs the room; the sparkline still shows the rate.
+    if wide {
+        row.ui(&format!("{rate}/min "), a.style(Role::Text));
+    }
     spark(&mut row, &history(m, now, None, 12), a, false);
     put(
         frame,
@@ -592,6 +597,17 @@ fn dashboard(frame: &mut Frame<'_>, m: &Model, now: Duration) {
             }
         )
     };
+    if m.map {
+        spot_map(
+            frame,
+            (title_y, area.height - 2),
+            m,
+            now,
+            &right_filters(m, &filters),
+        );
+        footer(frame, area.height - 1, w, m);
+        return;
+    }
     let left = " spots newest first ";
     let right = if m.paused {
         format!(" PAUSED · {} new ", m.paused_new())
@@ -651,6 +667,119 @@ fn dashboard(frame: &mut Frame<'_>, m: &Model, now: Duration) {
         a,
     );
     footer(frame, area.height - 1, w, m);
+}
+fn right_filters(m: &Model, filters: &str) -> String {
+    if m.paused {
+        format!(" PAUSED · {} new ", m.paused_new())
+    } else {
+        filters.to_owned()
+    }
+}
+/// How long a path stays on the map, by spot kind (QGDXC-TUI-0085).
+pub const HUMAN_PATH: Duration = Duration::from_secs(60);
+pub const SKIMMER_PATH: Duration = Duration::from_secs(20);
+/// Most paths drawn in one frame, newest first (QGDXC-TUI-0086).
+pub const MAX_PATHS: usize = 200;
+/// The spots that have a path on the map now, newest first, with each path's role.
+pub(crate) fn map_paths(m: &Model, now: Duration) -> Vec<(&Spot, Role)> {
+    m.matching()
+        .into_iter()
+        .filter(|s| s.ends.is_some())
+        .filter_map(|s| {
+            let age = now.saturating_sub(s.born);
+            let human = s.event.get("spot_kind") == Some("human");
+            let role = if !human {
+                (age < SKIMMER_PATH).then_some(Role::Dim)
+            } else if age < HUMAN_PATH / 3 {
+                Some(band_role(s.band))
+            } else if age < HUMAN_PATH * 2 / 3 {
+                Some(Role::Dim)
+            } else if age < HUMAN_PATH {
+                Some(Role::Border)
+            } else {
+                None
+            };
+            role.map(|r| (s, r))
+        })
+        .take(MAX_PATHS)
+        .collect()
+}
+fn spot_map(
+    frame: &mut Frame<'_>,
+    (top, bottom): (u16, u16),
+    m: &Model,
+    now: Duration,
+    right: &str,
+) {
+    use ratatui::symbols::Marker;
+    use ratatui::widgets::canvas::{Canvas, Circle, Line, Map, MapResolution, Points};
+    let a = m.appearance;
+    let w = frame.area().width;
+    let paths = map_paths(m, now);
+    border(frame, (0, top, w), true, " map ", right, a);
+    for y in top + 1..bottom {
+        sides(frame, 0, y, w, a);
+    }
+    border(
+        frame,
+        (0, bottom, w),
+        false,
+        &format!(" {} paths · M list ", paths.len()),
+        " grid ● · prefix ○ ",
+        a,
+    );
+    let rect = Rect::new(
+        1,
+        top + 1,
+        w.saturating_sub(2),
+        bottom.saturating_sub(top + 1),
+    );
+    if rect.width == 0 || rect.height == 0 {
+        return;
+    }
+    let canvas = Canvas::default()
+        .marker(Marker::Braille)
+        .x_bounds([-180.0, 180.0])
+        .y_bounds([-90.0, 90.0])
+        .paint(|ctx| {
+            ctx.draw(&Map {
+                color: a.color(Role::Border),
+                resolution: MapResolution::High,
+            });
+            ctx.layer();
+            // Oldest first, so the newest path is drawn on top.
+            for (spot, role) in paths.iter().rev() {
+                let (from, to) = spot.ends.expect("located spot");
+                let color = a.color(*role);
+                for line in super::geo::great_circle(from.place, to.place) {
+                    for pair in line.windows(2) {
+                        ctx.draw(&Line {
+                            x1: pair[0].0,
+                            y1: pair[0].1,
+                            x2: pair[1].0,
+                            y2: pair[1].1,
+                            color,
+                        });
+                    }
+                }
+                for end in [from, to] {
+                    if end.exact {
+                        ctx.draw(&Points {
+                            coords: &[(end.place.lon, end.place.lat)],
+                            color,
+                        });
+                    } else {
+                        ctx.draw(&Circle {
+                            x: end.place.lon,
+                            y: end.place.lat,
+                            radius: 2.0,
+                            color,
+                        });
+                    }
+                }
+            }
+        });
+    frame.render_widget(canvas, rect);
 }
 fn spot_header(frame: &mut Frame<'_>, y: u16, w: u16, wide: bool, a: Appearance, src: usize) {
     let mut row = Row::new(frame, 1, y, w - 2);
@@ -872,6 +1001,14 @@ fn footer(frame: &mut Frame<'_>, y: u16, w: u16, m: &Model) {
         ("p", if m.paused { "resume" } else { "pause" }),
         ("l", "limits"),
         ("t", if w >= 100 { "theme" } else { "" }),
+        (
+            "M",
+            match (w >= 100, m.map) {
+                (false, _) => "",
+                (true, true) => "list",
+                (true, false) => "map",
+            },
+        ),
         ("?", if w >= 100 { "help" } else { "" }),
     ] {
         row.ui(key, a.style(Role::Accent).add_modifier(Modifier::BOLD));

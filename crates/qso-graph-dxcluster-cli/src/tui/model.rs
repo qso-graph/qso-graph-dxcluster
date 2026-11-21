@@ -446,7 +446,15 @@ pub struct Bucket {
     pub sources: [u64; 8],
     pub bands: [u64; 11],
 }
+/// Where a spot's two stations are on the map (QGDXC-TUI-0082). `exact` is true
+/// for a place from a locator, false for a prefix's entity center.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct End {
+    pub place: qso_graph_dxcluster_cli::prefixes::Place,
+    pub exact: bool,
+}
 pub struct Spot {
+    pub ends: Option<(End, End)>,
     pub born: Duration,
     pub id: u64,
     pub source: usize,
@@ -535,6 +543,9 @@ pub struct Model {
     pub editor: Editor,
     pub quit: bool,
     pub page: usize,
+    /// Show the spot map instead of the list (QGDXC-TUI-0080).
+    pub map: bool,
+    pub prefixes: &'static qso_graph_dxcluster_cli::prefixes::Prefixes,
 }
 impl Model {
     pub fn new(labels: Vec<String>, keep_human: usize, keep_skimmer: usize) -> Self {
@@ -570,11 +581,14 @@ impl Model {
             editor: Editor::Normal,
             quit: false,
             page: 10,
+            map: false,
+            prefixes: qso_graph_dxcluster_cli::prefixes::builtin(),
         }
     }
     pub fn receive(&mut self, source: usize, mut event: Event, now: Duration) {
         // QGDXC-TUI-0014: defensive application of privacy before retention.
         privacy::apply(&mut event, false);
+        let prefixes = self.prefixes;
         let status = &mut self.sources[source];
         if event.kind == "connection_state" {
             status.retry_at = match event.fields.get("retry_in_ms") {
@@ -615,7 +629,19 @@ impl Model {
             {
                 bucket.bands[index] += 1;
             }
+            let locate = |call: Option<&str>| {
+                call.and_then(|c| prefixes.lookup(c)).map(|place| End {
+                    place,
+                    exact: false,
+                })
+            };
+            let dx = event
+                .get("grid")
+                .and_then(super::geo::grid_center)
+                .map(|place| End { place, exact: true })
+                .or_else(|| locate(event.get("call")));
             let spot = Spot {
+                ends: locate(event.get("spotter_call")).zip(dx),
                 born: now,
                 id: self.total,
                 source,
@@ -835,6 +861,7 @@ impl Model {
                     };
                 }
                 Input::Char('t') => self.appearance.theme = self.appearance.theme.next(),
+                Input::Char('M') => self.map = !self.map,
                 Input::Char('b' | 'm') => {
                     let is_band = matches!(input, Input::Char('b'));
                     let selected = if is_band {

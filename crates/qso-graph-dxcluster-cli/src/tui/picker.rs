@@ -109,11 +109,21 @@ pub fn draw(frame: &mut Frame<'_>, picker: &Picker, a: Appearance) {
     }
     let w = area.width;
     text(frame, 0, 0, 15, " QG DX Cluster ", a.chip(true));
+    let version = concat!("v", env!("CARGO_PKG_VERSION"));
     text(
         frame,
         16,
         0,
-        w - 16,
+        version.len() as u16,
+        version,
+        a.style(Role::Dim),
+    );
+    let x = 18 + version.len() as u16;
+    text(
+        frame,
+        x,
+        0,
+        w - x,
         "Sources",
         a.style(Role::Title).add_modifier(Modifier::BOLD),
     );

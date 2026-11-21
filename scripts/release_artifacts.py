@@ -26,7 +26,7 @@ def names(platform):
 
 
 def expected(platform):
-    return {"version.txt", f"cli/{names(platform)}", "cli/README.md", "cli/LICENSE"}
+    return {"version.txt", f"cli/{names(platform)}", "cli/README.md", "cli/LICENSE", "cli/NOTICE.md"}
 
 
 def stage(platform, target, output):
@@ -39,6 +39,8 @@ def stage(platform, target, output):
     shutil.copy2(ROOT / "target" / target / "release" / exe, output / "cli" / exe)
     shutil.copy2(ROOT / "crates/qso-graph-dxcluster-cli/README.md", output / "cli/README.md")
     shutil.copy2(ROOT / "LICENSE", output / "cli/LICENSE")
+    # The shipped country file is MIT-licensed; its notice travels with the program.
+    shutil.copy2(ROOT / "NOTICE.md", output / "cli/NOTICE.md")
 
 
 def archive(platform, source, output):

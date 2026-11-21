@@ -75,3 +75,10 @@ path = "fuzz_targets/sources.rs"
 test = false
 doc = false
 bench = false
+
+[[bin]]
+name = "prefixes"
+path = "fuzz_targets/prefixes.rs"
+test = false
+doc = false
+bench = false

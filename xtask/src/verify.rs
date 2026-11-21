@@ -237,6 +237,7 @@ pub fn verify() -> Result<(), String> {
         }
         for target in [
             "values", "dx_de", "cc11", "other", "rbn", "framer", "telnet", "session", "sources",
+            "prefixes",
         ] {
             let name = format!("fuzz {target}");
             let path = format!("target/verify/fuzz-{target}.log");

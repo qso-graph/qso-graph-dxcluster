@@ -1665,6 +1665,10 @@
         {
           "file": "crates/qso-graph-dxcluster-cli/src/tui/tests.rs",
           "name": "limits_footer_and_help_fit_compact_and_wide_layouts"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/tui/tests.rs",
+          "name": "map_key_toggles_the_view_and_is_listed"
         }
       ],
       "vectors": []
@@ -1712,6 +1716,93 @@
         {
           "file": "crates/qso-graph-dxcluster-cli/src/tui/tests.rs",
           "name": "only_new_human_spots_are_highlighted"
+        }
+      ],
+      "vectors": []
+    },
+    "QGDXC-TUI-0080": {
+      "tests": [
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/tui/tests.rs",
+          "name": "map_key_toggles_the_view_and_is_listed"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/tui/tests.rs",
+          "name": "limits_footer_and_help_fit_compact_and_wide_layouts"
+        }
+      ],
+      "vectors": []
+    },
+    "QGDXC-TUI-0081": {
+      "tests": [
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/tui/tests.rs",
+          "name": "map_draws_paths_over_the_coastline"
+        }
+      ],
+      "vectors": []
+    },
+    "QGDXC-TUI-0082": {
+      "tests": [
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/tui/tests.rs",
+          "name": "map_locates_ends_by_grid_then_prefix"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/tui/geo.rs",
+          "name": "grid_centers_follow_maidenhead"
+        }
+      ],
+      "vectors": []
+    },
+    "QGDXC-TUI-0083": {
+      "tests": [
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/prefixes.rs",
+          "name": "country_file_reads_places_with_west_longitudes_flipped"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/prefixes.rs",
+          "name": "country_file_rejects_the_whole_table_on_any_error"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/prefixes.rs",
+          "name": "shipped_country_file_parses_and_places_major_prefixes"
+        },
+        {
+          "file": "xtask/src/checks.rs",
+          "name": "country_file_exemption_covers_only_prefix_lists_and_header_prefixes"
+        }
+      ],
+      "vectors": []
+    },
+    "QGDXC-TUI-0084": {
+      "tests": [
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/tui/geo.rs",
+          "name": "great_circle_paths_curve_and_split_at_the_date_line"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/tui/tests.rs",
+          "name": "map_draws_paths_over_the_coastline"
+        }
+      ],
+      "vectors": []
+    },
+    "QGDXC-TUI-0085": {
+      "tests": [
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/tui/tests.rs",
+          "name": "map_paths_follow_filters_age_kind_and_the_cap"
+        }
+      ],
+      "vectors": []
+    },
+    "QGDXC-TUI-0086": {
+      "tests": [
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/tui/tests.rs",
+          "name": "map_paths_follow_filters_age_kind_and_the_cap"
         }
       ],
       "vectors": []

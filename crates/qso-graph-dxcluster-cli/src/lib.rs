@@ -2,6 +2,8 @@
 //! Application-owned recording and offline replay adapters.
 #![forbid(unsafe_code)]
 pub mod bounded;
+pub mod country_file;
+pub mod prefixes;
 pub mod recording;
 pub mod saved;
 
