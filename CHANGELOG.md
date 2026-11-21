@@ -1,6 +1,21 @@
 <!-- SPDX-License-Identifier: GPL-3.0-or-later -->
 # Changelog
 
+## [0.2.0]
+
+### Features
+
+- tui: recognize ADIF 3.1.8 modes and filter JTTY
+- tui: choose nodes from your own sources file at startup
+
+### Bug Fixes
+
+- tui: highlight only new human spots, not skimmer spots
+
+### Documentation
+
+- spec: choose saved sources when the TUI starts
+
 ## [0.1.2]
 
 - `qg-dxc --version` reports the version built; 0.1.1 still said 0.1.0. Release
