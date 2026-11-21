@@ -2160,3 +2160,48 @@ fn sources_screen_lists_every_source_and_fits_small_windows() {
         assert!((1..h).all(|y| text(&grid, y).trim().is_empty()));
     }
 }
+#[test]
+fn only_new_human_spots_are_highlighted() {
+    // QGDXC-TUI-0073
+    use ratatui::style::{Color, Modifier};
+    for theme in [super::theme::Theme::Color, super::theme::Theme::Mono] {
+        let mut m = Model::new(args(&["one"]), DEFAULT_KEEP, DEFAULT_KEEP);
+        m.appearance.theme = theme;
+        m.receive(0, spot("Q1ABC", 14_074_000, "CW"), Duration::from_secs(10));
+        for kind in [Some("skimmer"), None, Some("beacon")] {
+            let mut e = spot("Q2ABC", 14_025_000, "CW");
+            match kind {
+                Some(kind) => e.set("spot_kind", kind),
+                None => {
+                    e.fields.remove("spot_kind");
+                }
+            }
+            m.receive(0, e, Duration::from_secs(10));
+        }
+        let mut terminal = Terminal::new(TestBackend::new(120, 36)).unwrap();
+        present(&mut terminal, &m, Duration::from_millis(10_500)).unwrap();
+        let b = terminal.backend().buffer().clone();
+        let row = |call: &str| {
+            (0..36)
+                .filter(|&y| text(&b, y).contains(call))
+                .collect::<Vec<_>>()
+        };
+        let lit = |y: u16| {
+            let cell = &b[(60, y)];
+            cell.bg != Color::Reset || cell.modifier.contains(Modifier::REVERSED)
+        };
+        assert_eq!(row("Q1ABC").len(), 1, "{theme:?}");
+        assert!(
+            lit(row("Q1ABC")[0]),
+            "human spot not highlighted, {theme:?}"
+        );
+        let others = row("Q2ABC");
+        assert_eq!(others.len(), 3, "{theme:?}");
+        for y in others {
+            assert!(
+                !lit(y),
+                "skimmer or unclassified spot highlighted, {theme:?}"
+            );
+        }
+    }
+}

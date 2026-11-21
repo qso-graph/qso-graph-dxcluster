@@ -1708,6 +1708,10 @@
         {
           "file": "crates/qso-graph-dxcluster-cli/src/tui/tests.rs",
           "name": "activity_charts_and_sparklines_are_independent_of_retention_caps"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/tui/tests.rs",
+          "name": "only_new_human_spots_are_highlighted"
         }
       ],
       "vectors": []
