@@ -105,18 +105,26 @@ pub fn draw(frame: &mut Frame<'_>, model: &Model, now: Duration) {
                 },
             );
             let options = Model::selections(*band);
+            let all = match selected.len() {
+                0 => " ",
+                n if n == options.len() => "x",
+                _ => "-",
+            };
             let rows = area.height as usize - 2;
             let start = cursor.saturating_sub(rows - 1);
-            for (index, value) in options.iter().enumerate().skip(start).take(rows) {
+            let entries = std::iter::once(("All", all)).chain(
+                options
+                    .iter()
+                    .map(|v| (v.as_str(), if selected.contains(v) { "x" } else { " " })),
+            );
+            for (index, (value, mark)) in entries.enumerate().skip(start).take(rows) {
                 line(
                     frame,
                     area,
                     (index - start + 2) as u16,
                     &format!(
-                        "{} [{}] {}",
+                        "{} [{mark}] {value}",
                         if index == *cursor { ">" } else { " " },
-                        if selected.contains(value) { "x" } else { " " },
-                        value
                     ),
                 );
             }
@@ -131,7 +139,7 @@ pub fn draw(frame: &mut Frame<'_>, model: &Model, now: Duration) {
                 "Up/Down/PageUp/PageDown/Home: scroll   l limits   ?: help",
                 "Callsign editor: printable keys are data; Backspace deletes",
                 "Enter commits; Escape cancels. Wildcards: * any run, ? one character",
-                "Band/mode: Up/Down moves, Space toggles, Enter commits, Esc cancels",
+                "Band/mode: Up/Down moves, Space toggles (All: every value), Enter, Esc cancels",
                 "Limits: Up/Down/Tab moves, digits/Backspace edit, Enter commits, Esc cancels",
                 "Esc / Enter / ?: return   Ctrl-C quits from every screen",
             ]

@@ -872,22 +872,32 @@ impl Model {
                 cursor,
                 selected,
             } => {
+                // Row 0 is `All`; row i is option i - 1 (QGDXC-TUI-0044).
                 let options = Self::selections(*band);
                 match input {
                     Input::Up => *cursor = cursor.saturating_sub(1),
-                    Input::Down => *cursor = (*cursor + 1).min(options.len() - 1),
+                    Input::Down => *cursor = (*cursor + 1).min(options.len()),
+                    Input::Char(' ') if *cursor == 0 => {
+                        if selected.len() == options.len() {
+                            selected.clear();
+                        } else {
+                            *selected = options.iter().cloned().collect();
+                        }
+                    }
                     Input::Char(' ') => {
-                        let v = &options[*cursor];
+                        let v = &options[*cursor - 1];
                         if !selected.remove(v) {
                             selected.insert(v.clone());
                         }
                     }
                     Input::Escape => self.editor = Editor::Normal,
                     Input::Enter => {
+                        // Every value selected is the same as no filter, so say so.
+                        let chosen = (selected.len() != options.len()).then(|| selected.clone());
                         if *band {
-                            self.filters.bands = Some(selected.clone());
+                            self.filters.bands = chosen;
                         } else {
-                            self.filters.modes = Some(selected.clone());
+                            self.filters.modes = chosen;
                         }
                         self.editor = Editor::Normal;
                         self.clamp(true);
@@ -918,10 +928,13 @@ impl Model {
                     } else {
                         &self.filters.modes
                     };
+                    // An inactive filter accepts everything, so it opens all checked.
                     self.editor = Editor::Select {
                         band: is_band,
                         cursor: 0,
-                        selected: selected.clone().unwrap_or_default(),
+                        selected: selected
+                            .clone()
+                            .unwrap_or_else(|| Self::selections(is_band).into_iter().collect()),
                     };
                 }
                 Input::Char('/') => {

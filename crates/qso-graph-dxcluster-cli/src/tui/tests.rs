@@ -793,7 +793,10 @@ fn synthetic_keys_edit_transactionally_and_quit_every_mode() {
     assert!(matches!(m.editor, Editor::Calls { .. }));
     key(&mut m, KeyCode::Esc);
     assert_eq!(m.filters.calls.len(), 2);
+    // QGDXC-TUI-0044: row 0 is All; an inactive filter opens all checked.
     key(&mut m, KeyCode::Char('b'));
+    key(&mut m, KeyCode::Char(' '));
+    key(&mut m, KeyCode::Down);
     key(&mut m, KeyCode::Down);
     key(&mut m, KeyCode::Char(' '));
     key(&mut m, KeyCode::Enter);
@@ -803,6 +806,8 @@ fn synthetic_keys_edit_transactionally_and_quit_every_mode() {
     key(&mut m, KeyCode::Esc);
     assert!(m.filters.modes.is_none());
     key(&mut m, KeyCode::Char('m'));
+    key(&mut m, KeyCode::Char(' '));
+    key(&mut m, KeyCode::Down);
     key(&mut m, KeyCode::Down);
     key(&mut m, KeyCode::Up);
     key(&mut m, KeyCode::Char(' '));
@@ -2462,4 +2467,56 @@ fn collapsed_rows_count_copies_and_d_is_listed() {
     key(&mut m, KeyCode::Char('?'));
     let b = grid(&m, 120, 40);
     assert!((0..40).any(|y| text(&b, y).contains("d: dupes")));
+}
+#[test]
+fn band_and_mode_dialogs_lead_with_all() {
+    // QGDXC-TUI-0044
+    let mut m = Model::new(args(&["one"]), 100, 100);
+    let dialog = |m: &Model| {
+        (0..24)
+            .map(|y| text(&grid(m, 80, 24), y))
+            .collect::<Vec<_>>()
+    };
+    for (open, count) in [
+        ('b', Model::selections(true).len()),
+        ('m', Model::selections(false).len()),
+    ] {
+        // Inactive: everything checked, All first.
+        key(&mut m, KeyCode::Char(open));
+        let rows = dialog(&m);
+        assert!(rows[2].contains("> [x] All"), "{}", rows[2]);
+        assert!(rows[3].contains("[x]"), "{}", rows[3]);
+        // All clears every value, then selects every value again.
+        key(&mut m, KeyCode::Char(' '));
+        assert!(dialog(&m)[2].contains("[ ] All"));
+        key(&mut m, KeyCode::Down);
+        key(&mut m, KeyCode::Char(' '));
+        assert!(dialog(&m)[2].contains("[-] All"));
+        key(&mut m, KeyCode::Up);
+        key(&mut m, KeyCode::Char(' '));
+        assert!(dialog(&m)[2].contains("[x] All"));
+        // Committing every value leaves the filter off, not a full list.
+        key(&mut m, KeyCode::Enter);
+        assert!(m.filters.bands.is_none() && m.filters.modes.is_none());
+        // One value off: the filter holds the rest; reopening shows them.
+        key(&mut m, KeyCode::Char(open));
+        key(&mut m, KeyCode::Down);
+        key(&mut m, KeyCode::Char(' '));
+        key(&mut m, KeyCode::Enter);
+        let set = if open == 'b' {
+            &m.filters.bands
+        } else {
+            &m.filters.modes
+        };
+        assert_eq!(set.as_ref().map(BTreeSet::len), Some(count - 1));
+        key(&mut m, KeyCode::Char(open));
+        assert!(dialog(&m)[2].contains("[-] All"));
+        // Down stops at the last value.
+        for _ in 0..count + 5 {
+            key(&mut m, KeyCode::Down);
+        }
+        assert!(matches!(m.editor, Editor::Select { cursor, .. } if cursor == count));
+        key(&mut m, KeyCode::Esc);
+        key(&mut m, KeyCode::Char('c'));
+    }
 }

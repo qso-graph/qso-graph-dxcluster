@@ -1509,6 +1509,19 @@
       ],
       "vectors": []
     },
+    "QGDXC-TUI-0044": {
+      "tests": [
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/tui/tests.rs",
+          "name": "band_and_mode_dialogs_lead_with_all"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/tui/tests.rs",
+          "name": "synthetic_keys_edit_transactionally_and_quit_every_mode"
+        }
+      ],
+      "vectors": []
+    },
     "QGDXC-TUI-0050": {
       "tests": [
         {
