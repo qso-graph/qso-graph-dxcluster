@@ -10,7 +10,7 @@ use std::{
 pub const DEFAULT_KEEP: usize = 100;
 pub const MIN_KEEP: usize = 10;
 pub const MAX_KEEP: usize = 10_000;
-// QGDXC-TUI-0020: ADIF 3.1.7 Band limits, converted exactly from MHz to Hz.
+// QGDXC-TUI-0020: ADIF 3.1.8 Band limits, converted exactly from MHz to Hz.
 pub const BANDS: &[(&str, u64, u64)] = &[
     ("2190m", 135700, 137800),
     ("630m", 472000, 479000),
@@ -47,9 +47,9 @@ pub const BANDS: &[(&str, u64, u64)] = &[
     ("submm", 300000000000, 7500000000000),
 ];
 pub const MODES: &[&str] = &[
-    "CW", "SSB", "AM", "FM", "FT8", "FT4", "RTTY", "other", "unknown",
+    "CW", "SSB", "AM", "FM", "FT8", "FT4", "RTTY", "JTTY", "other", "unknown",
 ];
-/// Every ADIF 3.1.7 Mode and Submode name that is a single word (import-only names
+/// Every ADIF 3.1.8 Mode and Submode name that is a single word (import-only names
 /// excluded). A spot's mode is one of these words in its comment, never its frequency.
 const RECOGNIZED: &[&str] = &[
     "8PSK1000",
@@ -149,6 +149,7 @@ const RECOGNIZED: &[&str] = &[
     "JT9G",
     "JT9H",
     "JTMS",
+    "JTTY",
     "LSB",
     "M17",
     "MFSK",

@@ -693,13 +693,18 @@ fn spot_row(
     now: Duration,
 ) {
     let a = m.appearance;
-    let glow = a.highlight(now.saturating_sub(spot.born).as_millis());
+    let human = spot.event.get("spot_kind") == Some("human");
+    // QGDXC-TUI-0073: only human spots glow; a skimmer feed would keep the list flashing.
+    let glow = if human {
+        a.highlight(now.saturating_sub(spot.born).as_millis())
+    } else {
+        ratatui::style::Style::default()
+    };
     for x in 1..w - 1 {
         if let Some(cell) = frame.buffer_mut().cell_mut((x, y)) {
             cell.set_style(glow);
         }
     }
-    let human = spot.event.get("spot_kind") == Some("human");
     let mut row = Row::new(frame, 1, y, w - 2);
     row.ui(if human { "▎" } else { " " }, a.style(Role::Accent));
     let time = spot

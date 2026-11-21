@@ -381,7 +381,6 @@ fn configuration_validates_all_sources_before_io() {
         );
     }
     for values in [
-        vec![],
         vec!["--node", "example.invalid:1"],
         vec!["--replay", "one", "--node", "example.invalid:1"],
         vec![
@@ -684,7 +683,7 @@ fn every_band_edge_and_original_mode_precedence() {
     }
     for reported in [
         "CW", "SSB", "USB", "LSB", "AM", "FM", "FT8", "FT4", "RTTY", "PSK31", "PSK63", "JT65",
-        "JS8", "MSK144", "Q65", "SSTV",
+        "JS8", "MSK144", "Q65", "SSTV", "JTTY",
     ] {
         let event = spot("Q1ABC", 1, &reported.to_lowercase());
         assert_eq!(
@@ -1369,7 +1368,9 @@ fn replay_configuration_rejects_stalled_fifo_before_open() {
 fn filters_accept_exact_kind_and_listed_other_unknown_mode_rows() {
     // QGDXC-TUI-0040: assert row identities, including rejected rows.
     let mut m = Model::new(args(&["one"]), DEFAULT_KEEP, DEFAULT_KEEP);
-    let modes = ["CW", "SSB", "AM", "FM", "FT8", "FT4", "RTTY", "PSK31", ""];
+    let modes = [
+        "CW", "SSB", "AM", "FM", "FT8", "FT4", "RTTY", "JTTY", "PSK31", "",
+    ];
     for (kind, comment) in ["human", "skimmer"]
         .into_iter()
         .flat_map(|k| modes.map(|m| (k, m)))
@@ -1379,19 +1380,19 @@ fn filters_accept_exact_kind_and_listed_other_unknown_mode_rows() {
         m.receive(0, e, Duration::ZERO);
     }
     let ids = |m: &Model| m.matching().iter().map(|s| s.id).collect::<BTreeSet<_>>();
-    assert_eq!(ids(&m), (1..=18).collect()); // inactive mode, kind all
-    for (kind, offset) in [(1, 0), (2, 9), (0, 0)] {
+    assert_eq!(ids(&m), (1..=20).collect()); // inactive mode, kind all
+    for (kind, offset) in [(1, 0), (2, 10), (0, 0)] {
         m.filters.kind = kind;
         let all: BTreeSet<_> = match kind {
-            1 => (1..=9).collect(),
-            2 => (10..=18).collect(),
-            _ => (1..=18).collect(),
+            1 => (1..=10).collect(),
+            2 => (11..=20).collect(),
+            _ => (1..=20).collect(),
         };
         assert_eq!(ids(&m), all);
         for (i, group) in MODES.iter().enumerate() {
             m.filters.modes = Some([(*group).to_owned()].into());
             let expected = if kind == 0 {
-                [i as u64 + 1, i as u64 + 10].into()
+                [i as u64 + 1, i as u64 + 11].into()
             } else {
                 [i as u64 + 1 + offset].into()
             };
@@ -1405,7 +1406,7 @@ fn filters_accept_exact_kind_and_listed_other_unknown_mode_rows() {
     m.filters.bands = Some(BTreeSet::new());
     assert!(ids(&m).is_empty());
     m.filters.bands = None;
-    assert_eq!(ids(&m).len(), 18);
+    assert_eq!(ids(&m).len(), 20);
 }
 
 #[test]
@@ -1972,4 +1973,235 @@ fn scrolling_down_holds_the_view_and_home_resumes() {
     // At the newest spot, Up neither pauses nor moves.
     key(&mut m, KeyCode::Up);
     assert!(!m.paused);
+}
+
+fn sources_file(name: &str, text: &str) -> std::path::PathBuf {
+    let dir = std::env::temp_dir().join(format!("qg-dxc-tui-{}-{name}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("sources.json");
+    std::fs::write(&path, text).unwrap();
+    path
+}
+const SAVED: &str = r#"{"version":1,"call":"Q1ABC","sources":[
+  {"name":"Home node","node":"dx.example.invalid:7300","selected":true},
+  {"name":"Home node and more","node":"dx2.example.invalid:7300"},
+  {"name":"RBN CW","node":"rbn.example.invalid:7000","profile":"rbn","selected":true}
+]}"#;
+#[test]
+fn sources_option_rules_and_chosen_sources_run_as_nodes() {
+    // QGDXC-TUI-0006 QGDXC-TUI-0008
+    let path = sources_file("options", SAVED);
+    let file = path.to_str().unwrap();
+    let mut options = Options::parse(&args(&["--sources", file, "--keep-human", "50"])).unwrap();
+    assert!(options.sources.is_empty() && options.labels.is_empty());
+    assert_eq!(options.keep_human, 50);
+    assert_eq!(options.saved.as_ref().unwrap().entries.len(), 3);
+    options.choose(&[0, 1, 2]);
+    assert_eq!(options.labels, ["Home node", "Home node and mo", "RBN CW"]);
+    let hosts: Vec<_> = options
+        .sources
+        .iter()
+        .map(|s| match s {
+            Source::Node(c) => (
+                c.host.clone(),
+                c.call.clone(),
+                c.profile,
+                c.retain_third_party_data,
+            ),
+            Source::Replay(_) => panic!("replay"),
+        })
+        .collect();
+    assert_eq!(
+        hosts[2],
+        (
+            "rbn.example.invalid".into(),
+            "Q1ABC".into(),
+            Profile::Rbn,
+            false
+        )
+    );
+    assert_eq!(hosts[0].2, Profile::Auto);
+    options.choose(&[2]);
+    assert_eq!(options.labels, ["RBN CW"]);
+    for (values, expected) in [
+        (
+            vec!["--sources", file, "--node", "example.invalid:1"],
+            "--sources cannot be combined",
+        ),
+        (
+            vec!["--sources", file, "--replay", "Cargo.toml"],
+            "--sources cannot be combined",
+        ),
+        (
+            vec!["--sources", file, "--call", "Q1ABC"],
+            "--call requires --node",
+        ),
+        (
+            vec!["--sources", file, "--sources", file],
+            "unexpected argument --sources",
+        ),
+        (
+            vec!["--sources", "/nonexistent/qg-dxc/sources.json"],
+            "sources file /nonexistent/qg-dxc/sources.json",
+        ),
+    ] {
+        let error = Options::parse(&args(&values)).err().unwrap();
+        assert!(error.contains(expected), "{expected:?} not in {error:?}");
+    }
+    let bad = sources_file(
+        "bad",
+        &SAVED.replace("rbn.example.invalid:7000", "rbn.example.invalid:0"),
+    );
+    let error = Options::parse(&args(&["--sources", bad.to_str().unwrap()]))
+        .err()
+        .unwrap();
+    assert!(
+        error.contains("sources[2].node: port must be 1 to 65535"),
+        "{error}"
+    );
+}
+fn picker_for(count: usize, selected: &[usize]) -> picker::Picker {
+    let sources: Vec<_> = (0..count)
+        .map(|i| {
+            format!(
+                r#"{{"name":"Node {i}","node":"n{i}.example.invalid:7300","selected":{}}}"#,
+                selected.contains(&i)
+            )
+        })
+        .collect();
+    let text = format!(
+        r#"{{"version":1,"call":"Q1ABC","sources":[{}]}}"#,
+        sources.join(",")
+    );
+    picker::Picker::new(&qso_graph_dxcluster_cli::saved::parse(text.as_bytes()).unwrap())
+}
+#[test]
+fn sources_screen_chooses_starts_and_quits() {
+    // QGDXC-TUI-0008
+    use picker::Outcome;
+    let mut p = picker_for(10, &[3, 1]);
+    assert_eq!(p.key(Input::Enter), Outcome::Start(vec![1, 3]));
+    for quit in [Input::Char('q'), Input::Escape, Input::CtrlC] {
+        assert_eq!(picker_for(2, &[0]).key(quit), Outcome::Quit);
+    }
+    let mut p = picker_for(10, &[]);
+    assert_eq!(p.key(Input::Enter), Outcome::Stay);
+    assert_eq!(p.message, Some("Choose 1 to 8 sources"));
+    p.key(Input::Up);
+    assert_eq!(p.cursor, 0);
+    assert_eq!(p.message, None);
+    for _ in 0..9 {
+        p.key(Input::Char(' '));
+        p.key(Input::Down);
+    }
+    assert_eq!(p.cursor, 9);
+    p.key(Input::Down);
+    assert_eq!(p.cursor, 9);
+    // Nine chosen: refused, nothing starts.
+    assert_eq!(p.key(Input::Enter), Outcome::Stay);
+    assert_eq!(p.message, Some("Choose 1 to 8 sources"));
+    p.key(Input::Up);
+    p.key(Input::Char(' '));
+    assert_eq!(
+        p.key(Input::Enter),
+        Outcome::Start(vec![0, 1, 2, 3, 4, 5, 6, 7])
+    );
+    // Other keys change nothing.
+    let mut p = picker_for(2, &[]);
+    for other in [Input::Char('x'), Input::Tab, Input::PageDown, Input::Home] {
+        assert_eq!(p.key(other), Outcome::Stay);
+    }
+    assert_eq!(p.chosen, [false, false]);
+}
+fn picker_grid(p: &picker::Picker, width: u16, height: u16) -> Buffer {
+    let mut terminal = Terminal::new(TestBackend::new(width, height)).unwrap();
+    let a = super::theme::Appearance {
+        theme: super::theme::Theme::Mono,
+        depth: super::theme::Depth::detect("", ""),
+    };
+    present_picker(&mut terminal, p, a).unwrap();
+    terminal.backend().buffer().clone()
+}
+#[test]
+fn sources_screen_lists_every_source_and_fits_small_windows() {
+    // QGDXC-TUI-0008 QGDXC-TUI-0054
+    let mut p = picker_for(30, &[0]);
+    let grid = picker_grid(&p, 80, 24);
+    assert!(
+        text(&grid, 0).contains(" QG DX Cluster  Sources"),
+        "{:?}",
+        text(&grid, 0)
+    );
+    assert!(text(&grid, 1).contains("1 of 30 chosen; up to 8 run at once"));
+    assert!(text(&grid, 4).starts_with("> [x] Node 0"));
+    assert!(
+        text(&grid, 4).contains("n0.example.invalid:7300") && text(&grid, 4).contains("auto"),
+        "{:?}",
+        text(&grid, 4)
+    );
+    assert!(text(&grid, 5).starts_with("  [ ] Node 1"));
+    assert!(text(&grid, 23).contains("Space choose  Enter start  q quit"));
+    // The list scrolls to keep the cursor in view.
+    for _ in 0..29 {
+        p.key(Input::Down);
+    }
+    let grid = picker_grid(&p, 80, 24);
+    assert!((4..21).any(|y| text(&grid, y).starts_with("> [ ] Node 29")));
+    p.key(Input::Enter);
+    p.key(Input::Enter);
+    let grid = picker_grid(&picker_for(9, &[0, 1, 2, 3, 4, 5, 6, 7, 8]), 80, 24);
+    assert!(!text(&grid, 21).contains("Choose"));
+    let mut nine = picker_for(9, &[0, 1, 2, 3, 4, 5, 6, 7, 8]);
+    nine.key(Input::Enter);
+    assert!(text(&picker_grid(&nine, 80, 24), 21).contains("Choose 1 to 8 sources"));
+    for (w, h) in [(79, 24), (80, 23)] {
+        let grid = picker_grid(&p, w, h);
+        assert!(text(&grid, 0).starts_with("Enlarge window to at least 80 columns and 24 rows."));
+        assert!((1..h).all(|y| text(&grid, y).trim().is_empty()));
+    }
+}
+#[test]
+fn only_new_human_spots_are_highlighted() {
+    // QGDXC-TUI-0073
+    use ratatui::style::{Color, Modifier};
+    for theme in [super::theme::Theme::Color, super::theme::Theme::Mono] {
+        let mut m = Model::new(args(&["one"]), DEFAULT_KEEP, DEFAULT_KEEP);
+        m.appearance.theme = theme;
+        m.receive(0, spot("Q1ABC", 14_074_000, "CW"), Duration::from_secs(10));
+        for kind in [Some("skimmer"), None, Some("beacon")] {
+            let mut e = spot("Q2ABC", 14_025_000, "CW");
+            match kind {
+                Some(kind) => e.set("spot_kind", kind),
+                None => {
+                    e.fields.remove("spot_kind");
+                }
+            }
+            m.receive(0, e, Duration::from_secs(10));
+        }
+        let mut terminal = Terminal::new(TestBackend::new(120, 36)).unwrap();
+        present(&mut terminal, &m, Duration::from_millis(10_500)).unwrap();
+        let b = terminal.backend().buffer().clone();
+        let row = |call: &str| {
+            (0..36)
+                .filter(|&y| text(&b, y).contains(call))
+                .collect::<Vec<_>>()
+        };
+        let lit = |y: u16| {
+            let cell = &b[(60, y)];
+            cell.bg != Color::Reset || cell.modifier.contains(Modifier::REVERSED)
+        };
+        assert_eq!(row("Q1ABC").len(), 1, "{theme:?}");
+        assert!(
+            lit(row("Q1ABC")[0]),
+            "human spot not highlighted, {theme:?}"
+        );
+        let others = row("Q2ABC");
+        assert_eq!(others.len(), 3, "{theme:?}");
+        for y in others {
+            assert!(
+                !lit(y),
+                "skimmer or unclassified spot highlighted, {theme:?}"
+            );
+        }
+    }
 }

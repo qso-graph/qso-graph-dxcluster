@@ -3,6 +3,7 @@
 #![forbid(unsafe_code)]
 pub mod bounded;
 pub mod recording;
+pub mod saved;
 
 #[cfg(all(test, target_os = "linux"))]
 mod test_support;

@@ -920,7 +920,7 @@ fn rust_fixture_text(source: &str) -> String {
         })
         .collect()
 }
-/// ADIF 3.1.7 Mode/Submode names shaped like callsigns, exempted only as quoted
+/// ADIF 3.1.8 Mode/Submode names shaped like callsigns, exempted only as quoted
 /// names in the TUI's recognized-mode list. Written in pieces so this file holds none.
 const ADIF_CALL_SHAPED_MODES: &[&[&str]] = &[
     &["8", "PSK", "1000", "F"],
@@ -1204,7 +1204,7 @@ pub fn vet() -> Result<(), String> {
 }
 pub fn seed_fuzz() -> Result<(), String> {
     for target in [
-        "values", "dx_de", "cc11", "other", "rbn", "framer", "telnet", "session",
+        "values", "dx_de", "cc11", "other", "rbn", "framer", "telnet", "session", "sources",
     ] {
         let dir = Path::new("fuzz/corpus").join(target);
         fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
@@ -1215,6 +1215,7 @@ pub fn seed_fuzz() -> Result<(), String> {
             "telnet" => b"\xff\xfa\x01\xff\xff\xff\xf0\r\n".as_slice(),
             "session" => b"\x04\x00\x01login:Q1ABC de RELAY 1-Nov-2026 18:32Z >\x03\x04".as_slice(),
             "rbn" => b"DX de Q9XYZ-#: 14074 Q2ABC FT8 -12 dB AA00 CQ 1832Z\n".as_slice(),
+            "sources" => br#"{"version":1,"call":"Q1ABC","sources":[{"name":"A","node":"dx.example.net:7300","profile":"rbn","selected":true}]}"#.as_slice(),
             _ => b"DX de Q1ABC: 14025 Q2ABC CQ 1832Z\r\n".as_slice(),
         };
         fs::write(dir.join("synthetic"), seed).map_err(|e| e.to_string())?;

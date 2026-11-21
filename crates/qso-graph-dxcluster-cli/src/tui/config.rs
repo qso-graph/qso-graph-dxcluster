@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 use super::model::{DEFAULT_KEEP, MAX_KEEP, MIN_KEEP, clip, sanitize};
 use super::theme::Theme;
-use qso_graph_dxcluster::{Config, Profile};
-use std::{collections::BTreeSet, net::Ipv6Addr, path::Path};
+use qso_graph_dxcluster::Config;
+use qso_graph_dxcluster_cli::saved::{self, NodeError, Saved};
+use std::{collections::BTreeSet, path::Path};
 
 #[derive(Debug, Clone)]
 pub enum Source {
@@ -15,6 +16,8 @@ pub struct Options {
     pub keep_skimmer: usize,
     pub sources: Vec<Source>,
     pub labels: Vec<String>,
+    /// The operator's sources file, when no source was given (QGDXC-TUI-0006).
+    pub saved: Option<Saved>,
 }
 impl Options {
     pub fn parse(args: &[String]) -> Result<Self, String> {
@@ -24,6 +27,7 @@ impl Options {
         let mut nodes = vec![];
         let mut replays = vec![];
         let mut call = None;
+        let mut sources_file = None;
         let mut i = 0;
         while i < args.len() {
             let flag = &args[i];
@@ -41,6 +45,7 @@ impl Options {
                 "--node" => nodes.push(value.clone()),
                 "--replay" => replays.push(value.clone()),
                 "--call" if call.is_none() => call = Some(value.clone()),
+                "--sources" if sources_file.is_none() => sources_file = Some(value.clone()),
                 "--keep-human" if keep_human.is_none() => {
                     keep_human = Some(keep(value, flag)?);
                 }
@@ -51,8 +56,20 @@ impl Options {
             }
             i += 2;
         }
-        if nodes.len() + replays.len() == 0 || nodes.len() + replays.len() > 8 {
-            return Err("configuration: --node/--replay requires 1–8 sources".into());
+        let saved = if nodes.is_empty() && replays.is_empty() {
+            if call.is_some() {
+                return Err("configuration: --call requires --node".into());
+            }
+            Some(read_saved(sources_file.as_deref())?)
+        } else if sources_file.is_some() {
+            return Err(
+                "configuration: --sources cannot be combined with --node or --replay".into(),
+            );
+        } else {
+            None
+        };
+        if saved.is_none() && nodes.len() + replays.len() > 8 {
+            return Err("configuration: --node/--replay requires 1 to 8 sources".into());
         }
         if !nodes.is_empty() && !replays.is_empty() {
             return Err("configuration: --node cannot be combined with --replay".into());
@@ -65,56 +82,17 @@ impl Options {
             for arg in nodes {
                 let error = |why: &str| format!("configuration: --node {arg}: {why}");
                 let (endpoint, profile) = arg.split_once('/').unwrap_or((&arg, "auto"));
-                let profile = Profile::parse(profile)
-                    .filter(|_| profile != "unknown")
-                    .ok_or_else(|| error("unsupported profile"))?;
-                let (host, port) = if let Some(rest) = endpoint.strip_prefix('[') {
-                    let (host, port) = rest
-                        .split_once("]:")
-                        .ok_or_else(|| error("expected [address]:port"))?;
-                    host.parse::<Ipv6Addr>()
-                        .map_err(|_| error("invalid IPv6 literal"))?;
-                    (host, port)
-                } else {
-                    let (host, port) = endpoint
-                        .split_once(':')
-                        .ok_or_else(|| error("expected host:port"))?;
-                    if host.contains([':', '[', ']']) {
-                        return Err(error("IPv6 requires brackets"));
-                    }
-                    let name = host.strip_suffix('.').unwrap_or(host);
-                    if name.is_empty()
-                        || name.split('.').any(|label| {
-                            label.is_empty()
-                                || label.len() > 63
-                                || label.starts_with('-')
-                                || label.ends_with('-')
-                                || !label
-                                    .bytes()
-                                    .all(|b| b.is_ascii_alphanumeric() || b == b'-')
-                        })
-                    {
-                        return Err(error("invalid host"));
-                    }
-                    (host, port)
-                };
-                if port.is_empty() || !port.bytes().all(|b| b.is_ascii_digit()) {
-                    return Err(error("port must be 1–65535"));
-                }
-                let port = port
-                    .parse::<u16>()
-                    .ok()
-                    .filter(|p| *p != 0)
-                    .ok_or_else(|| error("port must be 1–65535"))?;
-                let mut config = Config::new(host.into(), port, call.clone(), profile);
-                config.retain_third_party_data = false;
-                config
-                    .validate()
-                    .map_err(|e| format!("{}; --call {call}", error(e)))?;
-                if !endpoints.insert((host.to_ascii_lowercase(), port)) {
+                let profile =
+                    saved::profile(profile).ok_or_else(|| error("unsupported profile"))?;
+                let (config, host) =
+                    saved::node(endpoint, profile, &call).map_err(|e| match e {
+                        NodeError::Endpoint(why) => error(why),
+                        NodeError::Config(why) => format!("{}; --call {call}", error(&why)),
+                    })?;
+                if !endpoints.insert((host.to_ascii_lowercase(), config.port)) {
                     return Err(error("duplicate endpoint"));
                 }
-                bases.push(host.to_owned());
+                bases.push(host);
                 sources.push(Source::Node(config));
             }
         } else {
@@ -151,8 +129,33 @@ impl Options {
             ),
             sources,
             labels: labels(&bases),
+            saved,
         })
     }
+}
+impl Options {
+    /// Run the chosen saved sources, in file order, as the equivalent `--node`
+    /// arguments would; each label's base is the source's name (QGDXC-TUI-0008).
+    pub fn choose(&mut self, chosen: &[usize]) {
+        let Some(saved) = &self.saved else { return };
+        let entries: Vec<_> = chosen
+            .iter()
+            .filter_map(|&i| saved.entries.get(i))
+            .collect();
+        self.sources = entries
+            .iter()
+            .map(|e| Source::Node(e.config.clone()))
+            .collect();
+        self.labels = labels(&entries.iter().map(|e| e.name.clone()).collect::<Vec<_>>());
+    }
+}
+fn read_saved(explicit: Option<&str>) -> Result<Saved, String> {
+    let path = match explicit {
+        Some(path) => path.into(),
+        None => saved::default_path(cfg!(windows), |name| std::env::var_os(name))
+            .map_err(|e| format!("configuration: {e}"))?,
+    };
+    saved::read(&path).map_err(|e| format!("configuration: sources file {}: {e}", path.display()))
 }
 fn keep(value: &str, flag: &str) -> Result<usize, String> {
     value
