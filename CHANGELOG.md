@@ -1,6 +1,16 @@
 <!-- SPDX-License-Identifier: GPL-3.0-or-later -->
 # Changelog
 
+## [0.3.0]
+
+### Features
+
+- tui: world map of spot paths, toggled with M
+
+### Documentation
+
+- spec: spot map, country file and header version
+
 ## [0.2.0]
 
 ### Features

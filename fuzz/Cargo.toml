@@ -10,8 +10,8 @@ cargo-fuzz = true
 [workspace]
 [dependencies]
 libfuzzer-sys = "=0.4.10"
-qso-graph-dxcluster = { path = "../crates/qso-graph-dxcluster", version = "=0.2.0" }
-qso-graph-dxcluster-cli = { path = "../crates/qso-graph-dxcluster-cli", version = "=0.2.0" }
+qso-graph-dxcluster = { path = "../crates/qso-graph-dxcluster", version = "=0.3.0" }
+qso-graph-dxcluster-cli = { path = "../crates/qso-graph-dxcluster-cli", version = "=0.3.0" }
 
 [[bin]]
 name = "values"

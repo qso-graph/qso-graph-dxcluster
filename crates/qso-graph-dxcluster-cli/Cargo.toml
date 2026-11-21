@@ -16,7 +16,7 @@ include = ["src/**/*.rs", "README.md", "LICENSE", "NOTICE.md"]
 name = "qg-dxc"
 path = "src/main.rs"
 [dependencies]
-qso-graph-dxcluster = { path = "../qso-graph-dxcluster", version = "=0.2.0" }
+qso-graph-dxcluster = { path = "../qso-graph-dxcluster", version = "=0.3.0" }
 serde_json = "=1.0.145"
 # Already in the graph through serde_json; used without derive to refuse duplicate JSON members.
 serde_core = { version = "=1.0.229", default-features = false, features = ["std"] }
