@@ -36,7 +36,7 @@ impl Theme {
         Self::ALL[(self as usize + 1) % Self::ALL.len()]
     }
 }
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Role {
     Background,
     Text,

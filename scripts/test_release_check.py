@@ -278,7 +278,7 @@ class Bundles(unittest.TestCase):
     def test_exact_cli_only_contents_and_filenames(self):
         for platform in sorted(artifacts.PLATFORMS):
             exe = "qg-dxc.exe" if platform == "windows-x86_64" else "qg-dxc"
-            self.assertEqual(artifacts.expected(platform), {"version.txt", "cli/README.md", "cli/LICENSE", f"cli/{exe}"})
+            self.assertEqual(artifacts.expected(platform), {"version.txt", "cli/README.md", "cli/LICENSE", "cli/NOTICE.md", f"cli/{exe}"})
             with tempfile.TemporaryDirectory() as directory:
                 root = Path(directory)
                 artifacts.archive(platform, self.staged(root, platform), root / "dist")

@@ -922,6 +922,78 @@ fn rust_fixture_text(source: &str) -> String {
 }
 /// ADIF 3.1.8 Mode/Submode names shaped like callsigns, exempted only as quoted
 /// names in the TUI's recognized-mode list. Written in pieces so this file holds none.
+/// The generated country file (scripts/strip-cty.sh).
+const COUNTRY_FILE: &str = "crates/qso-graph-dxcluster-cli/src/country_file.rs";
+/// A cty.dat entity header (name, CQ zone, ITU zone, continent, latitude, longitude,
+/// UTC offset, main prefix, each ending in `:`) with only its main-prefix field
+/// replaced; the name is still checked. Any other line is returned unchanged.
+fn country_header_masked(line: &str) -> std::borrow::Cow<'_, str> {
+    let fields: Vec<&str> = line.split(':').collect();
+    let numeric = |f: &str| f.trim().parse::<f64>().is_ok();
+    let prefix = fields.get(7).map(|f| f.trim().trim_start_matches('*'));
+    if fields.len() == 9
+        && fields[8].is_empty()
+        && fields[1..3]
+            .iter()
+            .all(|f| f.trim().bytes().all(|b| b.is_ascii_digit()))
+        && fields[3].trim().len() == 2
+        && fields[4..7].iter().all(|f| numeric(f))
+        && prefix.is_some_and(|p| {
+            !p.is_empty()
+                && p.bytes()
+                    .all(|b| b.is_ascii_uppercase() || b.is_ascii_digit() || b == b'/')
+        })
+    {
+        std::borrow::Cow::Owned(format!("{}:  PREFIX:", fields[..7].join(":")))
+    } else {
+        std::borrow::Cow::Borrowed(line)
+    }
+}
+/// An indented cty.dat prefix list: comma-separated prefixes made of capitals, digits and
+/// `/`, each with optional `(cq)`, `[itu]`, `<lat/lon>`, `{continent}` or `~offset~`
+/// markers, ending with `,` or `;`. An exact-callsign entry (`=`) is never one.
+fn country_prefix_line(line: &str) -> bool {
+    let Some(body) = line.strip_prefix("    ") else {
+        return false;
+    };
+    let Some(body) = body.strip_suffix(',').or_else(|| body.strip_suffix(';')) else {
+        return false;
+    };
+    !body.is_empty()
+        && body.split(',').all(|token| {
+            let name_end = token.find(['(', '[', '<', '{', '~']).unwrap_or(token.len());
+            let (name, mut marks) = token.split_at(name_end);
+            if name.is_empty()
+                || !name
+                    .bytes()
+                    .all(|b| b.is_ascii_uppercase() || b.is_ascii_digit() || b == b'/')
+            {
+                return false;
+            }
+            while let Some(open) = marks.chars().next() {
+                let close = match open {
+                    '(' => ')',
+                    '[' => ']',
+                    '<' => '>',
+                    '{' => '}',
+                    '~' => '~',
+                    _ => return false,
+                };
+                let Some(end) = marks[1..].find(close) else {
+                    return false;
+                };
+                let inner = &marks[1..=end];
+                if !inner
+                    .bytes()
+                    .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'.' | b'-' | b'/'))
+                {
+                    return false;
+                }
+                marks = &marks[end + 2..];
+            }
+            true
+        })
+}
 const ADIF_CALL_SHAPED_MODES: &[&[&str]] = &[
     &["8", "PSK", "1000", "F"],
     &["8", "PSK", "1200", "F"],
@@ -977,6 +1049,17 @@ const ADIF_CALL_SHAPED_MODES: &[&[&str]] = &[
     &["PSK", "800", "RC", "2"],
 ];
 pub(crate) fn public_file_sanitized(file: &Path, source: &str) -> bool {
+    // The shipped country file's prefix lists are entity prefixes, not identities.
+    // Exact-callsign entries are stripped before shipping; every other line of the
+    // file still gets the full check.
+    if file == Path::new(COUNTRY_FILE) {
+        let rest: String = source
+            .lines()
+            .filter(|l| !country_prefix_line(l))
+            .map(|l| format!("{}\n", country_header_masked(l)))
+            .collect();
+        return public_file_sanitized(Path::new("country_file_without_prefixes.rs"), &rest);
+    }
     if file
         .extension()
         .is_some_and(|e| e == "ndjson" || e == "json")
@@ -1205,6 +1288,7 @@ pub fn vet() -> Result<(), String> {
 pub fn seed_fuzz() -> Result<(), String> {
     for target in [
         "values", "dx_de", "cc11", "other", "rbn", "framer", "telnet", "session", "sources",
+        "prefixes",
     ] {
         let dir = Path::new("fuzz/corpus").join(target);
         fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
@@ -1215,6 +1299,7 @@ pub fn seed_fuzz() -> Result<(), String> {
             "telnet" => b"\xff\xfa\x01\xff\xff\xff\xf0\r\n".as_slice(),
             "session" => b"\x04\x00\x01login:Q1ABC de RELAY 1-Nov-2026 18:32Z >\x03\x04".as_slice(),
             "rbn" => b"DX de Q9XYZ-#: 14074 Q2ABC FT8 -12 dB AA00 CQ 1832Z\n".as_slice(),
+            "prefixes" => b"Qland: 5: 8: NA: 42.50: 71.00: 5.0: Q1:\n    Q1,Q2<10/20>;\nQ1ABC Q2/Q1ABC Q9-#".as_slice(),
             "sources" => br#"{"version":1,"call":"Q1ABC","sources":[{"name":"A","node":"dx.example.net:7300","profile":"rbn","selected":true}]}"#.as_slice(),
             _ => b"DX de Q1ABC: 14025 Q2ABC CQ 1832Z\r\n".as_slice(),
         };
@@ -1226,6 +1311,37 @@ pub fn seed_fuzz() -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn country_file_exemption_covers_only_prefix_lists_and_header_prefixes() {
+        // Planted identities, written in pieces so this file holds none.
+        let call = ["W", "1", "ABC"].concat();
+        let file = Path::new(COUNTRY_FILE);
+        let header = format!("Qland:  5:  8:  NA:  42.50:  71.00:  5.0:  {call}:");
+        let good = format!(
+            "pub const COUNTRY_FILE: &str = r#\"\n{header}\n    {call},Q1(5)[8]<42.5/71.0>{{NA}}~-5.0~;\n\"#;\n"
+        );
+        assert!(
+            public_file_sanitized(file, &good),
+            "prefix list and header prefix are exempt"
+        );
+        for planted in [
+            // An exact-callsign entry is never a prefix list.
+            format!("pub const COUNTRY_FILE: &str = r#\"\n{header}\n    Q1,={call};\n\"#;\n"),
+            // A header whose name carries a callsign is still checked.
+            format!(
+                "pub const COUNTRY_FILE: &str = r#\"\n{call} land:  5:  8:  NA:  42.50:  71.00:  5.0:  Q1:\n    Q1;\n\"#;\n"
+            ),
+            // A comment line in the file is still checked.
+            format!("// generated for {call}\npub const COUNTRY_FILE: &str = r#\"\"#;\n"),
+        ] {
+            assert!(!public_file_sanitized(file, &planted), "{planted}");
+        }
+        // The same prefix list in any other file is not exempt.
+        assert!(!public_file_sanitized(
+            Path::new("crates/qso-graph-dxcluster-cli/src/other.rs"),
+            &good
+        ));
+    }
     #[test]
     fn dep_info_rejects_compiled_external_module_and_symlink() {
         // QGDXC-IO-0001: compile the planted module, without executing it.

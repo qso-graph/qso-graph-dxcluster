@@ -8,6 +8,7 @@ ROOT = Path(__file__).resolve().parent.parent
 COPIES = {
     "crates/qso-graph-dxcluster/LICENSE": "LICENSE",
     "crates/qso-graph-dxcluster-cli/LICENSE": "LICENSE",
+    "crates/qso-graph-dxcluster-cli/NOTICE.md": "NOTICE.md",
 }
 
 

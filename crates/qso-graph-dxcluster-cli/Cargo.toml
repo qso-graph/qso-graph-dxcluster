@@ -11,7 +11,7 @@ readme = "README.md"
 keywords = ["ham-radio", "dx-cluster", "rbn", "terminal", "protocol"]
 categories = ["network-programming", "command-line-utilities"]
 # Conformance vectors and integration tests stay in the repository.
-include = ["src/**/*.rs", "README.md", "LICENSE"]
+include = ["src/**/*.rs", "README.md", "LICENSE", "NOTICE.md"]
 [[bin]]
 name = "qg-dxc"
 path = "src/main.rs"

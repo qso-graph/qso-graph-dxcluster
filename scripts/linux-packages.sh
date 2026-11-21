@@ -33,7 +33,7 @@ trap 'rm -rf "$work"' EXIT
 root="$work/root"
 install -D -m 0755 "$exe" "$root/usr/bin/qg-dxc"
 install -D -m 0644 "$here/crates/qso-graph-dxcluster-cli/README.md" "$root/usr/share/doc/$name/README.md"
-for f in LICENSE; do install -D -m 0644 "$here/$f" "$root/usr/share/doc/$name/$f"; done
+for f in LICENSE NOTICE.md; do install -D -m 0644 "$here/$f" "$root/usr/share/doc/$name/$f"; done
 
 # .deb
 deb="$work/deb"

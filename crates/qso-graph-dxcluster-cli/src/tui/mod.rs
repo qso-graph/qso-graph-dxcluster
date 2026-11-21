@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 mod config;
+mod geo;
 mod model;
 mod picker;
 mod render;
