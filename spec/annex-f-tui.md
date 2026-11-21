@@ -71,7 +71,7 @@ interface starts. The project ships no such file and no node list
 
 | ID | Requirement | Verify |
 |---|---|---|
-| `QGDXC-TUI-0020` | Band MUST be derived from `frequency_hz` using the ADIF 3.1.7 `Band` enumeration's lower and upper limits, both inclusive. A frequency outside every ADIF band MUST be band `other`. Band MUST NOT be read from the comment. | Test |
+| `QGDXC-TUI-0020` | Band MUST be derived from `frequency_hz` using the ADIF 3.1.8 `Band` enumeration's lower and upper limits, both inclusive. A frequency outside every ADIF band MUST be band `other`. Band MUST NOT be read from the comment. | Test |
 
 The ADIF table is used because it is the logging standard the rest of QSO Graph
 follows. Band edges are not a licence statement; ITU regions and national band
@@ -81,7 +81,7 @@ plans differ, and the interface makes no claim about where a station may transmi
 
 | ID | Requirement | Verify |
 |---|---|---|
-| `QGDXC-TUI-0030` | Mode MUST be, in order: the event's structured `mode` field, when present; otherwise the first comment word, compared ASCII case-insensitively and delimited by spaces or the comment's ends, that is an ADIF 3.1.7 Mode or Submode name consisting of a single word, excluding import-only names; otherwise `unknown`. Mode MUST NOT be inferred from frequency. `USB` and `LSB` MUST display and filter as `SSB`. | Test |
+| `QGDXC-TUI-0030` | Mode MUST be, in order: the event's structured `mode` field, when present; otherwise the first comment word, compared ASCII case-insensitively and delimited by spaces or the comment's ends, that is an ADIF 3.1.8 Mode or Submode name consisting of a single word, excluding import-only names; otherwise `unknown`. Mode MUST NOT be inferred from frequency. `USB` and `LSB` MUST display and filter as `SSB`. | Test |
 | `QGDXC-TUI-0031` | Mode MUST NOT be inferred from frequency. | Inspection |
 
 Frequency-segment inference is excluded on purpose: segment conventions differ by
@@ -99,7 +99,7 @@ are expected to change with use. The guarantees in the paragraph above are not.
 
 | ID | Requirement | Verify |
 |---|---|---|
-| `QGDXC-TUI-0040` | The interface MUST provide four filters, all off at start, combined with AND: **band** (any subset of the bands of F.3, including `other`); **mode** (any subset of `CW`, `SSB`, `AM`, `FM`, `FT8`, `FT4`, `RTTY`, `other`, `unknown`, where `other` is every recognized F.4 mode not listed); **callsign** (F.5.1); **kind** (`all`, `human`, or `skimmer`, from `spot_kind`). An inactive filter MUST accept every spot. An active band or mode filter MUST accept exactly the selected values; an empty selected set MUST accept no spots. | Test |
+| `QGDXC-TUI-0040` | The interface MUST provide four filters, all off at start, combined with AND: **band** (any subset of the bands of F.3, including `other`); **mode** (any subset of `CW`, `SSB`, `AM`, `FM`, `FT8`, `FT4`, `RTTY`, `JTTY`, `other`, `unknown`, where `other` is every recognized F.4 mode not listed); **callsign** (F.5.1); **kind** (`all`, `human`, or `skimmer`, from `spot_kind`). An inactive filter MUST accept every spot. An active band or mode filter MUST accept exactly the selected values; an empty selected set MUST accept no spots. | Test |
 | `QGDXC-TUI-0041` | **Callsign** MUST accept up to 16 comma-separated patterns, each 1–20 bytes of ASCII letters, digits, `/`, `-`, `*` (any run, including empty), and `?` (one character). Matching MUST be ASCII case-insensitive against the whole DX call. Matching MUST run in time linear in pattern length times call length; regular expressions MUST NOT be accepted. A callsign filter MUST accept a spot when at least one pattern matches its whole DX call. An empty entry MUST disable the callsign filter. Nonempty entries MUST contain 1–16 nonempty patterns; empty components, excess patterns, and invalid characters or lengths MUST reject the entire entry with a message and leave the previous filter in force. The callsign editor MUST retain at most 335 input bytes; input exceeding that bound MUST reject the edit without applying a truncated prefix, leaving the previous filter in force. The interface MUST NOT enable bracketed paste, so pasted text arrives as individual key events and no input decoder buffers an unbounded paste. | Test |
 | `QGDXC-TUI-0042` | Each source's spots MUST be hideable by toggling that source, independent of the four filters. A hidden source keeps its session and keeps counting spots. | Test |
 | `QGDXC-TUI-0043` | Whenever the normal interface is visible, one bounded line MUST identify each active filter. Band, mode, and callsign filters MAY be summarized by selected-value or pattern counts; their complete values MUST be available in the corresponding editor or dialog. The line MUST be clipped to the terminal width. The clear key defined by `QGDXC-TUI-0051` MUST disable all four filters and unhide every source. | Test |

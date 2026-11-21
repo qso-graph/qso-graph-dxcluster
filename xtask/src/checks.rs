@@ -920,7 +920,7 @@ fn rust_fixture_text(source: &str) -> String {
         })
         .collect()
 }
-/// ADIF 3.1.7 Mode/Submode names shaped like callsigns, exempted only as quoted
+/// ADIF 3.1.8 Mode/Submode names shaped like callsigns, exempted only as quoted
 /// names in the TUI's recognized-mode list. Written in pieces so this file holds none.
 const ADIF_CALL_SHAPED_MODES: &[&[&str]] = &[
     &["8", "PSK", "1000", "F"],

@@ -683,7 +683,7 @@ fn every_band_edge_and_original_mode_precedence() {
     }
     for reported in [
         "CW", "SSB", "USB", "LSB", "AM", "FM", "FT8", "FT4", "RTTY", "PSK31", "PSK63", "JT65",
-        "JS8", "MSK144", "Q65", "SSTV",
+        "JS8", "MSK144", "Q65", "SSTV", "JTTY",
     ] {
         let event = spot("Q1ABC", 1, &reported.to_lowercase());
         assert_eq!(
@@ -1368,7 +1368,9 @@ fn replay_configuration_rejects_stalled_fifo_before_open() {
 fn filters_accept_exact_kind_and_listed_other_unknown_mode_rows() {
     // QGDXC-TUI-0040: assert row identities, including rejected rows.
     let mut m = Model::new(args(&["one"]), DEFAULT_KEEP, DEFAULT_KEEP);
-    let modes = ["CW", "SSB", "AM", "FM", "FT8", "FT4", "RTTY", "PSK31", ""];
+    let modes = [
+        "CW", "SSB", "AM", "FM", "FT8", "FT4", "RTTY", "JTTY", "PSK31", "",
+    ];
     for (kind, comment) in ["human", "skimmer"]
         .into_iter()
         .flat_map(|k| modes.map(|m| (k, m)))
@@ -1378,19 +1380,19 @@ fn filters_accept_exact_kind_and_listed_other_unknown_mode_rows() {
         m.receive(0, e, Duration::ZERO);
     }
     let ids = |m: &Model| m.matching().iter().map(|s| s.id).collect::<BTreeSet<_>>();
-    assert_eq!(ids(&m), (1..=18).collect()); // inactive mode, kind all
-    for (kind, offset) in [(1, 0), (2, 9), (0, 0)] {
+    assert_eq!(ids(&m), (1..=20).collect()); // inactive mode, kind all
+    for (kind, offset) in [(1, 0), (2, 10), (0, 0)] {
         m.filters.kind = kind;
         let all: BTreeSet<_> = match kind {
-            1 => (1..=9).collect(),
-            2 => (10..=18).collect(),
-            _ => (1..=18).collect(),
+            1 => (1..=10).collect(),
+            2 => (11..=20).collect(),
+            _ => (1..=20).collect(),
         };
         assert_eq!(ids(&m), all);
         for (i, group) in MODES.iter().enumerate() {
             m.filters.modes = Some([(*group).to_owned()].into());
             let expected = if kind == 0 {
-                [i as u64 + 1, i as u64 + 10].into()
+                [i as u64 + 1, i as u64 + 11].into()
             } else {
                 [i as u64 + 1 + offset].into()
             };
@@ -1404,7 +1406,7 @@ fn filters_accept_exact_kind_and_listed_other_unknown_mode_rows() {
     m.filters.bands = Some(BTreeSet::new());
     assert!(ids(&m).is_empty());
     m.filters.bands = None;
-    assert_eq!(ids(&m).len(), 18);
+    assert_eq!(ids(&m).len(), 20);
 }
 
 #[test]
