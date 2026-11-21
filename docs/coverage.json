@@ -1338,6 +1338,10 @@
         {
           "file": "crates/qso-graph-dxcluster-cli/src/tui/tests.rs",
           "name": "every_band_edge_and_original_mode_precedence"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/tui/tests.rs",
+          "name": "wide_frequency_fits_ten_gigahertz"
         }
       ],
       "vectors": []
@@ -1417,6 +1421,19 @@
       ],
       "vectors": []
     },
+    "QGDXC-TUI-0015": {
+      "tests": [
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/tui/tests.rs",
+          "name": "duplicate_reports_collapse_to_the_first_shown_copy"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/tui/tests.rs",
+          "name": "collapsed_rows_count_copies_and_d_is_listed"
+        }
+      ],
+      "vectors": []
+    },
     "QGDXC-TUI-0020": {
       "tests": [
         {
@@ -1492,6 +1509,28 @@
         {
           "file": "crates/qso-graph-dxcluster-cli/src/tui/tests.rs",
           "name": "synthetic_keys_edit_transactionally_and_quit_every_mode"
+        }
+      ],
+      "vectors": []
+    },
+    "QGDXC-TUI-0044": {
+      "tests": [
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/tui/tests.rs",
+          "name": "band_and_mode_dialogs_lead_with_all"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/tui/tests.rs",
+          "name": "synthetic_keys_edit_transactionally_and_quit_every_mode"
+        }
+      ],
+      "vectors": []
+    },
+    "QGDXC-TUI-0045": {
+      "tests": [
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/tui/tests.rs",
+          "name": "s_hides_self_spots_until_cleared"
         }
       ],
       "vectors": []

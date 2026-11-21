@@ -258,7 +258,7 @@ fn limits_footer_and_help_fit_compact_and_wide_layouts() {
     for _ in 0..5 {
         for paused in [false, true] {
             m.paused = paused;
-            for width in [80, 120] {
+            for width in [80, 100, 120, 130] {
                 let screen = grid(&m, width, 24);
                 let footer = text(&screen, 23);
                 for hint in ["q quit", "b band", "m mode", "/ call", "k kind", "l limits"] {
@@ -268,14 +268,18 @@ fn limits_footer_and_help_fit_compact_and_wide_layouts() {
                     footer.contains(if paused { "p resume" } else { "p pause" }),
                     "{footer}"
                 );
-                assert!(
-                    footer.contains(if width == 80 { "1-8 src" } else { "1-8 source" }),
-                    "{footer}"
-                );
-                let tail = if width == 80 {
-                    "t M ?"
-                } else {
-                    "t theme  M map  ? help"
+                let keys = match width {
+                    80 => "k kind d s 1-8 p",
+                    100 => "k kind d s 1-8 src p",
+                    120 => "k kind d dupes s self 1-8 source p",
+                    _ => "k kind  d dupes  s self  1-8 source  p",
+                };
+                assert!(footer.contains(keys), "{footer}");
+                let tail = match width {
+                    80 => "t M ?",
+                    100 => "t M map ? help",
+                    120 => "t theme M map ? help",
+                    _ => "t theme  M map  ? help",
                 };
                 assert!(footer.contains(tail), "{footer}");
                 let theme = format!("{} ", m.appearance.theme.name());
@@ -300,6 +304,7 @@ fn limits_footer_and_help_fit_compact_and_wide_layouts() {
 fn limits_lower_both_caps_even_when_spots_are_hidden_or_filtered() {
     // QGDXC-TUI-0012 QGDXC-TUI-0040 QGDXC-TUI-0042
     let mut m = Model::new(args(&["human", "skimmer"]), 20, 20);
+    m.filters.dupes = true; // the fixture repeats one report (QGDXC-TUI-0015)
     for _ in 0..12 {
         m.receive(0, spot("Q1HUM", 14_025_000, "CW"), Duration::ZERO);
         let mut event = spot("Q2SKM", 7_025_000, "CW");
@@ -481,6 +486,7 @@ fn retention_defaults_and_configured_range() {
 fn per_kind_eviction_preserves_other_kind_and_paused_anchor() {
     // QGDXC-TUI-0010 QGDXC-TUI-0012 QGDXC-TUI-0040 QGDXC-TUI-0051
     let mut m = Model::new(args(&["human", "skimmer"]), 10, 12);
+    m.filters.dupes = true; // the fixture repeats one report (QGDXC-TUI-0015)
     for _ in 0..10 {
         m.receive(0, spot("Q1HUM", 14_025_000, "CW"), Duration::ZERO);
     }
@@ -705,6 +711,7 @@ fn every_band_edge_and_original_mode_precedence() {
 fn retention_filters_pause_scroll_and_eviction() {
     // QGDXC-TUI-0010 QGDXC-TUI-0012 QGDXC-TUI-0040 QGDXC-TUI-0042 QGDXC-TUI-0051
     let mut m = Model::new(args(&["one", "two"]), DEFAULT_KEEP, DEFAULT_KEEP);
+    m.filters.dupes = true; // the fixture repeats one report (QGDXC-TUI-0015)
     for source in [0, 1] {
         m.receive(
             source,
@@ -786,7 +793,10 @@ fn synthetic_keys_edit_transactionally_and_quit_every_mode() {
     assert!(matches!(m.editor, Editor::Calls { .. }));
     key(&mut m, KeyCode::Esc);
     assert_eq!(m.filters.calls.len(), 2);
+    // QGDXC-TUI-0044: row 0 is All; an inactive filter opens all checked.
     key(&mut m, KeyCode::Char('b'));
+    key(&mut m, KeyCode::Char(' '));
+    key(&mut m, KeyCode::Down);
     key(&mut m, KeyCode::Down);
     key(&mut m, KeyCode::Char(' '));
     key(&mut m, KeyCode::Enter);
@@ -796,6 +806,8 @@ fn synthetic_keys_edit_transactionally_and_quit_every_mode() {
     key(&mut m, KeyCode::Esc);
     assert!(m.filters.modes.is_none());
     key(&mut m, KeyCode::Char('m'));
+    key(&mut m, KeyCode::Char(' '));
+    key(&mut m, KeyCode::Down);
     key(&mut m, KeyCode::Down);
     key(&mut m, KeyCode::Up);
     key(&mut m, KeyCode::Char(' '));
@@ -1368,6 +1380,7 @@ fn replay_configuration_rejects_stalled_fifo_before_open() {
 fn filters_accept_exact_kind_and_listed_other_unknown_mode_rows() {
     // QGDXC-TUI-0040: assert row identities, including rejected rows.
     let mut m = Model::new(args(&["one"]), DEFAULT_KEEP, DEFAULT_KEEP);
+    m.filters.dupes = true; // the fixture repeats one report (QGDXC-TUI-0015)
     let modes = [
         "CW", "SSB", "AM", "FM", "FT8", "FT4", "RTTY", "JTTY", "PSK31", "",
     ];
@@ -1891,7 +1904,31 @@ fn comments_remove_only_exact_visible_typed_prefixes_without_mutation() {
         spot("Q1ABC", 14_025_000, "CW 19 dB 17 WPM CQ"),
         Duration::ZERO,
     );
-    assert!(text(&grid(&m, 120, 36), 10).contains("CW 19 dB 17 WPM CQ"));
+    // Untyped: no metrics are parsed, but the mode word already in the Mode column
+    // is not repeated (QGDXC-TUI-0073).
+    let row = text(&grid(&m, 120, 36), 10);
+    assert!(
+        row.contains(" 19 dB 17 WPM CQ") && !row.contains("CW 19 dB"),
+        "{row}"
+    );
+    for (comment, shown) in [
+        ("CW LZ DX Contest", "LZ DX Contest"),
+        ("cw test", "test"),
+        ("FT4 -18dB tnx", "-18dB tnx"),
+        ("USB", "USB"),
+        ("PSK63", ""),
+        ("CQ SACW 2026", "CQ SACW 2026"),
+    ] {
+        let mut m = Model::new(args(&["one"]), DEFAULT_KEEP, DEFAULT_KEEP);
+        let event = spot("Q1ABC", 14_025_000, comment);
+        let original = event.clone();
+        m.receive(0, event, Duration::ZERO);
+        let wide = grid(&m, 120, 36);
+        let x = find(&wide, 9, "Comment") as usize;
+        let actual: String = text(&wide, 10).chars().skip(x).take(119 - x).collect();
+        assert_eq!(actual.trim_end(), shown, "{comment}");
+        assert_eq!(m.spots[0].event, original);
+    }
 }
 
 #[test]
@@ -2169,6 +2206,7 @@ fn only_new_human_spots_are_highlighted() {
     use ratatui::style::{Color, Modifier};
     for theme in [super::theme::Theme::Color, super::theme::Theme::Mono] {
         let mut m = Model::new(args(&["one"]), DEFAULT_KEEP, DEFAULT_KEEP);
+        m.filters.dupes = true; // the fixture repeats one report (QGDXC-TUI-0015)
         m.appearance.theme = theme;
         m.receive(0, spot("Q1ABC", 14_074_000, "CW"), Duration::from_secs(10));
         for kind in [Some("skimmer"), None, Some("beacon")] {
@@ -2339,6 +2377,7 @@ fn map_paths_follow_filters_age_kind_and_the_cap() {
     assert_eq!(roles(&m, Duration::from_secs(1)), [Role::Dim]);
     let mut m = Model::new(args(&["one"]), 1_000, 1_000);
     m.prefixes = map_model().prefixes;
+    m.filters.dupes = true; // the fixture repeats one report (QGDXC-TUI-0015)
     for i in 0..(MAX_PATHS + 50) {
         m.receive(
             0,
@@ -2378,4 +2417,175 @@ fn map_draws_paths_over_the_coastline() {
         .filter(|&y| (1..119).any(|x| drawn[(x, y)] != empty[(x, y)]))
         .collect();
     assert!(rows.iter().min().unwrap() < &14, "{rows:?}");
+}
+fn report(call: &str, spotter: &str, hz: i64) -> ClusterEvent {
+    let mut event = spot(call, hz, "SACW test CW");
+    event.set("spotter_call", spotter);
+    event
+}
+#[test]
+fn duplicate_reports_collapse_to_the_first_shown_copy() {
+    // QGDXC-TUI-0015
+    let mut m = Model::new(args(&["alpha.example", "bravo.example"]), 100, 100);
+    let at = Duration::from_secs;
+    m.receive(0, report("QY4ARS", "QR2EG", 7_016_000), at(0));
+    m.receive(1, report("qy4ars", "qr2eg", 7_016_900), at(1));
+    // Not copies: another spotter, more than 1 kHz away, outside the window.
+    m.receive(1, report("QY4ARS", "QR3XX", 7_016_000), at(2));
+    m.receive(0, report("QY4ARS", "QR2EG", 7_017_100), at(3));
+    m.receive(1, report("QY4ARS", "QR2EG", 7_016_000), at(4) + DUPE_WINDOW);
+    let ids = |m: &Model| m.matching().iter().map(|s| s.id).collect::<Vec<_>>();
+    assert_eq!(ids(&m), [5, 4, 3, 1]);
+    let first = m.matching()[3];
+    assert_eq!((first.source, m.other_copies(first)), (0, 1));
+    assert!(!m.filters.summary().contains("dupes"));
+    // Hiding the first copy's source shows the other copy in its place.
+    key(&mut m, KeyCode::Char('1'));
+    assert_eq!(ids(&m), [5, 3, 2]);
+    assert_eq!(m.other_copies(m.matching()[2]), 0);
+    key(&mut m, KeyCode::Char('1'));
+    // `d` shows every copy and says so; clearing filters keeps the setting.
+    key(&mut m, KeyCode::Char('d'));
+    assert_eq!(ids(&m), [5, 4, 3, 2, 1]);
+    assert!(m.filters.summary().contains("dupes"));
+    assert_eq!(m.other_copies(m.matching()[4]), 0);
+    key(&mut m, KeyCode::Char('c'));
+    assert!(m.filters.dupes);
+    key(&mut m, KeyCode::Char('d'));
+    assert_eq!(ids(&m), [5, 4, 3, 1]);
+    // A report without a spotter, call or frequency is never a copy.
+    let mut n = Model::new(args(&["one"]), 100, 100);
+    for _ in 0..2 {
+        n.receive(0, report("QY4ARS", "", 7_016_000), at(0));
+        n.receive(0, report("QY4ARS", "QR2EG", 0), at(0));
+    }
+    assert_eq!(n.matching().len(), 4);
+}
+#[test]
+fn collapsed_rows_count_copies_and_d_is_listed() {
+    // QGDXC-TUI-0015
+    let mut m = Model::new(args(&["alpha.example", "bravo.example"]), 100, 100);
+    m.receive(0, report("QY4ARS", "QR2EG", 7_016_000), Duration::ZERO);
+    m.receive(1, report("QY4ARS", "QR2EG", 7_016_000), Duration::ZERO);
+    // The footer keeps every key at the wide threshold; the label needs 130 columns.
+    let footer = text(&grid(&m, 100, 30), 29);
+    assert!(
+        footer.contains(" d ") && footer.contains("? help"),
+        "{footer}"
+    );
+    let footer = text(&grid(&m, 130, 30), 29);
+    assert!(
+        footer.contains("d dupes") && footer.contains("? help"),
+        "{footer}"
+    );
+    let b = grid(&m, 120, 40);
+    let rows = (0..40).map(|y| text(&b, y)).collect::<Vec<_>>();
+    assert_eq!(rows.iter().filter(|r| r.contains("QY4ARS")).count(), 1);
+    assert!(rows.iter().any(|r| r.contains("alpha+1")));
+    assert!(rows[39].contains("d dupes"));
+    key(&mut m, KeyCode::Char('d'));
+    let b = grid(&m, 120, 40);
+    let rows = (0..40).map(|y| text(&b, y)).collect::<Vec<_>>();
+    assert_eq!(rows.iter().filter(|r| r.contains("QY4ARS")).count(), 2);
+    assert!(!rows.iter().any(|r| r.contains('+') && r.contains("QY4ARS")));
+    key(&mut m, KeyCode::Char('?'));
+    let b = grid(&m, 120, 40);
+    assert!((0..40).any(|y| text(&b, y).contains("d: dupes")));
+}
+#[test]
+fn band_and_mode_dialogs_lead_with_all() {
+    // QGDXC-TUI-0044
+    let mut m = Model::new(args(&["one"]), 100, 100);
+    let dialog = |m: &Model| {
+        (0..24)
+            .map(|y| text(&grid(m, 80, 24), y))
+            .collect::<Vec<_>>()
+    };
+    for (open, count) in [
+        ('b', Model::selections(true).len()),
+        ('m', Model::selections(false).len()),
+    ] {
+        // Inactive: everything checked, All first.
+        key(&mut m, KeyCode::Char(open));
+        let rows = dialog(&m);
+        assert!(rows[2].contains("> [x] All"), "{}", rows[2]);
+        assert!(rows[3].contains("[x]"), "{}", rows[3]);
+        // All clears every value, then selects every value again.
+        key(&mut m, KeyCode::Char(' '));
+        assert!(dialog(&m)[2].contains("[ ] All"));
+        key(&mut m, KeyCode::Down);
+        key(&mut m, KeyCode::Char(' '));
+        assert!(dialog(&m)[2].contains("[-] All"));
+        key(&mut m, KeyCode::Up);
+        key(&mut m, KeyCode::Char(' '));
+        assert!(dialog(&m)[2].contains("[x] All"));
+        // Committing every value leaves the filter off, not a full list.
+        key(&mut m, KeyCode::Enter);
+        assert!(m.filters.bands.is_none() && m.filters.modes.is_none());
+        // One value off: the filter holds the rest; reopening shows them.
+        key(&mut m, KeyCode::Char(open));
+        key(&mut m, KeyCode::Down);
+        key(&mut m, KeyCode::Char(' '));
+        key(&mut m, KeyCode::Enter);
+        let set = if open == 'b' {
+            &m.filters.bands
+        } else {
+            &m.filters.modes
+        };
+        assert_eq!(set.as_ref().map(BTreeSet::len), Some(count - 1));
+        key(&mut m, KeyCode::Char(open));
+        assert!(dialog(&m)[2].contains("[-] All"));
+        // Down stops at the last value.
+        for _ in 0..count + 5 {
+            key(&mut m, KeyCode::Down);
+        }
+        assert!(matches!(m.editor, Editor::Select { cursor, .. } if cursor == count));
+        key(&mut m, KeyCode::Esc);
+        key(&mut m, KeyCode::Char('c'));
+    }
+}
+#[test]
+fn s_hides_self_spots_until_cleared() {
+    // QGDXC-TUI-0045
+    let mut m = Model::new(args(&["one"]), 100, 100);
+    for (i, (call, spotter)) in [
+        ("Q1ABC", "Q1ABC"),
+        ("Q1ABC", "q1abc-#"),
+        ("Q1ABC", "Q1ABC-2"),
+        ("Q1ABC", "Q2XYZ"),
+        ("Q1ABC/P", "Q1ABC"),
+        ("Q1ABC", ""),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let mut event = report(call, spotter, 14_025_000 + i as i64 * 5_000);
+        if spotter.is_empty() {
+            event.fields.remove("spotter_call");
+        }
+        m.receive(0, event, Duration::ZERO);
+    }
+    let ids = |m: &Model| m.matching().iter().map(|s| s.id).collect::<Vec<_>>();
+    assert_eq!(ids(&m), [6, 5, 4, 3, 2, 1]);
+    key(&mut m, KeyCode::Char('s'));
+    assert_eq!(ids(&m), [6, 5, 4]);
+    assert!(m.filters.summary().contains("self:hidden"));
+    assert!(text(&grid(&m, 120, 40), 8).contains("self:hidden"));
+    key(&mut m, KeyCode::Char('s'));
+    assert_eq!(ids(&m).len(), 6);
+    key(&mut m, KeyCode::Char('s'));
+    key(&mut m, KeyCode::Char('c'));
+    assert!(!m.filters.hide_self);
+    assert_eq!(ids(&m).len(), 6);
+    key(&mut m, KeyCode::Char('?'));
+    assert!((0..24).any(|y| text(&grid(&m, 80, 24), y).contains("s: hide self-spots")));
+}
+#[test]
+fn wide_frequency_fits_ten_gigahertz() {
+    // QGDXC-TUI-0011
+    let mut m = Model::new(args(&["one"]), 100, 100);
+    m.receive(0, report("QA2V", "QG4ZFE", 10_489_520_000), Duration::ZERO);
+    let row = text(&grid(&m, 120, 36), 10);
+    assert!(row.contains(" 10489520.0  QA2V"), "{row}");
+    assert!(!row.contains('~'), "{row}");
 }

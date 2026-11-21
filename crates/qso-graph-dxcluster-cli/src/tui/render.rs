@@ -105,18 +105,26 @@ pub fn draw(frame: &mut Frame<'_>, model: &Model, now: Duration) {
                 },
             );
             let options = Model::selections(*band);
+            let all = match selected.len() {
+                0 => " ",
+                n if n == options.len() => "x",
+                _ => "-",
+            };
             let rows = area.height as usize - 2;
             let start = cursor.saturating_sub(rows - 1);
-            for (index, value) in options.iter().enumerate().skip(start).take(rows) {
+            let entries = std::iter::once(("All", all)).chain(
+                options
+                    .iter()
+                    .map(|v| (v.as_str(), if selected.contains(v) { "x" } else { " " })),
+            );
+            for (index, (value, mark)) in entries.enumerate().skip(start).take(rows) {
                 line(
                     frame,
                     area,
                     (index - start + 2) as u16,
                     &format!(
-                        "{} [{}] {}",
+                        "{} [{mark}] {value}",
                         if index == *cursor { ">" } else { " " },
-                        if selected.contains(value) { "x" } else { " " },
-                        value
                     ),
                 );
             }
@@ -126,12 +134,12 @@ pub fn draw(frame: &mut Frame<'_>, model: &Model, now: Duration) {
             for (y, text) in [
                 "QG DX Cluster: receive-only multi-source spot viewer",
                 "q / Ctrl-C: quit   b: bands   m: modes   /: callsign patterns",
-                "k: all/human/skimmer   1-8: hide/show source   c: clear filters",
-                "p: pause/resume scrolling (reception continues)   t: theme   M: map",
+                "k: all/human/skimmer   s: hide self-spots   1-8: hide/show source   c: clear",
+                "p: pause/resume scrolling (reception continues)   t: theme   M: map   d: dupes",
                 "Up/Down/PageUp/PageDown/Home: scroll   l limits   ?: help",
                 "Callsign editor: printable keys are data; Backspace deletes",
                 "Enter commits; Escape cancels. Wildcards: * any run, ? one character",
-                "Band/mode: Up/Down moves, Space toggles, Enter commits, Esc cancels",
+                "Band/mode: Up/Down moves, Space toggles (All: every value), Enter, Esc cancels",
                 "Limits: Up/Down/Tab moves, digits/Backspace edit, Enter commits, Esc cancels",
                 "Esc / Enter / ?: return   Ctrl-C quits from every screen",
             ]
@@ -788,7 +796,7 @@ fn spot_header(frame: &mut Frame<'_>, y: u16, w: u16, wide: bool, a: Appearance,
     for (text, width, gap, right) in if wide {
         vec![
             ("UTC", 4, 2, false),
-            ("Freq kHz", 9, 2, false),
+            ("Freq kHz", FREQ_WIDE, 2, false),
             ("DX", 10, 1, false),
             ("Spotter", SPOTTER_WIDE, 2, false),
             ("Band", 4, 2, false),
@@ -850,7 +858,7 @@ fn spot_row(
     };
     row.safe(
         &freq,
-        if wide { 9 } else { 8 },
+        if wide { FREQ_WIDE } else { 8 },
         true,
         a.style(Role::Frequency),
         true,
@@ -911,13 +919,12 @@ fn spot_row(
         };
         row.safe(&speed, 3, true, a.style(Role::Dim), true);
         row.ui("  ", a.style(Role::Text));
-        row.safe(
-            short_label(&m.sources[spot.source].label),
-            source_width(m),
-            false,
-            a.style(Role::Dim),
-            true,
-        );
+        let label = short_label(&m.sources[spot.source].label);
+        let label = match m.other_copies(spot) {
+            0 => label.to_owned(),
+            n => format!("{label}+{n}"),
+        };
+        row.safe(&label, source_width(m), false, a.style(Role::Dim), true);
         row.ui("  ", a.style(Role::Text));
     }
     let remaining = row.end.saturating_sub(row.x) as usize;
@@ -932,18 +939,27 @@ fn spot_row(
 // Remove only a prefix corroborated by fields visible in this layout. Borrowing
 // the original suffix preserves its text and leaves retained/recorded data alone.
 const SPOTTER_WIDE: usize = 12;
+/// Fits 10 GHz and up in kHz with its tenth, e.g. `10489520.0` (QGDXC-TUI-0011).
+const FREQ_WIDE: usize = 10;
 const MODE_WIDE: usize = 6;
 fn short_label(label: &str) -> &str {
     label.split('.').next().unwrap_or_default()
 }
-/// The Src column fits the longest source label, between 3 and 8 characters.
+/// The Src column fits the longest source label, between 3 and 8 characters, plus
+/// room for a `+N` copy count while duplicates are collapsed (QGDXC-TUI-0015).
 pub(crate) fn source_width(m: &Model) -> usize {
-    m.sources
+    let label = m
+        .sources
         .iter()
         .map(|s| short_label(&s.label).len())
         .max()
         .unwrap_or(3)
-        .clamp(3, 8)
+        .clamp(3, 8);
+    if m.sources.len() > 1 && !m.filters.dupes {
+        label + 2
+    } else {
+        label
+    }
 }
 fn display_comment(spot: &Spot, wide: bool) -> &str {
     let original = spot.event.get("comment").unwrap_or_default();
@@ -985,8 +1001,22 @@ fn display_comment(spot: &Spot, wide: bool) -> &str {
         }
         Some(rest.trim_start_matches(|c: char| c.is_ascii_whitespace()))
     };
-    derive().unwrap_or(original)
+    // Otherwise, for a spot without typed SNR, a leading word that is exactly the
+    // mode shown in this row. A skimmer prefix is all or nothing, as above.
+    let mode_word = || {
+        let (word, rest) = token(original);
+        (integer(spot, "snr_db").is_none()
+            && spot.mode != "unknown"
+            && spot.mode.len() <= MODE_WIDE
+            && word.eq_ignore_ascii_case(&spot.mode))
+        .then(|| rest.trim_start_matches(|c: char| c.is_ascii_whitespace()))
+    };
+    derive().or_else(mode_word).unwrap_or(original)
 }
+/// From this width every footer key carries its label (QGDXC-TUI-0070).
+const FULL_FOOTER: u16 = 120;
+/// From this width footer hints are separated by two spaces instead of one.
+const ROOMY_FOOTER: u16 = 130;
 fn footer(frame: &mut Frame<'_>, y: u16, w: u16, m: &Model) {
     let a = m.appearance;
     let theme = format!("{} ", a.theme.name());
@@ -997,10 +1027,19 @@ fn footer(frame: &mut Frame<'_>, y: u16, w: u16, m: &Model) {
         ("m", "mode"),
         ("/", "call"),
         ("k", "kind"),
-        ("1-8", if w >= 100 { "source" } else { "src" }),
+        ("d", if w >= FULL_FOOTER { "dupes" } else { "" }),
+        ("s", if w >= FULL_FOOTER { "self" } else { "" }),
+        (
+            "1-8",
+            match w {
+                FULL_FOOTER.. => "source",
+                100.. => "src",
+                _ => "",
+            },
+        ),
         ("p", if m.paused { "resume" } else { "pause" }),
         ("l", "limits"),
-        ("t", if w >= 100 { "theme" } else { "" }),
+        ("t", if w >= FULL_FOOTER { "theme" } else { "" }),
         (
             "M",
             match (w >= 100, m.map) {
@@ -1015,7 +1054,10 @@ fn footer(frame: &mut Frame<'_>, y: u16, w: u16, m: &Model) {
         if !label.is_empty() {
             row.ui(&format!(" {label}"), a.style(Role::Dim));
         }
-        row.ui(if w >= 100 { "  " } else { " " }, a.style(Role::Dim));
+        row.ui(
+            if w >= ROOMY_FOOTER { "  " } else { " " },
+            a.style(Role::Dim),
+        );
     }
     put(
         frame,
