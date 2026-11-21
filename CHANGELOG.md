@@ -1,8 +1,6 @@
 <!-- SPDX-License-Identifier: GPL-3.0-or-later -->
 # Changelog
 
-## [Unreleased]
-
 ## [0.1.2]
 
 - `qg-dxc --version` reports the version built; 0.1.1 still said 0.1.0. Release

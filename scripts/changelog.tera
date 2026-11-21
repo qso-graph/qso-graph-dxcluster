@@ -1,0 +1,12 @@
+{#- SPDX-License-Identifier: GPL-3.0-or-later -#}
+{#- One release's notes, without its heading; scripts/changelog-release.sh adds that. -#}
+{% set groups = commits | group_by(attribute="type") -%}
+{% for title in ["Features", "Bug Fixes", "Performance Improvements", "Revert", "Documentation"] -%}
+{% if groups[title] -%}
+### {{ title }}
+
+{% for commit in groups[title] -%}
+- {% if commit.breaking_change %}**Breaking:** {% endif %}{% if commit.scope %}{{ commit.scope }}: {% endif %}{{ commit.summary }}
+{% endfor %}
+{% endif -%}
+{% endfor -%}

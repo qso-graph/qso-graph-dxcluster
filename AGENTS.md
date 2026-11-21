@@ -15,3 +15,6 @@
   files cite the ID.
 - Pin each server-specific statement to its evidence: a source file and line, an archived page, or a
   captured session (cited by capture name and line, never reproduced raw).
+- Commit messages are Conventional Commits (`feat(tui): …`, `fix: …`, `docs: …`); `cog check` in
+  `cargo xtask verify` rejects any other form since the latest release tag. Never edit `CHANGELOG.md`
+  by hand: the release pull request writes its section with `scripts/changelog-release.sh`.

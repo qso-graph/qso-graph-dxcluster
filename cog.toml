@@ -1,0 +1,22 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Commit messages follow Conventional Commits (https://www.conventionalcommits.org).
+# `cargo xtask verify` runs `cog check`; a release pull request runs
+# scripts/changelog-release.sh to write CHANGELOG.md from them. The release
+# workflow creates the tag, so `cog bump` is used only with --dry-run.
+tag_prefix = "v"
+# Check from the latest release tag: the history before v0.1.2 predates the convention.
+from_latest_tag = true
+# GitHub's "Merge pull request" commits are not written by hand.
+ignore_merge_commits = true
+
+[changelog]
+template = "scripts/changelog.tera"
+
+# Kept out of the release notes; users see features, fixes and documentation.
+[commit_types]
+build = { changelog_title = "", omit_from_changelog = true }
+chore = { changelog_title = "", omit_from_changelog = true }
+ci = { changelog_title = "", omit_from_changelog = true }
+refactor = { changelog_title = "", omit_from_changelog = true }
+style = { changelog_title = "", omit_from_changelog = true }
+test = { changelog_title = "", omit_from_changelog = true }

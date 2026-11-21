@@ -28,6 +28,8 @@ jobs:
         with:
           persist-credentials: false
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          # cog check reads the commits since the latest release tag.
+          fetch-depth: 0
       - name: Pinned toolchain
         run: rustup show active-toolchain || rustup toolchain install
       - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
@@ -47,6 +49,17 @@ jobs:
         run: |
           rustup toolchain install nightly-2026-10-30 --profile minimal --component rustfmt --component clippy
           cargo install cargo-fuzz --version 0.13.2 --locked --quiet
+      - name: Pinned Linux cocogitto
+        if: runner.os == 'Linux'
+        env:
+          COG_SHA256: e03938ff2c4c86d71c00c0f3284dbbe95c5ca76fe34a51f33e945c23010d59bb
+        run: |
+          curl -fsSL --proto '=https' --tlsv1.2 -o "$RUNNER_TEMP/cog.tar.gz" \
+            https://github.com/cocogitto/cocogitto/releases/download/7.0.0/cocogitto-7.0.0-x86_64-unknown-linux-musl.tar.gz
+          echo "$COG_SHA256  $RUNNER_TEMP/cog.tar.gz" | sha256sum -c -
+          mkdir -p "$RUNNER_TEMP/cog"
+          tar -xzf "$RUNNER_TEMP/cog.tar.gz" -C "$RUNNER_TEMP/cog" --strip-components=1
+          echo "$RUNNER_TEMP/cog" >> "$GITHUB_PATH"
       - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
         with:
           enable-cache: false

@@ -51,7 +51,10 @@ checksums, and creates the GitHub Release last. Merging publishes nothing.
 
 1. Prepare a pull request with the workspace version, CLI library dependency,
    lockfiles, and one `## [<version>]` changelog section in agreement. Versions
-   are `X.Y.Z` or `X.Y.Z-beta.N`. Refresh license copies with
+   are `X.Y.Z` or `X.Y.Z-beta.N`; `cog bump --auto --dry-run` suggests one from
+   the commits. Write the changelog section from the commits since the latest
+   release tag with `scripts/changelog-release.sh <version>`, and edit its
+   wording if needed. Refresh license copies with
    `uv run --no-project python scripts/package-files.py`, then run
    `cargo xtask verify`.
 2. Merge after CI passes. Release checks require a successful same-repository

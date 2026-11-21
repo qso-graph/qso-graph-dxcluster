@@ -143,6 +143,42 @@ pub fn verify() -> Result<(), String> {
             format!("{:.2}s", start.elapsed().as_secs_f64()),
         ));
     }
+    for (name, program, args) in [
+        ("commit messages", "cog", &["check"][..]),
+        (
+            "changelog script",
+            "bash",
+            &["scripts/test-changelog-release.sh"][..],
+        ),
+    ] {
+        // Commit history is the same on every platform, so the Linux CI leg checks it once.
+        if !cfg!(target_os = "linux") {
+            results.push((name.to_owned(), "SKIP".into(), "Linux only".into()));
+            continue;
+        }
+        let start = Instant::now();
+        let path = format!("target/verify/{}.log", name.replace(' ', "-"));
+        let file = fs::File::create(&path).map_err(|e| e.to_string())?;
+        let error = file.try_clone().map_err(|e| e.to_string())?;
+        let result = Command::new(program)
+            .args(args)
+            .stdout(file)
+            .stderr(error)
+            .stdin(Stdio::null())
+            .status();
+        let status = if result.is_ok_and(|s| s.success()) {
+            "PASS"
+        } else {
+            eprintln!("{name}: see {path} (needs cog 7.0.0 on PATH)");
+            eprintln!("{}", crate::input::tail(&path).unwrap_or_default());
+            "FAIL"
+        };
+        results.push((
+            name.to_owned(),
+            status.to_owned(),
+            format!("{:.2}s", start.elapsed().as_secs_f64()),
+        ));
+    }
     let nightly_available =
         crate::input::output(Command::new("rustup").args(["toolchain", "list"])).is_ok_and(|o| {
             o.status.success()
