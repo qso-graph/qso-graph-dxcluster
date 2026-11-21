@@ -258,7 +258,7 @@ fn limits_footer_and_help_fit_compact_and_wide_layouts() {
     for _ in 0..5 {
         for paused in [false, true] {
             m.paused = paused;
-            for width in [80, 100, 110, 120] {
+            for width in [80, 100, 120, 130] {
                 let screen = grid(&m, width, 24);
                 let footer = text(&screen, 23);
                 for hint in ["q quit", "b band", "m mode", "/ call", "k kind", "l limits"] {
@@ -268,20 +268,20 @@ fn limits_footer_and_help_fit_compact_and_wide_layouts() {
                     footer.contains(if paused { "p resume" } else { "p pause" }),
                     "{footer}"
                 );
-                assert!(
-                    footer.contains(if width < 120 { "1-8 src" } else { "1-8 source" }),
-                    "{footer}"
-                );
+                let keys = match width {
+                    80 => "k kind d s 1-8 p",
+                    100 => "k kind d s 1-8 src p",
+                    120 => "k kind d dupes s self 1-8 source p",
+                    _ => "k kind  d dupes  s self  1-8 source  p",
+                };
+                assert!(footer.contains(keys), "{footer}");
                 let tail = match width {
                     80 => "t M ?",
-                    100 | 110 => "t  M map  ? help",
+                    100 => "t M map ? help",
+                    120 => "t theme M map ? help",
                     _ => "t theme  M map  ? help",
                 };
                 assert!(footer.contains(tail), "{footer}");
-                assert!(
-                    footer.contains(if width < 120 { " d " } else { "d dupes" }),
-                    "{footer}"
-                );
                 let theme = format!("{} ", m.appearance.theme.name());
                 assert!(footer.ends_with(&theme), "{footer}");
                 assert!(find(&screen, 23, tail) + (tail.len() as u16) < width - theme.len() as u16);
@@ -1904,7 +1904,31 @@ fn comments_remove_only_exact_visible_typed_prefixes_without_mutation() {
         spot("Q1ABC", 14_025_000, "CW 19 dB 17 WPM CQ"),
         Duration::ZERO,
     );
-    assert!(text(&grid(&m, 120, 36), 10).contains("CW 19 dB 17 WPM CQ"));
+    // Untyped: no metrics are parsed, but the mode word already in the Mode column
+    // is not repeated (QGDXC-TUI-0073).
+    let row = text(&grid(&m, 120, 36), 10);
+    assert!(
+        row.contains(" 19 dB 17 WPM CQ") && !row.contains("CW 19 dB"),
+        "{row}"
+    );
+    for (comment, shown) in [
+        ("CW LZ DX Contest", "LZ DX Contest"),
+        ("cw test", "test"),
+        ("FT4 -18dB tnx", "-18dB tnx"),
+        ("USB", "USB"),
+        ("PSK63", ""),
+        ("CQ SACW 2026", "CQ SACW 2026"),
+    ] {
+        let mut m = Model::new(args(&["one"]), DEFAULT_KEEP, DEFAULT_KEEP);
+        let event = spot("Q1ABC", 14_025_000, comment);
+        let original = event.clone();
+        m.receive(0, event, Duration::ZERO);
+        let wide = grid(&m, 120, 36);
+        let x = find(&wide, 9, "Comment") as usize;
+        let actual: String = text(&wide, 10).chars().skip(x).take(119 - x).collect();
+        assert_eq!(actual.trim_end(), shown, "{comment}");
+        assert_eq!(m.spots[0].event, original);
+    }
 }
 
 #[test]
@@ -2443,13 +2467,13 @@ fn collapsed_rows_count_copies_and_d_is_listed() {
     let mut m = Model::new(args(&["alpha.example", "bravo.example"]), 100, 100);
     m.receive(0, report("QY4ARS", "QR2EG", 7_016_000), Duration::ZERO);
     m.receive(1, report("QY4ARS", "QR2EG", 7_016_000), Duration::ZERO);
-    // The footer keeps every key at the wide threshold; the label needs 120 columns.
+    // The footer keeps every key at the wide threshold; the label needs 130 columns.
     let footer = text(&grid(&m, 100, 30), 29);
     assert!(
         footer.contains(" d ") && footer.contains("? help"),
         "{footer}"
     );
-    let footer = text(&grid(&m, 120, 30), 29);
+    let footer = text(&grid(&m, 130, 30), 29);
     assert!(
         footer.contains("d dupes") && footer.contains("? help"),
         "{footer}"
@@ -2519,4 +2543,49 @@ fn band_and_mode_dialogs_lead_with_all() {
         key(&mut m, KeyCode::Esc);
         key(&mut m, KeyCode::Char('c'));
     }
+}
+#[test]
+fn s_hides_self_spots_until_cleared() {
+    // QGDXC-TUI-0045
+    let mut m = Model::new(args(&["one"]), 100, 100);
+    for (i, (call, spotter)) in [
+        ("Q1ABC", "Q1ABC"),
+        ("Q1ABC", "q1abc-#"),
+        ("Q1ABC", "Q1ABC-2"),
+        ("Q1ABC", "Q2XYZ"),
+        ("Q1ABC/P", "Q1ABC"),
+        ("Q1ABC", ""),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let mut event = report(call, spotter, 14_025_000 + i as i64 * 5_000);
+        if spotter.is_empty() {
+            event.fields.remove("spotter_call");
+        }
+        m.receive(0, event, Duration::ZERO);
+    }
+    let ids = |m: &Model| m.matching().iter().map(|s| s.id).collect::<Vec<_>>();
+    assert_eq!(ids(&m), [6, 5, 4, 3, 2, 1]);
+    key(&mut m, KeyCode::Char('s'));
+    assert_eq!(ids(&m), [6, 5, 4]);
+    assert!(m.filters.summary().contains("self:hidden"));
+    assert!(text(&grid(&m, 120, 40), 8).contains("self:hidden"));
+    key(&mut m, KeyCode::Char('s'));
+    assert_eq!(ids(&m).len(), 6);
+    key(&mut m, KeyCode::Char('s'));
+    key(&mut m, KeyCode::Char('c'));
+    assert!(!m.filters.hide_self);
+    assert_eq!(ids(&m).len(), 6);
+    key(&mut m, KeyCode::Char('?'));
+    assert!((0..24).any(|y| text(&grid(&m, 80, 24), y).contains("s: hide self-spots")));
+}
+#[test]
+fn wide_frequency_fits_ten_gigahertz() {
+    // QGDXC-TUI-0011
+    let mut m = Model::new(args(&["one"]), 100, 100);
+    m.receive(0, report("QA2V", "QG4ZFE", 10_489_520_000), Duration::ZERO);
+    let row = text(&grid(&m, 120, 36), 10);
+    assert!(row.contains(" 10489520.0  QA2V"), "{row}");
+    assert!(!row.contains('~'), "{row}");
 }

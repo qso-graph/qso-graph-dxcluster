@@ -318,6 +318,17 @@ fn same_report(a: &Event, b: &Event) -> bool {
     let (fa, fb) = (frequency(a), frequency(b));
     same("spotter_call") && same("call") && fa != 0 && fb != 0 && fa.abs_diff(fb) <= DUPE_HZ
 }
+/// A spot whose spotter, less any `-` suffix such as `-#` or `-2`, is the DX call
+/// itself, compared ignoring ASCII case (QGDXC-TUI-0045).
+pub fn self_spot(event: &Event) -> bool {
+    match (event.get("spotter_call"), event.get("call")) {
+        (Some(spotter), Some(call)) => {
+            let spotter = spotter.split('-').next().unwrap_or_default();
+            !spotter.is_empty() && spotter.eq_ignore_ascii_case(call)
+        }
+        _ => false,
+    }
+}
 pub fn frequency(event: &Event) -> u64 {
     match event.fields.get("frequency_hz") {
         Some(Value::Integer(v)) => u64::try_from(*v).unwrap_or(0),
@@ -406,6 +417,8 @@ pub struct Filters {
     pub kind: usize,
     /// Show every copy of a spot instead of the first (QGDXC-TUI-0015).
     pub dupes: bool,
+    /// Hide spots whose spotter is the DX station itself (QGDXC-TUI-0045).
+    pub hide_self: bool,
 }
 impl Filters {
     pub fn accepts(&self, spot: &Spot) -> bool {
@@ -422,6 +435,7 @@ impl Filters {
             && (self.kind == 0
                 || spot.event.get("spot_kind")
                     == Some(if self.kind == 1 { "human" } else { "skimmer" }))
+            && !(self.hide_self && self_spot(&spot.event))
     }
     pub fn summary(&self) -> String {
         let mut parts = vec![];
@@ -439,6 +453,9 @@ impl Filters {
                 "kind:{}",
                 if self.kind == 1 { "human" } else { "skimmer" }
             ));
+        }
+        if self.hide_self {
+            parts.push("self:hidden".into());
         }
         if self.dupes {
             parts.push("dupes".into());
@@ -946,6 +963,10 @@ impl Model {
                 }
                 Input::Char('k') => {
                     self.filters.kind = (self.filters.kind + 1) % 3;
+                    self.clamp(true);
+                }
+                Input::Char('s') => {
+                    self.filters.hide_self = !self.filters.hide_self;
                     self.clamp(true);
                 }
                 Input::Char('d') => {

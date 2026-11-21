@@ -134,7 +134,7 @@ pub fn draw(frame: &mut Frame<'_>, model: &Model, now: Duration) {
             for (y, text) in [
                 "QG DX Cluster: receive-only multi-source spot viewer",
                 "q / Ctrl-C: quit   b: bands   m: modes   /: callsign patterns",
-                "k: all/human/skimmer   1-8: hide/show source   c: clear filters",
+                "k: all/human/skimmer   s: hide self-spots   1-8: hide/show source   c: clear",
                 "p: pause/resume scrolling (reception continues)   t: theme   M: map   d: dupes",
                 "Up/Down/PageUp/PageDown/Home: scroll   l limits   ?: help",
                 "Callsign editor: printable keys are data; Backspace deletes",
@@ -796,7 +796,7 @@ fn spot_header(frame: &mut Frame<'_>, y: u16, w: u16, wide: bool, a: Appearance,
     for (text, width, gap, right) in if wide {
         vec![
             ("UTC", 4, 2, false),
-            ("Freq kHz", 9, 2, false),
+            ("Freq kHz", FREQ_WIDE, 2, false),
             ("DX", 10, 1, false),
             ("Spotter", SPOTTER_WIDE, 2, false),
             ("Band", 4, 2, false),
@@ -858,7 +858,7 @@ fn spot_row(
     };
     row.safe(
         &freq,
-        if wide { 9 } else { 8 },
+        if wide { FREQ_WIDE } else { 8 },
         true,
         a.style(Role::Frequency),
         true,
@@ -939,6 +939,8 @@ fn spot_row(
 // Remove only a prefix corroborated by fields visible in this layout. Borrowing
 // the original suffix preserves its text and leaves retained/recorded data alone.
 const SPOTTER_WIDE: usize = 12;
+/// Fits 10 GHz and up in kHz with its tenth, e.g. `10489520.0` (QGDXC-TUI-0011).
+const FREQ_WIDE: usize = 10;
 const MODE_WIDE: usize = 6;
 fn short_label(label: &str) -> &str {
     label.split('.').next().unwrap_or_default()
@@ -999,10 +1001,22 @@ fn display_comment(spot: &Spot, wide: bool) -> &str {
         }
         Some(rest.trim_start_matches(|c: char| c.is_ascii_whitespace()))
     };
-    derive().unwrap_or(original)
+    // Otherwise, for a spot without typed SNR, a leading word that is exactly the
+    // mode shown in this row. A skimmer prefix is all or nothing, as above.
+    let mode_word = || {
+        let (word, rest) = token(original);
+        (integer(spot, "snr_db").is_none()
+            && spot.mode != "unknown"
+            && spot.mode.len() <= MODE_WIDE
+            && word.eq_ignore_ascii_case(&spot.mode))
+        .then(|| rest.trim_start_matches(|c: char| c.is_ascii_whitespace()))
+    };
+    derive().or_else(mode_word).unwrap_or(original)
 }
 /// From this width every footer key carries its label (QGDXC-TUI-0070).
 const FULL_FOOTER: u16 = 120;
+/// From this width footer hints are separated by two spaces instead of one.
+const ROOMY_FOOTER: u16 = 130;
 fn footer(frame: &mut Frame<'_>, y: u16, w: u16, m: &Model) {
     let a = m.appearance;
     let theme = format!("{} ", a.theme.name());
@@ -1014,7 +1028,15 @@ fn footer(frame: &mut Frame<'_>, y: u16, w: u16, m: &Model) {
         ("/", "call"),
         ("k", "kind"),
         ("d", if w >= FULL_FOOTER { "dupes" } else { "" }),
-        ("1-8", if w >= FULL_FOOTER { "source" } else { "src" }),
+        ("s", if w >= FULL_FOOTER { "self" } else { "" }),
+        (
+            "1-8",
+            match w {
+                FULL_FOOTER.. => "source",
+                100.. => "src",
+                _ => "",
+            },
+        ),
         ("p", if m.paused { "resume" } else { "pause" }),
         ("l", "limits"),
         ("t", if w >= FULL_FOOTER { "theme" } else { "" }),
@@ -1032,7 +1054,10 @@ fn footer(frame: &mut Frame<'_>, y: u16, w: u16, m: &Model) {
         if !label.is_empty() {
             row.ui(&format!(" {label}"), a.style(Role::Dim));
         }
-        row.ui(if w >= 100 { "  " } else { " " }, a.style(Role::Dim));
+        row.ui(
+            if w >= ROOMY_FOOTER { "  " } else { " " },
+            a.style(Role::Dim),
+        );
     }
     put(
         frame,

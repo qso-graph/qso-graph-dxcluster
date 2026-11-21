@@ -1338,6 +1338,10 @@
         {
           "file": "crates/qso-graph-dxcluster-cli/src/tui/tests.rs",
           "name": "every_band_edge_and_original_mode_precedence"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/tui/tests.rs",
+          "name": "wide_frequency_fits_ten_gigahertz"
         }
       ],
       "vectors": []
@@ -1518,6 +1522,15 @@
         {
           "file": "crates/qso-graph-dxcluster-cli/src/tui/tests.rs",
           "name": "synthetic_keys_edit_transactionally_and_quit_every_mode"
+        }
+      ],
+      "vectors": []
+    },
+    "QGDXC-TUI-0045": {
+      "tests": [
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/tui/tests.rs",
+          "name": "s_hides_self_spots_until_cleared"
         }
       ],
       "vectors": []
