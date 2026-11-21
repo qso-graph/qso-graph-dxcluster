@@ -143,3 +143,158 @@ with tempfile.TemporaryDirectory(prefix='qg-dxc-input-') as directory:
         String::from_utf8_lossy(&output.stderr)
     );
 }
+
+fn scratch(name: &str) -> std::path::PathBuf {
+    let dir = std::env::temp_dir().join(format!("qg-dxc-it-{}-{name}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    dir
+}
+const SAVED: &str = r#"{"version":1,"call":"Q1ABC","sources":[
+  {"name":"Home node","node":"dx.example.invalid:7300","selected":true}
+]}"#;
+
+#[test]
+fn sources_file_errors_come_before_terminal_checks() {
+    // QGDXC-TUI-0006 QGDXC-TUI-0007
+    let dir = scratch("errors");
+    let bad = dir.join("bad.json");
+    std::fs::write(&bad, SAVED.replace("7300", "0")).unwrap();
+    let default = dir.join("qso-graph").join("dxcluster-sources.json");
+    let mut cases = vec![
+        (
+            vec!["tui".into(), "--sources".into(), bad.display().to_string()],
+            vec![],
+            format!(
+                "sources file {}: sources[0].node: port must be 1 to 65535",
+                bad.display()
+            ),
+        ),
+        (
+            vec!["tui".into(), "--sources".into(), dir.display().to_string()],
+            vec![],
+            "expected a regular file".into(),
+        ),
+        (
+            vec!["tui".into()],
+            vec![("XDG_CONFIG_HOME", dir.display().to_string())],
+            format!("sources file {}", default.display()),
+        ),
+    ];
+    if cfg!(unix) {
+        cases.push((vec!["tui".into()], vec![], "HOME must be set".into()));
+    }
+    for (arguments, env, expected) in cases {
+        let mut command = Command::new(env!("CARGO_BIN_EXE_qg-dxc"));
+        command.args(&arguments).stdin(Stdio::null());
+        if cfg!(unix) {
+            command.env_remove("XDG_CONFIG_HOME").env_remove("HOME");
+        }
+        for (key, value) in env {
+            command.env(key, value);
+        }
+        let output = command.output().unwrap();
+        assert_eq!(output.status.code(), Some(1), "{arguments:?}");
+        assert!(output.stdout.is_empty());
+        assert!(!output.stderr.contains(&27));
+        let error = String::from_utf8(output.stderr).unwrap();
+        assert!(error.contains(&expected), "{expected:?} not in {error:?}");
+    }
+    let help = Command::new(env!("CARGO_BIN_EXE_qg-dxc"))
+        .arg("--help")
+        .output()
+        .unwrap();
+    let help = String::from_utf8(help.stdout).unwrap();
+    assert!(
+        help.contains("qg-dxc tui [--sources <file>]") && help.contains("dxcluster-sources.json"),
+        "{help}"
+    );
+    // A valid file reaches the terminal check, which still refuses before any source opens.
+    let good = dir.join("good.json");
+    std::fs::write(&good, SAVED).unwrap();
+    let output = Command::new(env!("CARGO_BIN_EXE_qg-dxc"))
+        .args(["tui", "--sources", good.to_str().unwrap()])
+        .stdin(Stdio::null())
+        .output()
+        .unwrap();
+    assert!(
+        String::from_utf8(output.stderr)
+            .unwrap()
+            .contains("requires terminal")
+    );
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+#[cfg(unix)]
+#[test]
+fn sources_screen_quits_without_opening_or_writing() {
+    // QGDXC-TUI-0008 QGDXC-TUI-0009 QGDXC-TUI-0052
+    let dir = scratch("screen");
+    let file = dir.join("sources.json");
+    std::fs::write(&file, SAVED).unwrap();
+    let output = Command::new("python3")
+        .arg("-c")
+        .arg(
+            r#"
+import errno, fcntl, os, pty, select, struct, subprocess, sys, termios, time
+for key, code in [(b'q', 0), (b'\x1b', 0), (b'\x03', 0)]:
+    master, slave = pty.openpty()
+    fcntl.ioctl(slave, termios.TIOCSWINSZ, struct.pack('HHHH', 24, 80, 0, 0))
+    before = termios.tcgetattr(slave)
+    slave_name = os.ttyname(slave)
+    process = subprocess.Popen([sys.argv[1], 'tui', '--sources', sys.argv[2]],
+        stdin=slave, stdout=slave, stderr=slave, start_new_session=True,
+        preexec_fn=lambda: fcntl.ioctl(slave, termios.TIOCSCTTY, 0))
+    captured = bytearray()
+    def read_available(timeout):
+        if select.select([master], [], [], timeout)[0]:
+            try:
+                captured.extend(os.read(master, 65536))
+            except OSError as error:
+                if error.errno != errno.EIO:
+                    raise
+    try:
+        deadline = time.monotonic() + 5
+        while b'Home node' not in captured and time.monotonic() < deadline:
+            read_available(.05)
+        assert b'Home node' in captured, bytes(captured)
+        assert b'dx.example.invalid:7300' in captured, bytes(captured)
+        # Escape alone must be read as Escape, not the start of a sequence.
+        os.write(master, key)
+        deadline = time.monotonic() + 3
+        while process.poll() is None and time.monotonic() < deadline:
+            read_available(.02)
+        assert process.poll() == code, ('exit', key, process.poll())
+        read_available(0)
+        check = os.open(slave_name, os.O_RDWR | os.O_NOCTTY)
+        try:
+            assert termios.tcgetattr(check) == before, 'input mode was not restored'
+        finally:
+            os.close(check)
+        assert b'\x1b[?1049l' in captured, 'alternate screen was not restored'
+        assert b'QG DX Cluster' in captured and b'newest first' not in captured, 'spot list opened'
+    finally:
+        if process.poll() is None:
+            process.kill()
+        process.wait()
+        os.close(master)
+        os.close(slave)
+"#,
+        )
+        .arg(env!("CARGO_BIN_EXE_qg-dxc"))
+        .arg(&file)
+        .output()
+        .expect("python3 is required for the Unix PTY Sources screen test");
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(std::fs::read_to_string(&file).unwrap(), SAVED);
+    let listing: Vec<_> = std::fs::read_dir(&dir)
+        .unwrap()
+        .map(|e| e.unwrap().file_name())
+        .collect();
+    assert_eq!(listing, ["sources.json"]);
+    std::fs::remove_dir_all(&dir).unwrap();
+}

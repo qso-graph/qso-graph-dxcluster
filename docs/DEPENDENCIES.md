@@ -9,7 +9,7 @@ explicit, currently empty `LIBRARY_DEV_ALLOWLIST` in `xtask/src/checks.rs`.
 Planted manifest tests cover individual dependency tables, optional aliases,
 and target-specific normal, build, and development declarations. CLI argument handling,
 base64, event serialization, framing, and protocol parsing use first-party Rust.
-The CLI and repository tooling share serde_json. Repository tooling also imports the first-party CLI recording adapter to check application recording/replay vectors without sockets. The CLI uses ctrlc for portable
+The CLI and repository tooling share serde_json. The CLI also names serde_core, already in the graph through serde_json at the same locked version, so the `qg-dxc tui` sources file reader can refuse duplicate JSON members (QGDXC-TUI-0007); it uses no derive. Repository tooling also imports the first-party CLI recording adapter to check application recording/replay vectors without sockets. The CLI uses ctrlc for portable
 OS signal registration, avoiding first-party unsafe signal handlers. The CLI uses
 getrandom for per-attempt OS randomness (QGDXC-DSP-0004 and QGDXC-SES-0010),
 avoiding first-party unsafe platform bindings. Its r-efi dependency supplies Rust
@@ -49,7 +49,7 @@ platform system libraries; they are Rust packages, not bundled native libraries.
 | r-efi | 6.0.0 | Target-specific UEFI bindings for getrandom | Exact-version exemption; not audited yet |
 | ryu | 1.0.23 | JSON numeric formatting and bounded input scanning | Exact-version exemption; not audited yet |
 | serde | 1.0.229 | JSON value support and optional derive/build-time support in resolved graph | Exact-version exemption; not audited yet |
-| serde_core | 1.0.229 | JSON value support and optional derive/build-time support in resolved graph | Exact-version exemption; not audited yet |
+| serde_core | 1.0.229 | JSON value support; sources-file reader without derive (CLI) | Exact-version exemption; not audited yet |
 | serde_derive | 1.0.229 | JSON value support and optional derive/build-time support in resolved graph | Exact-version exemption; not audited yet |
 | serde_json | 1.0.145 | JSON reader/writer for CLI recording and repository vector tooling | Exact-version exemption; not audited yet |
 | syn | 2.0.119, 3.0.10 | JSON value support and optional derive/build-time support in resolved graph | Exact-version exemption; not audited yet |

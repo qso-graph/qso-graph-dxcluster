@@ -11,6 +11,7 @@ cargo-fuzz = true
 [dependencies]
 libfuzzer-sys = "=0.4.10"
 qso-graph-dxcluster = { path = "../crates/qso-graph-dxcluster", version = "=0.1.2" }
+qso-graph-dxcluster-cli = { path = "../crates/qso-graph-dxcluster-cli", version = "=0.1.2" }
 
 [[bin]]
 name = "values"
@@ -64,6 +65,13 @@ bench = false
 [[bin]]
 name = "session"
 path = "fuzz_targets/session.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "sources"
+path = "fuzz_targets/sources.rs"
 test = false
 doc = false
 bench = false

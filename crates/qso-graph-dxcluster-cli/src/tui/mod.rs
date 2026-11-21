@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 mod config;
 mod model;
+mod picker;
 mod render;
 pub(crate) mod sources;
 #[cfg(test)]
@@ -136,6 +137,17 @@ fn present<B: Backend>(
     terminal.swap_buffers();
     terminal.backend_mut().flush()
 }
+fn present_picker<B: Backend>(
+    terminal: &mut Terminal<B>,
+    chooser: &picker::Picker,
+    appearance: theme::Appearance,
+) -> Result<(), B::Error> {
+    terminal.autoresize()?;
+    picker::draw(&mut terminal.get_frame(), chooser, appearance);
+    terminal.flush()?;
+    terminal.swap_buffers();
+    terminal.backend_mut().flush()
+}
 #[derive(Default)]
 struct Redraw {
     last: Option<Duration>,
@@ -154,7 +166,7 @@ impl Redraw {
     }
 }
 pub fn run(args: &[String]) -> Result<u8, String> {
-    let options = Options::parse(args).map_err(|e| sanitize(&e))?;
+    let mut options = Options::parse(args).map_err(|e| sanitize(&e))?;
     if !io::stdin().is_terminal() || !io::stdout().is_terminal() {
         return Err("tui requires terminal standard input and output".into());
     }
@@ -168,17 +180,48 @@ pub fn run(args: &[String]) -> Result<u8, String> {
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| -> io::Result<u8> {
         let screen = Screen::enter(SystemScreen)?;
         let mut terminal = Terminal::new(CrosstermBackend::new(io::stdout()))?;
+        let appearance = theme::Appearance {
+            theme: options.theme,
+            depth: theme::Depth::detect(
+                &std::env::var("COLORTERM").unwrap_or_default(),
+                &std::env::var("TERM").unwrap_or_default(),
+            ),
+        };
+        if let Some(saved) = &options.saved {
+            // QGDXC-TUI-0008: nothing opens until the operator chooses.
+            let mut chooser = picker::Picker::new(saved);
+            let mut redraw = Redraw::default();
+            let start = Instant::now();
+            loop {
+                if stop.load(Ordering::Relaxed) {
+                    return Ok(130);
+                }
+                if redraw.due(start.elapsed()) {
+                    present_picker(&mut terminal, &chooser, appearance)?;
+                }
+                if event::poll(Duration::from_millis(5))?
+                    && let Some(input) = input(event::read()?)
+                {
+                    redraw = Redraw::default();
+                    match chooser.key(input) {
+                        picker::Outcome::Stay => {}
+                        picker::Outcome::Quit => return Ok(0),
+                        picker::Outcome::Start(chosen) => {
+                            options.choose(&chosen);
+                            break;
+                        }
+                    }
+                }
+            }
+            terminal.clear()?;
+        }
         let origin = Instant::now();
         let mut model = Model::new(
             options.labels.clone(),
             options.keep_human,
             options.keep_skimmer,
         );
-        model.appearance.theme = options.theme;
-        model.appearance.depth = theme::Depth::detect(
-            &std::env::var("COLORTERM").unwrap_or_default(),
-            &std::env::var("TERM").unwrap_or_default(),
-        );
+        model.appearance = appearance;
         model.utc_epoch = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap_or_default()

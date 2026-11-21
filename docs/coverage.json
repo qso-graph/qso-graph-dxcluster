@@ -1229,6 +1229,84 @@
       ],
       "vectors": []
     },
+    "QGDXC-TUI-0006": {
+      "tests": [
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/saved.rs",
+          "name": "sources_file_default_path_follows_the_platform"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/saved.rs",
+          "name": "sources_file_reads_only_a_bounded_regular_file_and_never_writes"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/tui/tests.rs",
+          "name": "sources_option_rules_and_chosen_sources_run_as_nodes"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster-cli/tests/tui.rs",
+          "name": "sources_file_errors_come_before_terminal_checks"
+        }
+      ],
+      "vectors": []
+    },
+    "QGDXC-TUI-0007": {
+      "tests": [
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/saved.rs",
+          "name": "sources_file_reads_the_documented_example_in_order"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/saved.rs",
+          "name": "sources_file_rejects_the_whole_file_naming_the_offending_value"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/saved.rs",
+          "name": "sources_file_call_per_source_overrides_the_file_call"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster-cli/tests/tui.rs",
+          "name": "sources_file_errors_come_before_terminal_checks"
+        }
+      ],
+      "vectors": []
+    },
+    "QGDXC-TUI-0008": {
+      "tests": [
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/tui/tests.rs",
+          "name": "sources_option_rules_and_chosen_sources_run_as_nodes"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/tui/tests.rs",
+          "name": "sources_screen_chooses_starts_and_quits"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/tui/tests.rs",
+          "name": "sources_screen_lists_every_source_and_fits_small_windows"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster-cli/tests/tui.rs",
+          "name": "sources_screen_quits_without_opening_or_writing",
+          "platform": "linux"
+        }
+      ],
+      "vectors": []
+    },
+    "QGDXC-TUI-0009": {
+      "tests": [
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/saved.rs",
+          "name": "sources_file_reads_only_a_bounded_regular_file_and_never_writes"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster-cli/tests/tui.rs",
+          "name": "sources_screen_quits_without_opening_or_writing",
+          "platform": "linux"
+        }
+      ],
+      "vectors": []
+    },
     "QGDXC-TUI-0010": {
       "tests": [
         {

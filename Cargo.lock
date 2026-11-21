@@ -536,6 +536,7 @@ dependencies = [
  "getrandom",
  "qso-graph-dxcluster",
  "ratatui",
+ "serde_core",
  "serde_json",
 ]
 

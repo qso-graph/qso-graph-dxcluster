@@ -56,6 +56,8 @@ Use `--theme color|daylight|phosphor|amber|mono` to choose a theme at startup.
 The responsive layout, activity charts, `NO_COLOR` behavior, and terminal color
 selection follow `QGDXC-TUI-0070`–`QGDXC-TUI-0073` in Annex F. Use repeated `--node` options
 with one `--call`, or repeated `--replay` options for paced offline playback.
+Or list your own nodes in a sources file and choose them when `qg-dxc tui` starts;
+see [Choose your nodes when the TUI starts](docs/user/sources.md).
 The interface requires terminal input and output. See [Annex F](spec/annex-f-tui.md).
 
 Recording is opt-in; exact recording also requires the explicit retention flag.
