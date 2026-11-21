@@ -20,7 +20,7 @@ qg-dxc tui --replay <file> [--replay …] [--keep-human N] [--keep-skimmer N]
 
 | ID | Requirement | Verify |
 |---|---|---|
-| `QGDXC-TUI-0001` | `qg-dxc tui` MUST accept 1–8 sources: repeated `--node <host>:<port>[/<profile>]` with one `--call`, or repeated `--replay <file>`, not both. `<profile>` MUST be one of `auto`, `dxspider`, `arcluster`, `cccluster`, or `rbn`; omission selects `auto`. A bracketed IPv6 literal MUST be accepted as `[<addr>]:<port>`. The call, every endpoint, and every profile MUST be validated before any connection opens, under `QGDXC-IO-0003`; zero sources, more than eight, a duplicate endpoint (host compared ASCII case-insensitively, same port), or a port outside 1–65535 MUST be rejected with a configuration error naming the offending argument. | Test |
+| `QGDXC-TUI-0001` | `qg-dxc tui` MUST accept 1–8 sources: repeated `--node <host>:<port>[/<profile>]` with one `--call`, or repeated `--replay <file>`, not both. `<profile>` MUST be one of `auto`, `dxspider`, `arcluster`, `cccluster`, or `rbn`; omission selects `auto`. A bracketed IPv6 literal MUST be accepted as `[<addr>]:<port>`. The call, every endpoint, and every profile MUST be validated before any connection opens, under `QGDXC-IO-0003`; with neither, F.1.1 applies; more than eight, a duplicate endpoint (host compared ASCII case-insensitively, same port), or a port outside 1–65535 MUST be rejected with a configuration error naming the offending argument. | Test |
 | `QGDXC-TUI-0002` | Each `--node` MUST run its own session under §3, with its own retry state, timers, and transport. One source's failure, retry, exhaustion, or blocking outcome MUST NOT close, delay, or restart another source. | Test |
 | `QGDXC-TUI-0003` | Each `--replay` path MUST name a regular file, checked before it is opened; any other file type MUST be rejected with a configuration error. Each `--replay` source MUST use the replay adapter of `QGDXC-REC-0004`, opening no socket. All sources MUST share one interface-start monotonic origin; a record with timestamp `t` becomes due `t` seconds after that origin, without subtracting the first record's timestamp. Due records MUST be delivered in ascending `t`, then source argument order, then physical record order; all continuation batches from a record retain its position in that order. Overdue records MUST be delivered without dropping them. This aligns recording-relative time, not original UTC chronology. At valid end of file, the adapter MUST be finalized once, the source MUST be marked as finished, and its retained spots and final connection state MUST remain visible without scheduling another connection. A replay error MUST stop only that source and remain visible on its status line. | Test |
 | `QGDXC-TUI-0004` | Each source MUST receive a unique label of at most 16 display columns. Its base is the `--node` host or `--replay` file stem, sanitized under `QGDXC-TUI-0013`; an empty stem uses `source`. Process sources in argument order. First try the base clipped to 16 columns. If already used, try suffixes `#2`, `#3`, … in increasing order, clipping the base to leave room for the suffix, until the complete rendered label is unused. The label is local configuration, not network text. | Test |
@@ -28,6 +28,34 @@ qg-dxc tui --replay <file> [--replay …] [--keep-human N] [--keep-skimmer N]
 
 `qg-dxc tui` records nothing in this draft. `qg-dxc connect --record` remains the
 way to capture a session.
+
+### F.1.1 Saved sources
+
+```
+qg-dxc tui [--sources <file>] [--keep-human N] [--keep-skimmer N] [--theme <name>]
+```
+
+An operator can keep their own nodes in a JSON file and choose among them when the
+interface starts. The project ships no such file and no node list
+(`QGDXC-IO-0003`); the user guide shows how to write one.
+
+```json
+{
+  "version": 1,
+  "call": "Q1ABC",
+  "sources": [
+    { "name": "Home node", "node": "dx.example.invalid:7300", "selected": true },
+    { "name": "RBN CW", "node": "rbn.example.invalid:7000", "profile": "rbn", "call": "Q1ABC-2" }
+  ]
+}
+```
+
+| ID | Requirement | Verify |
+|---|---|---|
+| `QGDXC-TUI-0006` | Without `--node` or `--replay`, `qg-dxc tui` MUST read a sources file: the `--sources <file>` path when given, otherwise the default path. The default path MUST be `qso-graph/dxcluster-sources.json` under `%APPDATA%` on Windows; elsewhere under `$XDG_CONFIG_HOME` when it is set to an absolute path, otherwise under `$HOME/.config`. If the needed variable is unset, empty, or not absolute, the interface MUST exit with a configuration error naming it. `--sources` MUST NOT be combined with `--node`, `--replay`, or `--call`, and MUST appear at most once. The path MUST name a regular file, checked before it is opened, and the interface MUST read at most 65,536 bytes; a missing file, another file type, or a longer file MUST be rejected with a configuration error naming the path. Every rejection under F.1.1 MUST happen before the interface changes terminal state or opens any source. | Test |
+| `QGDXC-TUI-0007` | The file MUST be UTF-8 JSON (RFC 8259) whose top level is an object with the members `version` and `sources`, MAY have `call`, and no other member. `version` MUST be the integer 1. `sources` MUST be an array of 1–64 objects. Each source object MUST have `name` and `node`, and MAY have `profile`, `selected`, and `call`, and no other member. Every `call`, at either level, MUST satisfy `QGDXC-IO-0003`; a source logs in with its own `call` when present, otherwise the top-level `call`, and a source with neither MUST be rejected. `name` MUST be 1–32 bytes of ASCII U+0020–U+007E, not beginning or ending with a space, and unique within the file under ASCII case-insensitive comparison. `node` MUST be a string in the `--node` endpoint form of `QGDXC-TUI-0001`, without a `/<profile>` suffix; endpoints MUST be unique under that requirement's comparison. `profile` MUST be one of the `QGDXC-TUI-0001` profile names, defaulting to `auto`. `selected` MUST be a boolean, defaulting to false. Invalid JSON or a duplicate member name in any object MUST reject the whole file with a configuration error giving the line and column. A missing or unexpected member, a wrong JSON type, or an invalid value MUST reject the whole file with a configuration error naming the JSON path of the first offending value (for example `sources[2].node`). Errors MUST be sanitized under `QGDXC-TUI-0013`. No part of a rejected file is used. | Test |
+| `QGDXC-TUI-0008` | After a valid file is read, the interface MUST show a Sources screen listing every saved source in file order with its name, endpoint, and profile, with the sources marked `selected` already chosen. Up and Down MUST move, Space MUST toggle the source under the cursor, Enter MUST start the chosen sources, and `q`, Escape, or Ctrl-C MUST exit without opening any source, restoring the terminal under `QGDXC-TUI-0052`. Enter with no source chosen or more than eight chosen MUST keep the screen open with `Choose 1 to 8 sources` and open nothing. The chosen sources MUST then run exactly as the equivalent `--call` and `--node` arguments in file order would, under `QGDXC-TUI-0001` through `QGDXC-TUI-0004`, except that each label's base MUST be the source's `name` rather than its host. The screen MUST follow `QGDXC-TUI-0013`, `QGDXC-TUI-0054`, and the themes of F.8. | Test |
+| `QGDXC-TUI-0009` | The interface MUST NOT write, create, or rename the sources file or its directory. The file reader MUST be covered by a fuzz target that accepts arbitrary bytes and either returns a validated source list or a configuration error, never panicking or exceeding the bounds of `QGDXC-TUI-0006` and `QGDXC-TUI-0007`. | Test |
 
 ## F.2 Merged spot list
 
