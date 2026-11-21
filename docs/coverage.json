@@ -1249,7 +1249,8 @@
         },
         {
           "file": "crates/qso-graph-dxcluster-cli/tests/tui.rs",
-          "name": "first_run_hint_lines_are_only_the_programs_own"
+          "name": "first_run_hint_lines_are_only_the_programs_own",
+          "platform": "linux"
         }
       ],
       "vectors": []
