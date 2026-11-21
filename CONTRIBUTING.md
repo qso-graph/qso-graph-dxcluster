@@ -26,6 +26,16 @@ cargo install cargo-vet --version 0.10.3 --locked
 cargo install cargo-audit --version 0.22.2 --locked
 ```
 
+Write commit messages as [Conventional Commits](https://www.conventionalcommits.org):
+a type, an optional scope, and a summary, such as `feat(tui): show the band plan`
+or `fix(session): retry once after a reset`. Mark a breaking change with `!`
+after the type or scope. Release notes come from `feat`, `fix`, `perf`, `revert`,
+and `docs` commits, so write those summaries for users. Do not edit
+`CHANGELOG.md`; the release pull request writes it. On Linux, verification
+checks every commit since the latest release tag with
+[cocogitto](https://github.com/cocogitto/cocogitto) 7.0.0 (`cog check`), so
+install `cog` 7.0.0 there.
+
 Linux requires the pinned fuzz tools in [fuzz/README.md](fuzz/README.md); missing
 prerequisites fail verification. Other platforms skip with a stated reason.
 CI installs those tools, then runs exactly `cargo xtask verify`.
