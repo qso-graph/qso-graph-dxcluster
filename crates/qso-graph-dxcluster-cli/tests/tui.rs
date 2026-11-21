@@ -177,7 +177,15 @@ fn sources_file_errors_come_before_terminal_checks() {
         ),
         (
             vec!["tui".into()],
-            vec![("XDG_CONFIG_HOME", dir.display().to_string())],
+            // The default folder is %APPDATA% on Windows, else $XDG_CONFIG_HOME (QGDXC-TUI-0006).
+            vec![(
+                if cfg!(windows) {
+                    "APPDATA"
+                } else {
+                    "XDG_CONFIG_HOME"
+                },
+                dir.display().to_string(),
+            )],
             format!("sources file {}", default.display()),
         ),
     ];
