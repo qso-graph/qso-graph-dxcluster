@@ -3,7 +3,7 @@
 use super::theme::Appearance;
 use qso_graph_dxcluster::{Event, Value, privacy};
 use std::{
-    collections::{BTreeSet, VecDeque},
+    collections::{BTreeSet, HashSet, VecDeque},
     time::Duration,
 };
 
@@ -305,6 +305,19 @@ pub fn mode(event: &Event) -> String {
 pub fn mode_group(mode: &str) -> &str {
     if MODES.contains(&mode) { mode } else { "other" }
 }
+/// Two arrivals are one report when they come within this window (QGDXC-TUI-0015).
+pub const DUPE_WINDOW: Duration = Duration::from_secs(120);
+/// ...and their frequencies differ by at most this many hertz.
+pub const DUPE_HZ: u64 = 1_000;
+/// The same spotter reporting the same call on the same frequency (QGDXC-TUI-0015).
+fn same_report(a: &Event, b: &Event) -> bool {
+    let same = |field: &str| match (a.get(field), b.get(field)) {
+        (Some(x), Some(y)) => !x.is_empty() && x.eq_ignore_ascii_case(y),
+        _ => false,
+    };
+    let (fa, fb) = (frequency(a), frequency(b));
+    same("spotter_call") && same("call") && fa != 0 && fb != 0 && fa.abs_diff(fb) <= DUPE_HZ
+}
 pub fn frequency(event: &Event) -> u64 {
     match event.fields.get("frequency_hz") {
         Some(Value::Integer(v)) => u64::try_from(*v).unwrap_or(0),
@@ -391,6 +404,8 @@ pub struct Filters {
     pub modes: Option<BTreeSet<String>>,
     pub calls: Vec<String>,
     pub kind: usize,
+    /// Show every copy of a spot instead of the first (QGDXC-TUI-0015).
+    pub dupes: bool,
 }
 impl Filters {
     pub fn accepts(&self, spot: &Spot) -> bool {
@@ -425,6 +440,9 @@ impl Filters {
                 if self.kind == 1 { "human" } else { "skimmer" }
             ));
         }
+        if self.dupes {
+            parts.push("dupes".into());
+        }
         format!(
             "Filters: {}",
             if parts.is_empty() {
@@ -457,6 +475,8 @@ pub struct Spot {
     pub ends: Option<(End, End)>,
     pub born: Duration,
     pub id: u64,
+    /// The id of the first copy of this report, or its own id (QGDXC-TUI-0015).
+    pub copy_of: u64,
     pub source: usize,
     pub event: Event,
     pub band: &'static str,
@@ -640,10 +660,18 @@ impl Model {
                 .and_then(super::geo::grid_center)
                 .map(|place| End { place, exact: true })
                 .or_else(|| locate(event.get("call")));
+            let copy_of = self
+                .spots
+                .iter()
+                .take_while(|s| now.saturating_sub(s.born) <= DUPE_WINDOW)
+                // Match first copies only, so near frequencies cannot chain.
+                .find(|s| s.copy_of == s.id && same_report(&s.event, &event))
+                .map_or(self.total, |s| s.copy_of);
             let spot = Spot {
                 ends: locate(event.get("spotter_call")).zip(dx),
                 born: now,
                 id: self.total,
+                copy_of,
                 source,
                 band: band(frequency(&event)),
                 mode: mode(&event),
@@ -670,11 +698,32 @@ impl Model {
             self.clamp(!self.paused);
         }
     }
+    /// The spots to show, newest first. Unless duplicates are shown, only the oldest
+    /// shown copy of each report is kept (QGDXC-TUI-0015).
     pub fn matching(&self) -> Vec<&Spot> {
+        let mut seen = HashSet::new();
+        let mut shown: Vec<&Spot> = self
+            .spots
+            .iter()
+            .rev()
+            .filter(|s| self.shows(s))
+            .filter(|s| self.filters.dupes || seen.insert(s.copy_of))
+            .collect();
+        shown.reverse();
+        shown
+    }
+    fn shows(&self, spot: &Spot) -> bool {
+        !self.sources[spot.source].hidden && self.filters.accepts(spot)
+    }
+    /// How many other shown copies a collapsed row stands for (QGDXC-TUI-0015).
+    pub fn other_copies(&self, spot: &Spot) -> usize {
+        if self.filters.dupes {
+            return 0;
+        }
         self.spots
             .iter()
-            .filter(|s| !self.sources[s.source].hidden && self.filters.accepts(s))
-            .collect()
+            .filter(|s| s.copy_of == spot.copy_of && s.id != spot.id && self.shows(s))
+            .count()
     }
     fn set_limits(&mut self, human: usize, skimmer: usize) {
         self.keep_human = human;
@@ -886,6 +935,10 @@ impl Model {
                     self.filters.kind = (self.filters.kind + 1) % 3;
                     self.clamp(true);
                 }
+                Input::Char('d') => {
+                    self.filters.dupes = !self.filters.dupes;
+                    self.clamp(true);
+                }
                 Input::Char(c @ '1'..='8') => {
                     if let Some(source) = self.sources.get_mut(c as usize - '1' as usize) {
                         source.hidden = !source.hidden;
@@ -893,7 +946,11 @@ impl Model {
                     }
                 }
                 Input::Char('c') => {
-                    self.filters = Filters::default();
+                    // QGDXC-TUI-0015: showing duplicates is a view setting, not a filter.
+                    self.filters = Filters {
+                        dupes: self.filters.dupes,
+                        ..Filters::default()
+                    };
                     for s in &mut self.sources {
                         s.hidden = false;
                     }

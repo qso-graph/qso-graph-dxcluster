@@ -127,7 +127,7 @@ pub fn draw(frame: &mut Frame<'_>, model: &Model, now: Duration) {
                 "QG DX Cluster: receive-only multi-source spot viewer",
                 "q / Ctrl-C: quit   b: bands   m: modes   /: callsign patterns",
                 "k: all/human/skimmer   1-8: hide/show source   c: clear filters",
-                "p: pause/resume scrolling (reception continues)   t: theme   M: map",
+                "p: pause/resume scrolling (reception continues)   t: theme   M: map   d: dupes",
                 "Up/Down/PageUp/PageDown/Home: scroll   l limits   ?: help",
                 "Callsign editor: printable keys are data; Backspace deletes",
                 "Enter commits; Escape cancels. Wildcards: * any run, ? one character",
@@ -911,13 +911,12 @@ fn spot_row(
         };
         row.safe(&speed, 3, true, a.style(Role::Dim), true);
         row.ui("  ", a.style(Role::Text));
-        row.safe(
-            short_label(&m.sources[spot.source].label),
-            source_width(m),
-            false,
-            a.style(Role::Dim),
-            true,
-        );
+        let label = short_label(&m.sources[spot.source].label);
+        let label = match m.other_copies(spot) {
+            0 => label.to_owned(),
+            n => format!("{label}+{n}"),
+        };
+        row.safe(&label, source_width(m), false, a.style(Role::Dim), true);
         row.ui("  ", a.style(Role::Text));
     }
     let remaining = row.end.saturating_sub(row.x) as usize;
@@ -936,14 +935,21 @@ const MODE_WIDE: usize = 6;
 fn short_label(label: &str) -> &str {
     label.split('.').next().unwrap_or_default()
 }
-/// The Src column fits the longest source label, between 3 and 8 characters.
+/// The Src column fits the longest source label, between 3 and 8 characters, plus
+/// room for a `+N` copy count while duplicates are collapsed (QGDXC-TUI-0015).
 pub(crate) fn source_width(m: &Model) -> usize {
-    m.sources
+    let label = m
+        .sources
         .iter()
         .map(|s| short_label(&s.label).len())
         .max()
         .unwrap_or(3)
-        .clamp(3, 8)
+        .clamp(3, 8);
+    if m.sources.len() > 1 && !m.filters.dupes {
+        label + 2
+    } else {
+        label
+    }
 }
 fn display_comment(spot: &Spot, wide: bool) -> &str {
     let original = spot.event.get("comment").unwrap_or_default();
@@ -987,6 +993,8 @@ fn display_comment(spot: &Spot, wide: bool) -> &str {
     };
     derive().unwrap_or(original)
 }
+/// From this width every footer key carries its label (QGDXC-TUI-0070).
+const FULL_FOOTER: u16 = 120;
 fn footer(frame: &mut Frame<'_>, y: u16, w: u16, m: &Model) {
     let a = m.appearance;
     let theme = format!("{} ", a.theme.name());
@@ -997,10 +1005,11 @@ fn footer(frame: &mut Frame<'_>, y: u16, w: u16, m: &Model) {
         ("m", "mode"),
         ("/", "call"),
         ("k", "kind"),
-        ("1-8", if w >= 100 { "source" } else { "src" }),
+        ("d", if w >= FULL_FOOTER { "dupes" } else { "" }),
+        ("1-8", if w >= FULL_FOOTER { "source" } else { "src" }),
         ("p", if m.paused { "resume" } else { "pause" }),
         ("l", "limits"),
-        ("t", if w >= 100 { "theme" } else { "" }),
+        ("t", if w >= FULL_FOOTER { "theme" } else { "" }),
         (
             "M",
             match (w >= 100, m.map) {

@@ -1417,6 +1417,19 @@
       ],
       "vectors": []
     },
+    "QGDXC-TUI-0015": {
+      "tests": [
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/tui/tests.rs",
+          "name": "duplicate_reports_collapse_to_the_first_shown_copy"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/tui/tests.rs",
+          "name": "collapsed_rows_count_copies_and_d_is_listed"
+        }
+      ],
+      "vectors": []
+    },
     "QGDXC-TUI-0020": {
       "tests": [
         {
