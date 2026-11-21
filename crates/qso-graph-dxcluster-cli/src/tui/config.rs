@@ -149,12 +149,25 @@ impl Options {
         self.labels = labels(&entries.iter().map(|e| e.name.clone()).collect::<Vec<_>>());
     }
 }
+/// The error for a missing default sources file; the path follows, escaped.
+pub const NO_SOURCES_FILE: &str = "configuration: no sources file at ";
+/// What to do when the default sources file does not exist yet.
+pub const FIRST_RUN: &str = "Create it as described in \
+https://github.com/qso-graph/qso-graph-dxcluster/blob/main/docs/user/sources.md\n\
+or name nodes directly:\n  qg-dxc tui --call <CALL> --node <host>:<port>[/<profile>] [--node ...]";
 fn read_saved(explicit: Option<&str>) -> Result<Saved, String> {
     let path = match explicit {
         Some(path) => path.into(),
         None => saved::default_path(cfg!(windows), |name| std::env::var_os(name))
             .map_err(|e| format!("configuration: {e}"))?,
     };
+    // QGDXC-TUI-0006: a first run has no file yet, so say how to make one.
+    if explicit.is_none() && !path.try_exists().unwrap_or(true) {
+        return Err(format!(
+            "{NO_SOURCES_FILE}{}",
+            super::model::sanitize(&path.display().to_string())
+        ));
+    }
     saved::read(&path).map_err(|e| format!("configuration: sources file {}: {e}", path.display()))
 }
 fn keep(value: &str, flag: &str) -> Result<usize, String> {

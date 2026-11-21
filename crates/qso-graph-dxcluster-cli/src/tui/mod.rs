@@ -167,7 +167,17 @@ impl Redraw {
     }
 }
 pub fn run(args: &[String]) -> Result<u8, String> {
-    let mut options = Options::parse(args).map_err(|e| sanitize(&e))?;
+    let mut options = match Options::parse(args) {
+        Ok(options) => options,
+        // QGDXC-TUI-0006: a first run gets the way forward, not only the error. The
+        // path is already escaped; the hint lines are this program's own text.
+        Err(e) if e.starts_with(config::NO_SOURCES_FILE) => {
+            eprintln!("qg-dxc: {}", sanitize(&e));
+            eprintln!("{}", config::FIRST_RUN);
+            return Ok(1);
+        }
+        Err(e) => return Err(sanitize(&e)),
+    };
     if !io::stdin().is_terminal() || !io::stdout().is_terminal() {
         return Err("tui requires terminal standard input and output".into());
     }

@@ -186,7 +186,10 @@ fn sources_file_errors_come_before_terminal_checks() {
                 },
                 dir.display().to_string(),
             )],
-            format!("sources file {}", default.display()),
+            format!(
+                "qg-dxc: configuration: no sources file at {}\nCreate it as described in https://github.com/qso-graph/qso-graph-dxcluster/blob/main/docs/user/sources.md\nor name nodes directly:\n  qg-dxc tui --call <CALL> --node <host>:<port>[/<profile>] [--node ...]\n",
+                default.display()
+            ),
         ),
     ];
     if cfg!(unix) {
@@ -305,4 +308,34 @@ for key, code in [(b'q', 0), (b'\x1b', 0), (b'\x03', 0)]:
         .collect();
     assert_eq!(listing, ["sources.json"]);
     std::fs::remove_dir_all(&dir).unwrap();
+}
+
+#[cfg(unix)]
+#[test]
+fn first_run_hint_lines_are_only_the_programs_own() {
+    // QGDXC-TUI-0006 QGDXC-TUI-0013: a newline or escape in the configured folder is
+    // escaped inside the path line; it never starts a line of its own.
+    let output = Command::new(env!("CARGO_BIN_EXE_qg-dxc"))
+        .arg("tui")
+        .env(
+            "XDG_CONFIG_HOME",
+            "/nonexistent/qg-dxc\nforged line\u{1b}[2J",
+        )
+        .stdin(Stdio::null())
+        .output()
+        .unwrap();
+    assert_eq!(output.status.code(), Some(1));
+    assert!(output.stdout.is_empty());
+    assert!(!output.stderr.contains(&27));
+    let error = String::from_utf8(output.stderr).unwrap();
+    let lines: Vec<&str> = error.lines().collect();
+    assert_eq!(lines.len(), 4, "{error}");
+    assert!(lines[0].starts_with(
+        "qg-dxc: configuration: no sources file at /nonexistent/qg-dxc\\u{000a}forged line"
+    ));
+    assert!(lines[1].starts_with("Create it as described in https://"));
+    assert_eq!(
+        lines[3],
+        "  qg-dxc tui --call <CALL> --node <host>:<port>[/<profile>] [--node ...]"
+    );
 }
