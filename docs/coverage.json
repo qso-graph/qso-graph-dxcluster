@@ -1246,6 +1246,11 @@
         {
           "file": "crates/qso-graph-dxcluster-cli/tests/tui.rs",
           "name": "sources_file_errors_come_before_terminal_checks"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster-cli/tests/tui.rs",
+          "name": "first_run_hint_lines_are_only_the_programs_own",
+          "platform": "linux"
         }
       ],
       "vectors": []
