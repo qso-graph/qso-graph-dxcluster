@@ -1850,6 +1850,33 @@
         }
       ],
       "vectors": []
+    },
+    "QGDXC-TUI-0090": {
+      "tests": [
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/tui/tests.rs",
+          "name": "solar_reports_keep_the_latest_of_either_kind"
+        }
+      ],
+      "vectors": []
+    },
+    "QGDXC-TUI-0091": {
+      "tests": [
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/tui/tests.rs",
+          "name": "solar_figures_show_in_both_layouts"
+        }
+      ],
+      "vectors": []
+    },
+    "QGDXC-TUI-0092": {
+      "tests": [
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/tui/tests.rs",
+          "name": "solar_figures_go_dim_when_stale_and_color_k"
+        }
+      ],
+      "vectors": []
     }
   },
   "scenarios": {

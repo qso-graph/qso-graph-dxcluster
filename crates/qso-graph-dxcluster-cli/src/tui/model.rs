@@ -583,6 +583,46 @@ pub struct Model {
     /// Show the spot map instead of the list (QGDXC-TUI-0080).
     pub map: bool,
     pub prefixes: &'static qso_graph_dxcluster_cli::prefixes::Prefixes,
+    /// The latest WWV or WCY report from any source (QGDXC-TUI-0090).
+    pub solar: Option<Solar>,
+}
+/// A kept WWV or WCY report (QGDXC-TUI-0090).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Solar {
+    pub wcy: bool,
+    pub hour: Option<i64>,
+    pub source: usize,
+    pub at: Duration,
+    pub sfi: Option<i64>,
+    pub a: Option<i64>,
+    pub k: Option<i64>,
+    pub expected_k: Option<i64>,
+    pub r: Option<i64>,
+}
+impl Solar {
+    fn from_event(event: &Event, source: usize, at: Duration) -> Self {
+        let wcy = event.kind == "wcy";
+        let int = |name: &str| match event.fields.get(name) {
+            Some(Value::Integer(n)) => Some(*n),
+            _ => None,
+        };
+        Self {
+            wcy,
+            hour: int("hour"),
+            source,
+            at,
+            sfi: int("sfi"),
+            a: int("a"),
+            k: int("k"),
+            expected_k: if wcy { int("expected_k") } else { None },
+            r: if wcy { int("r") } else { None },
+        }
+    }
+    /// QGDXC-TUI-0092: past its next expected report.
+    pub fn stale(&self, now: Duration) -> bool {
+        let limit = Duration::from_secs(if self.wcy { 3_600 } else { 3 * 3_600 });
+        now.saturating_sub(self.at) > limit
+    }
 }
 impl Model {
     pub fn new(labels: Vec<String>, keep_human: usize, keep_skimmer: usize) -> Self {
@@ -620,6 +660,7 @@ impl Model {
             page: 10,
             map: false,
             prefixes: qso_graph_dxcluster_cli::prefixes::builtin(),
+            solar: None,
         }
     }
     pub fn receive(&mut self, source: usize, mut event: Event, now: Duration) {
@@ -637,6 +678,8 @@ impl Model {
             status.server = event.server_type.name().into();
             status.state = event.get("state").unwrap_or_default().into();
             status.reason = event.get("reason").unwrap_or_default().into();
+        } else if event.kind == "wwv" || event.kind == "wcy" {
+            self.solar = Some(Solar::from_event(&event, source, now));
         } else if event.kind == "spot" {
             status.count += 1;
             status.last = Some(now);

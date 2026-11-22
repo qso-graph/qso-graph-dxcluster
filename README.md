@@ -65,6 +65,8 @@ Lowering a cap immediately removes that kind’s oldest spots, including while p
 When two nodes relay the same spot, the list shows it once, and its source reads
 `node+1` when one more node carried it; press `d` to show every copy (`QGDXC-TUI-0015`).
 Press `s` to hide self-spots, where a station spots itself (`QGDXC-TUI-0045`).
+The latest solar figures from the nodes' WWV and WCY broadcasts (SFI, A, K, and
+from WCY expK and R) show under the band chart, and go dim once out of date (F.10).
 Press `?` for keys;
 Scrolling down holds your place while reception continues, and Home returns to the newest spots; `p` pauses and resumes too, and `t` cycles the five themes.
 Use `--theme color|daylight|phosphor|amber|mono` to choose a theme at startup.

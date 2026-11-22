@@ -2590,3 +2590,186 @@ fn wide_frequency_fits_ten_gigahertz() {
     assert!(row.contains(" 10489520.0  QA2V"), "{row}");
     assert!(!row.contains('~'), "{row}");
 }
+fn solar(kind: &'static str, hour: i64, fields: &[(&str, i64)]) -> ClusterEvent {
+    let mut event = ClusterEvent::new(Profile::DxSpider, kind);
+    event.set("from_call", "Q9XYZ");
+    event.set("hour", qso_graph_dxcluster::Value::Integer(hour));
+    event.set("text", "SFI=145, A=8, K=2");
+    for (name, value) in fields {
+        event.set(name, qso_graph_dxcluster::Value::Integer(*value));
+    }
+    event
+}
+fn grid_at(model: &Model, width: u16, height: u16, now: Duration) -> Buffer {
+    let mut terminal = Terminal::new(TestBackend::new(width, height)).unwrap();
+    present(&mut terminal, model, now).unwrap();
+    terminal.backend().buffer().clone()
+}
+/// The row containing `needle`, and the cell where it starts.
+fn locate(buffer: &Buffer, needle: &str) -> Option<(u16, u16)> {
+    (0..buffer.area.height).find_map(|y| {
+        let row = text(buffer, y);
+        row.find(needle)
+            .map(|at| (row[..at].chars().count() as u16, y))
+    })
+}
+#[test]
+fn solar_reports_keep_the_latest_of_either_kind() {
+    // QGDXC-TUI-0090
+    let mut m = Model::new(args(&["one", "two"]), 100, 100);
+    m.receive(0, spot("Q1ABC", 14_025_000, "CW"), Duration::ZERO);
+    let wwv = solar("wwv", 15, &[("sfi", 145), ("a", 8), ("k", 2)]);
+    m.receive(1, wwv, Duration::from_secs(5));
+    let kept = m.solar.clone().unwrap();
+    assert!(!kept.wcy);
+    assert_eq!(
+        (kept.hour, kept.source, kept.at),
+        (Some(15), 1, Duration::from_secs(5))
+    );
+    assert_eq!((kept.sfi, kept.a, kept.k), (Some(145), Some(8), Some(2)));
+    // Neither counted nor retained as a spot.
+    assert_eq!((m.total, m.spots.len(), m.sources[1].count), (1, 1, 0));
+    // A later report of the other kind replaces it, even with an earlier hour and a hidden source.
+    key(&mut m, KeyCode::Char('1'));
+    let mut wcy = solar(
+        "wcy",
+        3,
+        &[("k", 3), ("expected_k", 4), ("a", 10), ("r", 85)],
+    );
+    wcy.set("sfi", "unreadable");
+    wcy.set("sa", "qui");
+    m.receive(0, wcy, Duration::from_secs(9));
+    let kept = m.solar.clone().unwrap();
+    assert!(kept.wcy);
+    assert_eq!((kept.hour, kept.source), (Some(3), 0));
+    assert_eq!((kept.sfi, kept.a, kept.k), (None, Some(10), Some(3)));
+    assert_eq!((kept.expected_k, kept.r), (Some(4), Some(85)));
+    // WWV never carries expK or R, even if a field of that name arrives.
+    m.receive(
+        1,
+        solar("wwv", 18, &[("k", 1), ("r", 99)]),
+        Duration::from_secs(12),
+    );
+    let kept = m.solar.clone().unwrap();
+    assert_eq!(
+        (kept.k, kept.expected_k, kept.r, kept.sfi),
+        (Some(1), None, None, None)
+    );
+    assert_eq!(m.total, 1);
+}
+#[test]
+fn solar_figures_show_in_both_layouts() {
+    // QGDXC-TUI-0091
+    let mut m = Model::new(args(&["one", "two"]), 100, 100);
+    assert!(locate(&grid(&m, 120, 40), "SFI").is_none());
+    assert!(locate(&grid(&m, 80, 24), "SFI").is_none());
+    m.receive(
+        1,
+        solar("wwv", 6, &[("sfi", 145), ("a", 8), ("k", 2)]),
+        Duration::ZERO,
+    );
+    let wide = grid(&m, 120, 40);
+    let (x, y) = locate(&wide, "²WWV 06Z · SFI 145 · A 8 · K 2 ").expect("wide strip");
+    // In the bands box's bottom border, the right half of the screen.
+    assert!(x >= 60, "{}", text(&wide, y));
+    assert!(text(&wide, y).starts_with('╰'));
+    assert!(locate(&wide, "expK").is_none());
+    let compact = grid(&m, 80, 24);
+    let (_, y) = locate(&compact, " SFI 145 A 8 K 2 ").expect("compact strip");
+    assert_eq!(y, 22, "spots box bottom border");
+    assert!(text(&compact, y).contains(" received "));
+    assert!(text(&compact, y).contains(" skimmer "));
+    m.receive(
+        0,
+        solar(
+            "wcy",
+            7,
+            &[
+                ("sfi", 150),
+                ("a", 9),
+                ("k", 3),
+                ("expected_k", 4),
+                ("r", 85),
+            ],
+        ),
+        Duration::ZERO,
+    );
+    assert!(
+        locate(
+            &grid(&m, 120, 40),
+            "¹WCY 07Z · SFI 150 · A 9 · K 3 · expK 4 · R 85 "
+        )
+        .is_some()
+    );
+    // Compact keeps SFI, A and K only.
+    assert!(locate(&grid(&m, 80, 24), " SFI 150 A 9 K 3 ").is_some());
+    // Missing fields are omitted, not shown as blanks.
+    m.receive(0, solar("wwv", 8, &[("k", 5)]), Duration::ZERO);
+    assert!(locate(&grid(&m, 120, 40), "¹WWV 08Z · K 5 ").is_some());
+    // Compact drops the strip when it would touch the border labels.
+    m.receive(
+        0,
+        solar("wwv", 9, &[("sfi", 145), ("a", 8), ("k", 2)]),
+        Duration::ZERO,
+    );
+    m.total = 1_000_000_000_000;
+    m.kept_human = 10_000;
+    m.kept_skimmer = 10_000;
+    assert!(locate(&grid(&m, 80, 24), "SFI").is_none());
+    assert!(locate(&grid(&m, 120, 40), "SFI 145").is_some());
+}
+#[test]
+fn solar_figures_go_dim_when_stale_and_color_k() {
+    // QGDXC-TUI-0092
+    use super::theme::Role;
+    let mut m = Model::new(args(&["one"]), 100, 100);
+    let a = m.appearance;
+    let fg = |buffer: &Buffer, needle: &str| {
+        let (x, y) = locate(buffer, needle).expect(needle);
+        Some(buffer[(x + needle.chars().count() as u16 - 1, y)].fg)
+    };
+    for (k, role) in [
+        (0, Role::Text),
+        (3, Role::Text),
+        (4, Role::Warning),
+        (5, Role::Bad),
+        (9, Role::Bad),
+        (12, Role::Text),
+        (-1, Role::Text),
+    ] {
+        m.receive(
+            0,
+            solar("wcy", 1, &[("sfi", 145), ("k", k)]),
+            Duration::ZERO,
+        );
+        let needle = format!("K {k}");
+        assert_eq!(
+            fg(&grid_at(&m, 120, 40, Duration::from_secs(10)), &needle),
+            a.style(role).fg,
+            "K {k}"
+        );
+        assert_eq!(
+            fg(&grid_at(&m, 80, 24, Duration::from_secs(10)), &needle),
+            a.style(role).fg,
+            "compact K {k}"
+        );
+    }
+    // WCY: stale after one hour.
+    let fresh = grid_at(&m, 120, 40, Duration::from_secs(3_600));
+    assert!(locate(&fresh, "stale").is_none());
+    assert_eq!(fg(&fresh, "SFI 145"), a.style(Role::Text).fg);
+    let stale = grid_at(&m, 120, 40, Duration::from_secs(3_601));
+    assert!(locate(&stale, "K -1 · stale ").is_some());
+    assert_eq!(fg(&stale, "SFI 145"), a.style(Role::Dim).fg);
+    assert_eq!(fg(&stale, "K -1"), a.style(Role::Dim).fg);
+    assert_eq!(
+        fg(&grid_at(&m, 80, 24, Duration::from_secs(3_601)), "K -1"),
+        a.style(Role::Dim).fg
+    );
+    // WWV: stale after three hours.
+    m.receive(0, solar("wwv", 1, &[("k", 5)]), Duration::ZERO);
+    assert!(locate(&grid_at(&m, 120, 40, Duration::from_secs(10_800)), "stale").is_none());
+    let stale = grid_at(&m, 120, 40, Duration::from_secs(10_801));
+    assert!(locate(&stale, "K 5 · stale ").is_some());
+    assert_eq!(fg(&stale, "K 5"), a.style(Role::Dim).fg);
+}
