@@ -243,6 +243,13 @@ request until the operator asks for it.
 | `QGDXC-TUI-0115` | `deny.toml` MUST allow `cmake` and `pkg-config` only as dependencies of `aws-lc-sys`, and `cc` only as a dependency of `aws-lc-sys` or of that `cmake` (the chain AWS-LC's build uses, as in QG Trust), and `ureq`, `rustls`, `aws-lc-rs` and `aws-lc-sys` MUST be pinned to exact versions in the command-line crate only. The library crates MUST NOT depend, directly or through others, on any of them; the dependency policy MUST fail if one does, shown by a planted test. | Test |
 | `QGDXC-TUI-0116` | The fetching MUST sit behind an interface that tests replace with recorded product bytes and scripted failures, so that no test makes a network request. | Test, Inspection |
 
+### F.12.1 Ribbon
+
+| ID | Requirement | Verify |
+|---|---|---|
+| `QGDXC-TUI-0125` | While space-weather fetching is running under `QGDXC-TUI-0111` and the library returns at least one item in force at the interface's UTC clock (`QGDXC-SWX-0011`), the interface MUST show a ribbon on every page: `▌<KIND> <headline text after its label>`, then ` · until HH:MM UTC` when the item has an end (`MM-DD HH:MM UTC` when not today), then `  +<n>` when `<n>` more items are in force. `<KIND>` is `ALERT`, `WARNING` or `WATCH` (`CONTINUED ALERT` and `EXTENDED WARNING` read `ALERT` and `WARNING`). The ribbon MUST use the bad role for alerts, the warning role for warnings and the accent role for watches, and its text MUST be escaped under `QGDXC-SEC-0005`. With nothing in force, or before fetching has started, no ribbon MUST be shown, and the ribbon MUST NOT cause any request. | Test |
+| `QGDXC-TUI-0126` | At widths of at least 100 columns the ribbon MUST occupy the bands box's first row below the band counts when the box has such a row, and otherwise the bands box's top border after its title. Below 100 columns it MUST show only `▌<KIND>` and `+<n>` on the spots box's top border after its left label. It MAY be clipped to the space it occupies under `QGDXC-TUI-0013`. | Test |
+
 ## F.13 Space-weather history
 
 The history page shows trends that current figures cannot: whether the sun is heading toward or away from
