@@ -71,7 +71,9 @@ Press `B` (capital) for the NCDXF/IARU beacons: which of the 18 beacons is on
 14.100, 18.110, 21.150, 24.930 and 28.200 MHz right now and which is next, worked
 out from the clock, with each beacon's recent reception reports from the Reverse
 Beacon Network and the source that carried them. On the map, the beacons on air show
-as `◆` (F.11). The beacon schedule is the
+as `◆` (F.11). The schedule and the matching of RBN beacon reports are in the
+library (its `beacons` module, Annex G), so other programs get the same
+answers. The beacon schedule is the
 [NCDXF/IARU International Beacon Project](https://www.ncdxf.org/beacon/)'s, published by
 the Northern California DX Foundation; the beacons are built and run by NCDXF, the
 IARU and their volunteer hosts.

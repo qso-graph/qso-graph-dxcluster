@@ -2789,48 +2789,6 @@ fn beacon_report(beacon: usize, hz: i64, snr: Option<i64>) -> ClusterEvent {
     event
 }
 #[test]
-fn beacon_schedule_follows_the_published_rotation() {
-    // QGDXC-TUI-0100
-    use super::beacons::{BEACONS, FREQUENCIES, on_air, seconds_left};
-    assert_eq!(BEACONS.len(), 18);
-    assert_eq!(
-        FREQUENCIES.map(|f| f.0),
-        [14_100_000, 18_110_000, 21_150_000, 24_930_000, 28_200_000]
-    );
-    // The first beacon opens each cycle on 14.100 and steps up one band every 10 s.
-    for band in 0..5 {
-        assert_eq!(on_air(band as u64 * 10, band), 0);
-        assert_eq!(on_air(band as u64 * 10 + 9, band), 0);
-    }
-    assert_eq!(on_air(0, 1), 17);
-    assert_eq!(on_air(10, 0), 1);
-    assert_eq!(on_air(179, 0), 17);
-    assert_eq!(on_air(180, 0), 0);
-    // Every cycle starts on a UTC minute divisible by three.
-    assert_eq!(on_air(1_700_000_100, 0), on_air(1_700_000_100 % 180, 0));
-    // Each band carries every beacon exactly once per three minutes, and two bands
-    // never carry the same beacon at once.
-    for band in 0..5 {
-        let mut seen: Vec<_> = (0..18).map(|slot| on_air(slot * 10, band)).collect();
-        seen.sort();
-        assert_eq!(seen, (0..18).collect::<Vec<_>>());
-    }
-    for t in (0..180).step_by(10) {
-        let mut now: Vec<_> = (0..5).map(|b| on_air(t, b)).collect();
-        now.dedup();
-        assert_eq!(now.len(), 5);
-    }
-    assert_eq!(
-        (seconds_left(0), seconds_left(9), seconds_left(10)),
-        (10, 1, 10)
-    );
-    assert!(
-        BEACONS
-            .iter()
-            .all(|b| !b.call.is_empty() && !b.place.is_empty())
-    );
-}
-#[test]
 fn beacon_key_switches_views_and_is_listed() {
     // QGDXC-TUI-0101
     let mut m = Model::new(args(&["one"]), 100, 100);

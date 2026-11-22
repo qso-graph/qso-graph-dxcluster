@@ -212,18 +212,14 @@ operator sees the conditions without leaving the spot list. It uses only the `ww
 
 ## F.11 Beacons
 
-The NCDXF/IARU International Beacon Project runs 18 beacons around the world. Each
-transmits for 10 seconds on 14.100, 18.110, 21.150, 24.930 and 28.200 MHz in turn,
-and the 18 take turns, so every band carries one beacon at a time and the whole
-rotation repeats every three minutes. Listening for them is a quick check of which
-paths are open. The schedule is the Northern California DX Foundation's, published at
-<https://www.ncdxf.org/beacon/>; the beacons are built and run by NCDXF, the IARU and
-their volunteer hosts. The beacon view is a display only, like the list and the map.
+The beacon view shows the NCDXF/IARU International Beacon Project's beacons: which
+is on each band now, from the library's schedule (Annex G), and which the Reverse
+Beacon Network has reported recently. It is a display only, like the list and the map.
 
 | ID | Requirement | Verify |
 |---|---|---|
-| `QGDXC-TUI-0100` | The interface MUST carry the 18 beacons in NCDXF's transmit order, each with its call and location, and the five frequencies above, in one source file (`tui/beacons.rs`). On the band with index `b` (0 for 14.100 MHz through 4 for 28.200 MHz), at `t` whole UTC seconds since the Unix epoch, the beacon transmitting MUST be number `(⌊(t mod 180) / 10⌋ − b) mod 18`, counting the first in the order as 0, and the next MUST be the one after it in the order. The interface's UTC clock under `QGDXC-TUI-0070` MUST supply `t`; no network time or beacon status MUST be fetched. | Test |
+| `QGDXC-TUI-0100` | The beacon view and the map MUST take the beacons, frequencies, the beacon on air, the next beacon and the seconds left from the library under `QGDXC-BCN-0001`, with the interface's UTC clock of `QGDXC-TUI-0070` as `t`. No network time or beacon status MUST be fetched. | Test |
 | `QGDXC-TUI-0101` | Outside an editor or dialog, `B` (capital) MUST switch the spots box between the beacon view and the spot list; lowercase `b` remains the band filter. Showing the beacon view MUST leave the map, and `M` MUST leave the beacon view for the map. The header, panels, filters, retention, pause and every other key MUST be unchanged by the switch. The footer MUST show `B beacons` while the beacon view is not shown and `B list` while it is, at widths of at least 120 columns, and `B` alone below that, within the fit of `QGDXC-TUI-0070`. The help screen MUST list `B: beacons`. | Test |
-| `QGDXC-TUI-0102` | A `spot` event whose `spot_type` is `NCDXF B`, whose `call` equals a beacon's call ignoring ASCII case and whose `frequency_hz` is within 1,000 Hz of a beacon frequency, MUST be kept as that beacon's latest report on that frequency, from any source and regardless of filters and source visibility: its monotonic arrival time, its source, its integer `snr_db` when present, and its `spotter_call`. At most one report per beacon and frequency MUST be kept. The spot MUST otherwise be handled as every other spot. | Test |
+| `QGDXC-TUI-0102` | A `spot` event that the library identifies as a beacon report under `QGDXC-BCN-0002` MUST be kept as that beacon's latest report on that band, from any source and regardless of filters and source visibility: its monotonic arrival time, its source, its integer `snr_db` when present, and its `spotter_call`. At most one report per beacon and band MUST be kept. The spot MUST otherwise be handled as every other spot. | Test |
 | `QGDXC-TUI-0103` | The beacon view MUST fill the spots box. Its top border MUST show `NCDXF/IARU beacons` and the whole seconds left in the current transmission, 1 to 10. Then one row per frequency, lowest first, MUST show the frequency in MHz, its band, the call and location of the beacon on it now, the call of the next, and, when that beacon's report on that frequency arrived within the last 15 minutes, its SNR when kept, its age, its spotter and its source's short label as in the Src column of `QGDXC-TUI-0011`. Then a table MUST show each beacon in order, with its call, location, and one cell per frequency: the report's SNR in dB, or `+` without one, when a report arrived within the last 15 minutes, in the band's role; `·` in the dim role otherwise. Rows that do not fit MAY be clipped at the box's bottom. Its bottom border MUST show `B list` and credit the schedule to the NCDXF/IARU International Beacon Project. | Test |
 | `QGDXC-TUI-0104` | While the map is shown, it MUST also mark each beacon transmitting now with `◆` in its band's role at the place of its call under `QGDXC-TUI-0083`, omitting a beacon whose place is unknown, and the map's bottom-border legend MUST include `beacon ◆`. | Test |

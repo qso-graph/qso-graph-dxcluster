@@ -994,10 +994,10 @@ fn country_prefix_line(line: &str) -> bool {
             true
         })
 }
-/// The NCDXF/IARU beacon schedule (QGDXC-TUI-0100): the one file that may name the
+/// The NCDXF/IARU beacon schedule (QGDXC-BCN-0001): the one file that may name the
 /// 18 beacons, and their calls, written in pieces so this file holds none. Public
 /// infrastructure published by NCDXF, never operator identities.
-const BEACON_FILE: &str = "crates/qso-graph-dxcluster-cli/src/tui/beacons.rs";
+const BEACON_FILE: &str = "crates/qso-graph-dxcluster/src/beacons.rs";
 const NCDXF_BEACON_CALLS: [&[&str]; 18] = [
     &["4U", "1UN"],
     &["VE", "8AT"],

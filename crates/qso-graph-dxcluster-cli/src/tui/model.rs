@@ -707,12 +707,7 @@ impl Model {
                     ..Bucket::default()
                 });
             }
-            if event.get("spot_type") == Some("NCDXF B")
-                && let Some((beacon, band)) = super::beacons::identify(
-                    event.get("call").unwrap_or_default(),
-                    frequency(&event),
-                )
-            {
+            if let Some((beacon, band)) = super::beacons::report(&event) {
                 self.heard[beacon][band] = Some(super::beacons::Heard {
                     at: now,
                     source,

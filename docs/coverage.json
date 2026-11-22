@@ -1882,7 +1882,11 @@
       "tests": [
         {
           "file": "crates/qso-graph-dxcluster-cli/src/tui/tests.rs",
-          "name": "beacon_schedule_follows_the_published_rotation"
+          "name": "beacon_view_shows_who_is_on_and_who_was_heard"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/tui/tests.rs",
+          "name": "map_marks_the_beacons_on_air"
         }
       ],
       "vectors": []
@@ -1919,6 +1923,24 @@
         {
           "file": "crates/qso-graph-dxcluster-cli/src/tui/tests.rs",
           "name": "map_marks_the_beacons_on_air"
+        }
+      ],
+      "vectors": []
+    },
+    "QGDXC-BCN-0001": {
+      "tests": [
+        {
+          "file": "crates/qso-graph-dxcluster/tests/beacons.rs",
+          "name": "beacon_schedule_follows_the_published_rotation"
+        }
+      ],
+      "vectors": []
+    },
+    "QGDXC-BCN-0002": {
+      "tests": [
+        {
+          "file": "crates/qso-graph-dxcluster/tests/beacons.rs",
+          "name": "beacon_reports_are_identified_by_type_call_and_frequency"
         }
       ],
       "vectors": []
