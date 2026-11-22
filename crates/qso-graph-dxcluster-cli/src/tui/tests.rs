@@ -2857,8 +2857,11 @@ fn beacon_reports_are_kept_per_beacon_and_frequency() {
 fn beacon_view_shows_who_is_on_and_who_was_heard() {
     // QGDXC-TUI-0103
     use super::beacons::{BEACONS, on_air};
-    let mut m = Model::new(args(&["alpha.example"]), 100, 100);
+    let mut m = Model::new(args(&["alpha.example", "bravo.example"]), 100, 100);
     key(&mut m, KeyCode::Char('B'));
+    // Hiding a source and filtering the list change neither the reports nor the header.
+    key(&mut m, KeyCode::Char('1'));
+    key(&mut m, KeyCode::Char('k'));
     // grid() draws at 10 s, slot 1: the second beacon is on 14.100.
     let on = on_air(10, 0);
     assert_eq!(on, 1);
@@ -2874,6 +2877,15 @@ fn beacon_view_shows_who_is_on_and_who_was_heard() {
     );
     let screen = grid(&m, 120, 40);
     let (_, top) = locate(&screen, "NCDXF/IARU beacons · next in 10s").expect("title");
+    let title = text(&screen, top);
+    assert!(
+        title.contains(" SNR dB · last 15 min · all sources "),
+        "{title}"
+    );
+    assert!(
+        !title.contains("hidden") && !title.contains("filter"),
+        "{title}"
+    );
     let row = |needle: &str| {
         (top..40)
             .map(|y| text(&screen, y))

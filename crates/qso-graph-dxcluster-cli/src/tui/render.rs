@@ -615,12 +615,13 @@ fn dashboard(frame: &mut Frame<'_>, m: &Model, now: Duration) {
         )
     };
     if m.beacons {
+        // QGDXC-TUI-0103: what the view uses, not the spot list's filters.
         beacon_view(
             frame,
             (title_y, area.height - 2),
             m,
             now,
-            &right_filters(m, &filters),
+            " SNR dB · last 15 min · all sources ",
         );
         footer(frame, area.height - 1, w, m);
         return;
