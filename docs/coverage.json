@@ -1877,6 +1877,73 @@
         }
       ],
       "vectors": []
+    },
+    "QGDXC-TUI-0100": {
+      "tests": [
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/tui/tests.rs",
+          "name": "beacon_view_shows_who_is_on_and_who_was_heard"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/tui/tests.rs",
+          "name": "map_marks_the_beacons_on_air"
+        }
+      ],
+      "vectors": []
+    },
+    "QGDXC-TUI-0101": {
+      "tests": [
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/tui/tests.rs",
+          "name": "beacon_key_switches_views_and_is_listed"
+        }
+      ],
+      "vectors": []
+    },
+    "QGDXC-TUI-0102": {
+      "tests": [
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/tui/tests.rs",
+          "name": "beacon_reports_are_kept_per_beacon_and_frequency"
+        }
+      ],
+      "vectors": []
+    },
+    "QGDXC-TUI-0103": {
+      "tests": [
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/tui/tests.rs",
+          "name": "beacon_view_shows_who_is_on_and_who_was_heard"
+        }
+      ],
+      "vectors": []
+    },
+    "QGDXC-TUI-0104": {
+      "tests": [
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/tui/tests.rs",
+          "name": "map_marks_the_beacons_on_air"
+        }
+      ],
+      "vectors": []
+    },
+    "QGDXC-BCN-0001": {
+      "tests": [
+        {
+          "file": "crates/qso-graph-dxcluster/tests/beacons.rs",
+          "name": "beacon_schedule_follows_the_published_rotation"
+        }
+      ],
+      "vectors": []
+    },
+    "QGDXC-BCN-0002": {
+      "tests": [
+        {
+          "file": "crates/qso-graph-dxcluster/tests/beacons.rs",
+          "name": "beacon_reports_are_identified_by_type_call_and_frequency"
+        }
+      ],
+      "vectors": []
     }
   },
   "scenarios": {

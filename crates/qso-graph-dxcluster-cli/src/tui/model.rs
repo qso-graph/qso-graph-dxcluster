@@ -585,6 +585,10 @@ pub struct Model {
     pub prefixes: &'static qso_graph_dxcluster_cli::prefixes::Prefixes,
     /// The latest WWV or WCY report from any source (QGDXC-TUI-0090).
     pub solar: Option<Solar>,
+    /// Show the beacon view instead of the list (QGDXC-TUI-0101).
+    pub beacons: bool,
+    /// Each beacon's latest report on each frequency (QGDXC-TUI-0102).
+    pub heard: [[Option<super::beacons::Heard>; 5]; 18],
 }
 /// A kept WWV or WCY report (QGDXC-TUI-0090).
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -661,6 +665,8 @@ impl Model {
             map: false,
             prefixes: qso_graph_dxcluster_cli::prefixes::builtin(),
             solar: None,
+            beacons: false,
+            heard: Default::default(),
         }
     }
     pub fn receive(&mut self, source: usize, mut event: Event, now: Duration) {
@@ -699,6 +705,17 @@ impl Model {
                 self.activity.push_back(Bucket {
                     second: now.as_secs(),
                     ..Bucket::default()
+                });
+            }
+            if let Some((beacon, band)) = super::beacons::report(&event) {
+                self.heard[beacon][band] = Some(super::beacons::Heard {
+                    at: now,
+                    source,
+                    snr_db: match event.fields.get("snr_db") {
+                        Some(Value::Integer(n)) => Some(*n),
+                        _ => None,
+                    },
+                    spotter: event.get("spotter_call").unwrap_or_default().into(),
                 });
             }
             let bucket = self.activity.back_mut().expect("arrival bucket");
@@ -980,7 +997,14 @@ impl Model {
                     };
                 }
                 Input::Char('t') => self.appearance.theme = self.appearance.theme.next(),
-                Input::Char('M') => self.map = !self.map,
+                Input::Char('M') => {
+                    self.map = !self.map;
+                    self.beacons = false;
+                }
+                Input::Char('B') => {
+                    self.beacons = !self.beacons;
+                    self.map = false;
+                }
                 Input::Char('b' | 'm') => {
                     let is_band = matches!(input, Input::Char('b'));
                     let selected = if is_band {

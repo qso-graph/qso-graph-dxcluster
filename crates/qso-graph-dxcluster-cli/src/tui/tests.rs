@@ -258,7 +258,7 @@ fn limits_footer_and_help_fit_compact_and_wide_layouts() {
     for _ in 0..5 {
         for paused in [false, true] {
             m.paused = paused;
-            for width in [80, 100, 120, 130] {
+            for width in [80, 100, 120, 130, 140] {
                 let screen = grid(&m, width, 24);
                 let footer = text(&screen, 23);
                 for hint in ["q quit", "b band", "m mode", "/ call", "k kind", "l limits"] {
@@ -271,15 +271,15 @@ fn limits_footer_and_help_fit_compact_and_wide_layouts() {
                 let keys = match width {
                     80 => "k kind d s 1-8 p",
                     100 => "k kind d s 1-8 src p",
-                    120 => "k kind d dupes s self 1-8 source p",
+                    120 | 130 => "k kind d dupes s self 1-8 source p",
                     _ => "k kind  d dupes  s self  1-8 source  p",
                 };
                 assert!(footer.contains(keys), "{footer}");
                 let tail = match width {
-                    80 => "t M ?",
-                    100 => "t M map ? help",
-                    120 => "t theme M map ? help",
-                    _ => "t theme  M map  ? help",
+                    80 => "t M B ?",
+                    100 => "t M map B ? help",
+                    120 | 130 => "t theme M map B beacons ? help",
+                    _ => "t theme  M map  B beacons  ? help",
                 };
                 assert!(footer.contains(tail), "{footer}");
                 let theme = format!("{} ", m.appearance.theme.name());
@@ -2271,7 +2271,7 @@ fn map_key_toggles_the_view_and_is_listed() {
     let mut m = map_model();
     assert!(!m.map);
     assert!(text(&grid(&m, 120, 36), 35).contains("M map"));
-    assert!(text(&grid(&m, 80, 36), 35).contains("t M ?"));
+    assert!(text(&grid(&m, 80, 36), 35).contains("t M B ?"));
     // QGDXC-TUI-0070: the version sits beside the logo in both layouts.
     for wide in [120u16, 80] {
         let version = concat!(" QG DX Cluster  v", env!("CARGO_PKG_VERSION"), "  0 ");
@@ -2772,4 +2772,172 @@ fn solar_figures_go_dim_when_stale_and_color_k() {
     let stale = grid_at(&m, 120, 40, Duration::from_secs(10_801));
     assert!(locate(&stale, "K 5 · stale ").is_some());
     assert_eq!(fg(&stale, "K 5"), a.style(Role::Dim).fg);
+}
+fn beacon_report(beacon: usize, hz: i64, snr: Option<i64>) -> ClusterEvent {
+    let mut event = ClusterEvent::new(Profile::Rbn, "spot");
+    event.set(
+        "call",
+        super::beacons::BEACONS[beacon].call.to_ascii_lowercase(),
+    );
+    event.set("spotter_call", "Q9XYZ-#");
+    event.set("frequency_hz", qso_graph_dxcluster::Value::Integer(hz));
+    event.set("spot_type", "NCDXF B");
+    event.set("spot_kind", "skimmer");
+    if let Some(snr) = snr {
+        event.set("snr_db", qso_graph_dxcluster::Value::Integer(snr));
+    }
+    event
+}
+#[test]
+fn beacon_key_switches_views_and_is_listed() {
+    // QGDXC-TUI-0101
+    let mut m = Model::new(args(&["one"]), 100, 100);
+    assert!(text(&grid(&m, 120, 36), 35).contains("B beacons"));
+    key(&mut m, KeyCode::Char('B'));
+    assert!(m.beacons && !m.map);
+    let b = grid(&m, 120, 36);
+    assert!(text(&b, 35).contains("B list"));
+    assert!((0..36).any(|y| text(&b, y).contains("NCDXF/IARU beacons")));
+    // M leaves the beacon view for the map, and B leaves the map.
+    key(&mut m, KeyCode::Char('M'));
+    assert!(m.map && !m.beacons);
+    key(&mut m, KeyCode::Char('B'));
+    assert!(m.beacons && !m.map);
+    key(&mut m, KeyCode::Char('B'));
+    assert!(!m.beacons && !m.map);
+    // Lowercase b is still the band filter, and B typed into the callsign editor is data.
+    key(&mut m, KeyCode::Char('b'));
+    assert!(matches!(m.editor, Editor::Select { band: true, .. }));
+    key(&mut m, KeyCode::Esc);
+    key(&mut m, KeyCode::Char('/'));
+    key(&mut m, KeyCode::Char('B'));
+    assert!(!m.beacons);
+    key(&mut m, KeyCode::Esc);
+    key(&mut m, KeyCode::Char('?'));
+    assert!((0..36).any(|y| text(&grid(&m, 120, 36), y).contains("B: beacons")));
+}
+#[test]
+fn beacon_reports_are_kept_per_beacon_and_frequency() {
+    // QGDXC-TUI-0102
+    let mut m = Model::new(args(&["one", "two"]), 100, 100);
+    key(&mut m, KeyCode::Char('2'));
+    m.receive(
+        1,
+        beacon_report(3, 21_150_400, Some(12)),
+        Duration::from_secs(4),
+    );
+    let heard = m.heard[3][2].clone().expect("kept");
+    assert_eq!(
+        (heard.at, heard.source, heard.snr_db),
+        (Duration::from_secs(4), 1, Some(12))
+    );
+    assert_eq!(heard.spotter, "Q9XYZ-#");
+    // A later report replaces it; one without SNR keeps none.
+    m.receive(
+        0,
+        beacon_report(3, 21_149_000, None),
+        Duration::from_secs(6),
+    );
+    let heard = m.heard[3][2].clone().unwrap();
+    assert_eq!((heard.source, heard.snr_db), (0, None));
+    // Not a beacon report: another type, another frequency, or a call not in the list.
+    let mut other = beacon_report(5, 14_100_000, Some(3));
+    other.set("spot_type", "CQ");
+    m.receive(0, other, Duration::ZERO);
+    m.receive(0, beacon_report(5, 14_101_100, Some(3)), Duration::ZERO);
+    let mut stranger = beacon_report(5, 14_100_000, Some(3));
+    stranger.set("call", "Q1ABC");
+    m.receive(0, stranger, Duration::ZERO);
+    let kept = m.heard.iter().flatten().filter(|h| h.is_some()).count();
+    assert_eq!(kept, 1);
+    // Every report is still a spot like any other.
+    assert_eq!(m.total, 5);
+}
+#[test]
+fn beacon_view_shows_who_is_on_and_who_was_heard() {
+    // QGDXC-TUI-0103
+    use super::beacons::{BEACONS, on_air};
+    let mut m = Model::new(args(&["alpha.example", "bravo.example"]), 100, 100);
+    key(&mut m, KeyCode::Char('B'));
+    // Hiding a source and filtering the list change neither the reports nor the header.
+    key(&mut m, KeyCode::Char('1'));
+    key(&mut m, KeyCode::Char('k'));
+    // grid() draws at 10 s, slot 1: the second beacon is on 14.100.
+    let on = on_air(10, 0);
+    assert_eq!(on, 1);
+    m.receive(
+        0,
+        beacon_report(on, 14_100_000, Some(12)),
+        Duration::from_secs(5),
+    );
+    m.receive(
+        0,
+        beacon_report(on, 28_200_000, None),
+        Duration::from_secs(5),
+    );
+    let screen = grid(&m, 120, 40);
+    let (_, top) = locate(&screen, "NCDXF/IARU beacons · next in 10s").expect("title");
+    let title = text(&screen, top);
+    assert!(
+        title.contains(" SNR dB · last 15 min · all sources "),
+        "{title}"
+    );
+    assert!(
+        !title.contains("hidden") && !title.contains("filter"),
+        "{title}"
+    );
+    let row = |needle: &str| {
+        (top..40)
+            .map(|y| text(&screen, y))
+            .find(|r| r.contains(needle))
+            .unwrap_or_default()
+    };
+    let twenty = row("14.100");
+    assert!(twenty.contains(BEACONS[on].call), "{twenty}");
+    assert!(twenty.contains(BEACONS[on].place), "{twenty}");
+    assert!(twenty.contains(BEACONS[on + 1].call), "{twenty}");
+    assert!(twenty.contains("12 dB · 5s · Q9XYZ-# · alpha "), "{twenty}");
+    assert!(row("18.110").contains(BEACONS[0].call));
+    assert!(row("18.110").contains("not heard"));
+    // The table: SNR on 20m, + on 10m without one, · elsewhere.
+    let line = row(&format!(
+        " {:<8}{:<18}",
+        BEACONS[on].call, BEACONS[on].place
+    ));
+    assert!(line.contains("   12    ·    ·    ·    +"), "{line}");
+    assert!(locate(&screen, "schedule: NCDXF/IARU International Beacon Project").is_some());
+    assert!(locate(&screen, " B list ").is_some());
+    // After 15 minutes the reports no longer count.
+    let later = Duration::from_secs(5 + 15 * 60 + 1);
+    // Keep the same slot on screen: utc_epoch + later must be 10 modulo 180.
+    m.utc_epoch = (180 * 100 + 10 - later.as_secs()) % 180;
+    let late = grid_at(&m, 120, 40, later);
+    let twenty = (0..40)
+        .map(|y| text(&late, y))
+        .find(|r| r.contains("14.100"))
+        .unwrap();
+    assert!(
+        twenty.contains(BEACONS[on].call) && twenty.contains("not heard"),
+        "{twenty}"
+    );
+    // The compact layout draws the same view.
+    assert!(locate(&grid(&m, 80, 24), "NCDXF/IARU beacons").is_some());
+}
+#[test]
+fn map_marks_the_beacons_on_air() {
+    // QGDXC-TUI-0104
+    use super::beacons::{BEACONS, on_air};
+    let on = BEACONS[on_air(10, 0)].call;
+    let table = qso_graph_dxcluster_cli::prefixes::Prefixes::parse(&format!(
+        "Bland: 5: 8: NA: 40.00: 74.00: -5.0: {on}:\n    {on};\n"
+    ))
+    .unwrap();
+    let mut m = Model::new(args(&["one"]), 100, 100);
+    m.prefixes = Box::leak(Box::new(table));
+    key(&mut m, KeyCode::Char('M'));
+    let screen = grid(&m, 120, 40);
+    let marks: usize = (0..40).map(|y| text(&screen, y).matches('◆').count()).sum();
+    // One located beacon on air, plus the legend; the four unknown places are omitted.
+    assert_eq!(marks, 2);
+    assert!(locate(&screen, "beacon ◆").is_some());
 }

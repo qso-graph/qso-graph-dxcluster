@@ -994,6 +994,30 @@ fn country_prefix_line(line: &str) -> bool {
             true
         })
 }
+/// The NCDXF/IARU beacon schedule (QGDXC-BCN-0001): the one file that may name the
+/// 18 beacons, and their calls, written in pieces so this file holds none. Public
+/// infrastructure published by NCDXF, never operator identities.
+const BEACON_FILE: &str = "crates/qso-graph-dxcluster/src/beacons.rs";
+const NCDXF_BEACON_CALLS: [&[&str]; 18] = [
+    &["4U", "1UN"],
+    &["VE", "8AT"],
+    &["W", "6WX"],
+    &["KH", "6RS"],
+    &["ZL", "6B"],
+    &["VK", "6RBP"],
+    &["JA", "2IGY"],
+    &["RR", "9O"],
+    &["VR", "2B"],
+    &["4S", "7B"],
+    &["ZS", "6DN"],
+    &["5Z", "4B"],
+    &["4X", "6TU"],
+    &["OH", "2B"],
+    &["CS", "3B"],
+    &["LU", "4AA"],
+    &["OA", "4B"],
+    &["YV", "5B"],
+];
 const ADIF_CALL_SHAPED_MODES: &[&[&str]] = &[
     &["8", "PSK", "1000", "F"],
     &["8", "PSK", "1200", "F"],
@@ -1145,6 +1169,12 @@ pub(crate) fn public_file_sanitized(file: &Path, source: &str) -> bool {
                 })
                 .collect::<Vec<_>>()
                 .join(" ");
+        }
+        if file == Path::new(BEACON_FILE) {
+            // Exactly the 18 quoted beacon calls; any other call in the file still fails.
+            for parts in NCDXF_BEACON_CALLS {
+                line = line.replace(&format!("\"{}\"", parts.concat()), "\"BEACON\"");
+            }
         }
         if file == Path::new("scripts/lint-workflows.py") {
             // Exact pinned Go module references are package metadata, not email.
@@ -1813,6 +1843,40 @@ mod privacy_complexity_tests {
         let small = cost(4096).max(std::time::Duration::from_micros(50));
         let large = cost(65536);
         assert!(large < small * 64, "4096: {small:?}, 65536: {large:?}");
+    }
+}
+#[cfg(test)]
+mod beacon_exemption {
+    use super::*;
+    #[test]
+    fn exempts_only_the_quoted_beacon_calls_in_the_schedule_file() {
+        let file = Path::new(BEACON_FILE);
+        let beacon = ["4U", "1UN"].concat();
+        let line = format!("    Beacon {{ call: \"{beacon}\", place: \"United Nations\" }},\n");
+        assert!(public_file_sanitized(file, &line));
+        // The same call anywhere else, unquoted, or another call in the file still fails.
+        assert!(!public_file_sanitized(Path::new("README.md"), &line));
+        assert!(!public_file_sanitized(
+            Path::new("crates/qso-graph-dxcluster-cli/src/tui/tests.rs"),
+            &line
+        ));
+        assert!(!public_file_sanitized(
+            file,
+            &format!("// heard {beacon} today\n")
+        ));
+        let call = ["W", "1", "ABC"].concat();
+        assert!(!public_file_sanitized(
+            file,
+            &format!("    Beacon {{ call: \"{call}\", place: \"Qland\" }},\n")
+        ));
+        // The real schedule file passes as a whole.
+        let source = std::fs::read_to_string(
+            Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("..")
+                .join(BEACON_FILE),
+        )
+        .unwrap();
+        assert!(public_file_sanitized(file, &source));
     }
 }
 #[cfg(test)]

@@ -3,6 +3,7 @@
 //! Feed one byte at a time and consume each returned batch before admitting more
 //! input. No I/O or clock is used; all times are caller-supplied milliseconds.
 #![forbid(unsafe_code)]
+pub mod beacons;
 pub mod framing;
 pub mod model;
 pub mod parser;
