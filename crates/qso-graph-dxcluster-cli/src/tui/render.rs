@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 use super::{
     beacons,
-    model::{CHART_BANDS, Editor, Model, Spot, clip, frequency, frequency_text, sanitize},
+    model::{
+        CHART_BANDS, Editor, Model, Spot, SpotsView, clip, frequency, frequency_text, sanitize,
+    },
     theme::{Appearance, Role},
 };
 use qso_graph_dxcluster::Value;
@@ -9,6 +11,10 @@ use ratatui::style::{Modifier, Style};
 use ratatui::text::Span;
 use ratatui::{Frame, layout::Rect, widgets::Paragraph};
 use std::time::Duration;
+
+mod ribbon;
+pub(super) mod space_weather;
+mod weather_history;
 
 pub fn field(frame: &mut Frame<'_>, rect: Rect, text: &str, marker: bool) {
     if rect.width == 0 || rect.height == 0 {
@@ -20,7 +26,8 @@ pub fn field(frame: &mut Frame<'_>, rect: Rect, text: &str, marker: bool) {
 fn line(frame: &mut Frame<'_>, area: Rect, y: u16, text: &str) {
     field(frame, Rect::new(area.x, y, area.width, 1), text, false);
 }
-pub fn draw(frame: &mut Frame<'_>, model: &Model, now: Duration) {
+/// Returns whether this frame drew the solar flux chart (QGDXC-TUI-0123).
+pub fn draw(frame: &mut Frame<'_>, model: &Model, now: Duration) -> bool {
     let area = frame.area();
     if area.width < 80 || area.height < 24 {
         if area.height > 0 {
@@ -31,7 +38,7 @@ pub fn draw(frame: &mut Frame<'_>, model: &Model, now: Duration) {
                 "Enlarge window to at least 80 columns and 24 rows. q: quit",
             );
         }
-        return;
+        return false;
     }
     for cell in &mut frame.buffer_mut().content {
         cell.set_style(model.appearance.style(Role::Text));
@@ -67,7 +74,7 @@ pub fn draw(frame: &mut Frame<'_>, model: &Model, now: Duration) {
                 );
             }
             line(frame, area, area.height - 2, error);
-            return;
+            return false;
         }
         Editor::Calls { text, error, .. } => {
             line(
@@ -89,7 +96,7 @@ pub fn draw(frame: &mut Frame<'_>, model: &Model, now: Duration) {
                 line(frame, area, index as u16 + 2, text);
             }
             line(frame, area, area.height - 2, error);
-            return;
+            return false;
         }
         Editor::Select {
             band,
@@ -130,7 +137,7 @@ pub fn draw(frame: &mut Frame<'_>, model: &Model, now: Duration) {
                     ),
                 );
             }
-            return;
+            return false;
         }
         Editor::Help => {
             for (y, text) in [
@@ -153,16 +160,18 @@ pub fn draw(frame: &mut Frame<'_>, model: &Model, now: Duration) {
             for (i, source) in model.sources.iter().enumerate() {
                 line(frame, area, 10 + i as u16, &source.line(now));
             }
+            line(frame, area, 18, "W: space weather");
             line(frame, area, 19, &model.summary());
-            return;
+            return false;
         }
         Editor::Normal => {}
     }
-    dashboard(frame, model, now);
+    dashboard(frame, model, now)
 }
 
 const SUP: [&str; 8] = ["¹", "²", "³", "⁴", "⁵", "⁶", "⁷", "⁸"];
 const BLOCK: [char; 9] = [' ', '▁', '▂', '▃', '▄', '▅', '▆', '▇', '█'];
+const BAND_CHART_ROWS: u16 = 5;
 const BAND_ROLES: [Role; 11] = [
     Role::B160,
     Role::B80,
@@ -258,7 +267,7 @@ fn sides(frame: &mut Frame<'_>, x: u16, y: u16, width: u16, a: Appearance) {
     put(frame, x + width - 1, y, 1, "│", a.style(Role::Border));
 }
 fn panel_rows(sources: usize) -> u16 {
-    (sources as u16 * 2).max(5)
+    (sources as u16 * 2).max(BAND_CHART_ROWS)
 }
 pub fn list_rows(width: u16, height: u16, sources: usize) -> u16 {
     height.saturating_sub(if width >= 100 {
@@ -401,7 +410,7 @@ fn comma(value: u64) -> String {
         })
 }
 // Gregorian conversion from days since the Unix epoch; UTC uses no local zone.
-fn utc(seconds: u64) -> String {
+pub(super) fn utc_parts(seconds: u64) -> (i64, i64, i64) {
     let days = (seconds / 86400) as i64 + 719468;
     let era = days / 146097;
     let doe = days - era * 146097;
@@ -411,7 +420,10 @@ fn utc(seconds: u64) -> String {
     let mp = (5 * doy + 2) / 153;
     let day = doy - (153 * mp + 2) / 5 + 1;
     let month = mp + if mp < 10 { 3 } else { -9 };
-    let year = year + i64::from(month <= 2);
+    (year + i64::from(month <= 2), month, day)
+}
+fn utc(seconds: u64) -> String {
+    let (year, month, day) = utc_parts(seconds);
     format!(
         "{year:04}-{month:02}-{day:02}  {:02}:{:02}:{:02}Z",
         seconds / 3600 % 24,
@@ -419,13 +431,15 @@ fn utc(seconds: u64) -> String {
         seconds % 60
     )
 }
-fn dashboard(frame: &mut Frame<'_>, m: &Model, now: Duration) {
+fn dashboard(frame: &mut Frame<'_>, m: &Model, now: Duration) -> bool {
     let area = frame.area();
     let w = area.width;
     let wide = w >= 100;
     let a = m.appearance;
     // Set foreground only. Every unused cell retains the terminal background.
-    let date = utc(m.utc_epoch.saturating_add(now.as_secs()));
+    let utc_now = m.utc_epoch.saturating_add(now.as_secs());
+    let date = utc(utc_now);
+    let ribbon = ribbon::Ribbon::current(m, utc_now);
     let date_width = if wide { 21 } else { 21.min(w / 3) };
     let mut row = Row::new(frame, 0, 0, w - date_width - 1);
     row.ui(" QG DX Cluster ", a.chip(true));
@@ -477,7 +491,13 @@ fn dashboard(frame: &mut Frame<'_>, m: &Model, now: Duration) {
             .filter_map(|(i, source)| source_detail(source, now).map(|text| (i, text)))
             .collect();
         border(frame, (0, 1, lw), true, " sources ", " 1-8 toggles ", a);
-        border(frame, (lw, 1, rw), true, " bands ", " last 15 min ", a);
+        ribbon::panel_top(
+            frame,
+            (lw, 1, rw),
+            (" bands ", " last 15 min "),
+            a,
+            ribbon.as_ref().filter(|_| rows == BAND_CHART_ROWS),
+        );
         let mut counts = [0; 11];
         for b in m
             .activity
@@ -529,7 +549,7 @@ fn dashboard(frame: &mut Frame<'_>, m: &Model, now: Duration) {
                 row.ui(" ", a.style(Role::Dim));
                 row.safe(detail, (lw - 6) as usize, false, a.style(Role::Dim), false);
             }
-            if r < 5 {
+            if r < BAND_CHART_ROWS {
                 let cell = (rw - 3) / 11;
                 for i in 0..11 {
                     let text = if r < 3 {
@@ -563,6 +583,11 @@ fn dashboard(frame: &mut Frame<'_>, m: &Model, now: Duration) {
                     );
                 }
             }
+        }
+        if rows > BAND_CHART_ROWS
+            && let Some(ribbon) = &ribbon
+        {
+            ribbon.draw(frame, (lw + 2, 2 + BAND_CHART_ROWS, rw - 4), a);
         }
         border(frame, (0, rows + 2, lw), false, "", "", a);
         border(frame, (lw, rows + 2, rw), false, "", "", a);
@@ -615,28 +640,34 @@ fn dashboard(frame: &mut Frame<'_>, m: &Model, now: Duration) {
             }
         )
     };
-    if m.beacons {
-        // QGDXC-TUI-0103: what the view uses, not the spot list's filters.
-        beacon_view(
+    let bounds = (title_y, area.height - 2);
+    let compact_ribbon = ribbon.as_ref().filter(|_| !wide);
+    let mut flux_chart_drawn = false;
+    match m.spots_view {
+        SpotsView::Weather => {
+            flux_chart_drawn = space_weather::draw(frame, bounds, m, now, compact_ribbon);
+        }
+        SpotsView::Beacons => beacon_view(
             frame,
-            (title_y, area.height - 2),
+            bounds,
             m,
             now,
             " SNR dB · last 15 min · all sources ",
-        );
-        footer(frame, area.height - 1, w, m);
-        return;
-    }
-    if m.map {
-        spot_map(
+            compact_ribbon,
+        ),
+        SpotsView::Map => spot_map(
             frame,
-            (title_y, area.height - 2),
+            bounds,
             m,
             now,
             &right_filters(m, &filters),
-        );
+            compact_ribbon,
+        ),
+        SpotsView::List => {}
+    }
+    if m.spots_view != SpotsView::List {
         footer(frame, area.height - 1, w, m);
-        return;
+        return flux_chart_drawn;
     }
     let left = " spots newest first ";
     let right = if m.paused {
@@ -644,7 +675,7 @@ fn dashboard(frame: &mut Frame<'_>, m: &Model, now: Duration) {
     } else {
         filters.clone()
     };
-    border(frame, (0, title_y, w), true, left, &right, a);
+    ribbon::panel_top(frame, (0, title_y, w), (left, &right), a, compact_ribbon);
     put(
         frame,
         9,
@@ -720,6 +751,7 @@ fn dashboard(frame: &mut Frame<'_>, m: &Model, now: Duration) {
         }
     }
     footer(frame, area.height - 1, w, m);
+    false
 }
 /// QGDXC-TUI-0091 and QGDXC-TUI-0092: the kept WWV or WCY figures, with their roles.
 /// In the wide layout the text is fitted to `room` cells: first everything with the hour as
@@ -832,13 +864,14 @@ fn spot_map(
     m: &Model,
     now: Duration,
     right: &str,
+    ribbon: Option<&ribbon::Ribbon<'_>>,
 ) {
     use ratatui::symbols::Marker;
     use ratatui::widgets::canvas::{Canvas, Circle, Line, Map, MapResolution, Points};
     let a = m.appearance;
     let w = frame.area().width;
     let paths = map_paths(m, now);
-    border(frame, (0, top, w), true, " map ", right, a);
+    ribbon::panel_top(frame, (0, top, w), (" map ", right), a, ribbon);
     for y in top + 1..bottom {
         sides(frame, 0, y, w, a);
     }
@@ -931,21 +964,24 @@ fn beacon_view(
     m: &Model,
     now: Duration,
     right: &str,
+    ribbon: Option<&ribbon::Ribbon<'_>>,
 ) {
     use beacons::{BEACONS, FREQUENCIES};
     let a = m.appearance;
     let w = frame.area().width;
     let utc = m.utc_epoch.saturating_add(now.as_secs());
-    border(
+    ribbon::panel_top(
         frame,
         (0, top, w),
-        true,
-        &format!(
-            " NCDXF/IARU beacons · next in {}s ",
-            beacons::seconds_left(utc)
+        (
+            &format!(
+                " NCDXF/IARU beacons · next in {}s ",
+                beacons::seconds_left(utc)
+            ),
+            right,
         ),
-        right,
         a,
+        ribbon,
     );
     for y in top + 1..bottom {
         sides(frame, 0, y, w, a);
@@ -1273,22 +1309,22 @@ fn display_comment(spot: &Spot, wide: bool) -> &str {
     };
     derive().or_else(mode_word).unwrap_or(original)
 }
-/// From this width every footer key carries its label (QGDXC-TUI-0070).
-const FULL_FOOTER: u16 = 120;
+const FILTER_FOOTER: u16 = 120;
+/// From this width the source, beacons, and weather hints carry full labels.
+const FULL_FOOTER: u16 = 130;
 /// From this width footer hints are separated by two spaces instead of one.
-const ROOMY_FOOTER: u16 = 140;
+const ROOMY_FOOTER: u16 = 150;
 fn footer(frame: &mut Frame<'_>, y: u16, w: u16, m: &Model) {
     let a = m.appearance;
     let theme = format!("{} ", a.theme.name());
-    let mut row = Row::new(frame, 1, y, w - theme.len() as u16 - 2);
-    for (key, label) in [
+    let hints = [
         ("q", "quit"),
         ("b", "band"),
         ("m", "mode"),
         ("/", "call"),
         ("k", "kind"),
-        ("d", if w >= FULL_FOOTER { "dupes" } else { "" }),
-        ("s", if w >= FULL_FOOTER { "self" } else { "" }),
+        ("d", if w >= FILTER_FOOTER { "dupes" } else { "" }),
+        ("s", if w >= FILTER_FOOTER { "self" } else { "" }),
         (
             "1-8",
             match w {
@@ -1299,10 +1335,10 @@ fn footer(frame: &mut Frame<'_>, y: u16, w: u16, m: &Model) {
         ),
         ("p", if m.paused { "resume" } else { "pause" }),
         ("l", "limits"),
-        ("t", if w >= FULL_FOOTER { "theme" } else { "" }),
+        ("t", if w >= FILTER_FOOTER { "theme" } else { "" }),
         (
             "M",
-            match (w >= 100, m.map) {
+            match (w >= 100, m.spots_view == SpotsView::Map) {
                 (false, _) => "",
                 (true, true) => "list",
                 (true, false) => "map",
@@ -1310,22 +1346,37 @@ fn footer(frame: &mut Frame<'_>, y: u16, w: u16, m: &Model) {
         ),
         (
             "B",
-            match (w >= FULL_FOOTER, m.beacons) {
+            match (w >= FULL_FOOTER, m.spots_view == SpotsView::Beacons) {
                 (false, _) => "",
                 (true, true) => "list",
                 (true, false) => "beacons",
             },
         ),
+        (
+            "W",
+            match (w >= FULL_FOOTER, m.spots_view) {
+                (false, _) => "",
+                (true, SpotsView::Weather) => "list",
+                (true, _) => "weather",
+            },
+        ),
         ("?", if w >= 100 { "help" } else { "" }),
-    ] {
+    ];
+    let separator = if w >= ROOMY_FOOTER { "  " } else { " " };
+    let hint_width = hints
+        .iter()
+        .map(|(key, label)| key.len() + label.len() + usize::from(!label.is_empty()))
+        .sum::<usize>()
+        + (hints.len() - 1) * separator.len();
+    let theme_x = w - theme.len() as u16;
+    let left = u16::from(hint_width + 1 < theme_x as usize);
+    let mut row = Row::new(frame, left, y, theme_x - left - 1);
+    for (key, label) in hints {
         row.ui(key, a.style(Role::Accent).add_modifier(Modifier::BOLD));
         if !label.is_empty() {
             row.ui(&format!(" {label}"), a.style(Role::Dim));
         }
-        row.ui(
-            if w >= ROOMY_FOOTER { "  " } else { " " },
-            a.style(Role::Dim),
-        );
+        row.ui(separator, a.style(Role::Dim));
     }
     put(
         frame,

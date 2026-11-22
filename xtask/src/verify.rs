@@ -66,9 +66,13 @@ pub fn verify() -> Result<(), String> {
                 "-p",
                 "qso-graph-dxcluster",
                 "-p",
+                "qso-graph-spaceweather",
+                "-p",
                 "qso-graph-dxcluster-cli",
                 "--config",
                 "patch.crates-io.qso-graph-dxcluster.path=\"crates/qso-graph-dxcluster\"",
+                "--config",
+                "patch.crates-io.qso-graph-spaceweather.path=\"crates/qso-graph-spaceweather\"",
             ],
         ),
     ];
@@ -235,10 +239,14 @@ pub fn verify() -> Result<(), String> {
                 "isolated fuzz workspace".into(),
             ));
         }
-        for target in [
+        for (target, max_len) in [
             "values", "dx_de", "cc11", "other", "rbn", "framer", "telnet", "session", "sources",
             "prefixes",
-        ] {
+        ]
+        .into_iter()
+        .map(|target| (target, "70000"))
+        .chain(crate::checks::WEATHER_FUZZ.map(|(target, _, limit)| (target, limit)))
+        {
             let name = format!("fuzz {target}");
             let path = format!("target/verify/fuzz-{target}.log");
             let file = fs::File::create(path).map_err(|e| e.to_string())?;
@@ -251,7 +259,7 @@ pub fn verify() -> Result<(), String> {
                     target,
                     "--",
                     "-max_total_time=1",
-                    "-max_len=70000",
+                    &format!("-max_len={max_len}"),
                     "-timeout=10",
                     "-rss_limit_mb=2048",
                 ])

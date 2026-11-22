@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 use serde_json::Value;
 use std::{
-    collections::BTreeSet,
+    collections::{BTreeMap, BTreeSet},
     fs,
     path::{Path, PathBuf},
 };
@@ -262,14 +262,25 @@ pub fn source_violation(s: &str, library: bool) -> bool {
                 .contains(w)
             })
 }
+const LIBRARIES: [&str; 2] = ["qso-graph-dxcluster", "qso-graph-spaceweather"];
+const HTTPS_DEPS: [&str; 7] = [
+    "ureq",
+    "rustls",
+    "aws-lc-rs",
+    "aws-lc-sys",
+    "cc",
+    "cmake",
+    "pkg-config",
+];
+
 // QGDXC-IO-0001: no approved third-party library test dependencies yet.
 const LIBRARY_DEV_ALLOWLIST: &[&str] = &[];
-fn library_dependencies(metadata: &Value) -> Result<(), String> {
+fn library_dependencies(metadata: &Value, library_name: &str) -> Result<(), String> {
     let packages = metadata["packages"].as_array().ok_or("metadata packages")?;
     let library = packages
         .iter()
-        .find(|p| p["name"] == "qso-graph-dxcluster")
-        .ok_or("library missing from Cargo metadata")?;
+        .find(|p| p["name"] == library_name)
+        .ok_or_else(|| format!("{library_name} missing from Cargo metadata"))?;
     let dependencies = library["dependencies"]
         .as_array()
         .ok_or("metadata dependencies")?;
@@ -286,11 +297,29 @@ fn library_dependencies(metadata: &Value) -> Result<(), String> {
                 rejected.push(format!("unapproved dev dependency: {description}"));
             }
         } else {
-            rejected.push(format!("normal/build dependency: {description}"));
+            // QGDXC-SWX-0001: both JSON dependencies are exact, normal pins
+            // using the same features as the CLI, without derive.
+            let allowed = library_name == "qso-graph-spaceweather"
+                && dependency["kind"].is_null()
+                && match name {
+                    "serde_json" => {
+                        dependency["req"] == "=1.0.145"
+                            && dependency["features"] == serde_json::json!([])
+                    }
+                    "serde_core" => {
+                        dependency["req"] == "=1.0.229"
+                            && dependency["uses_default_features"] == false
+                            && dependency["features"] == serde_json::json!(["std"])
+                    }
+                    _ => false,
+                };
+            if !allowed {
+                rejected.push(format!("normal/build dependency: {description}"));
+            }
         }
     }
     println!(
-        "library dev-dependencies: {}",
+        "{library_name} dev-dependencies: {}",
         if development.is_empty() {
             "none".to_owned()
         } else {
@@ -303,9 +332,8 @@ fn library_dependencies(metadata: &Value) -> Result<(), String> {
         Err(rejected.join("\n"))
     }
 }
-fn dependency_policy(root: &Path) -> Result<(), String> {
-    // Package declarations include optional, renamed, and target-specific
-    // dependencies, even when the current host or features do not enable them.
+
+fn cargo_metadata(root: &Path, scope: &str) -> Result<Value, String> {
     let output = crate::input::output(
         std::process::Command::new("cargo")
             .args([
@@ -314,7 +342,7 @@ fn dependency_policy(root: &Path) -> Result<(), String> {
                 "--offline",
                 "--format-version",
                 "1",
-                "--no-deps",
+                scope,
             ])
             .current_dir(root),
     )
@@ -325,7 +353,59 @@ fn dependency_policy(root: &Path) -> Result<(), String> {
             String::from_utf8_lossy(&output.stderr)
         ));
     }
-    library_dependencies(&serde_json::from_slice(&output.stdout).map_err(|e| e.to_string())?)
+    serde_json::from_slice(&output.stdout).map_err(|e| e.to_string())
+}
+
+fn library_transport_dependencies(metadata: &Value) -> Result<(), String> {
+    let packages = metadata["packages"].as_array().ok_or("metadata packages")?;
+    let package_names: BTreeMap<_, _> = packages
+        .iter()
+        .filter_map(|package| Some((package["id"].as_str()?, package["name"].as_str()?)))
+        .collect();
+    let graph: BTreeMap<_, _> = metadata["resolve"]["nodes"]
+        .as_array()
+        .ok_or("metadata resolve nodes")?
+        .iter()
+        .filter_map(|node| Some((node["id"].as_str()?, node["dependencies"].as_array()?)))
+        .collect();
+    for library in LIBRARIES {
+        let root = packages
+            .iter()
+            .find(|package| package["name"] == library && package["source"].is_null())
+            .and_then(|package| package["id"].as_str())
+            .ok_or_else(|| format!("{library} missing from resolved Cargo metadata"))?;
+        let mut pending = vec![root];
+        let mut checked = BTreeSet::new();
+        while let Some(id) = pending.pop() {
+            if !checked.insert(id) {
+                continue;
+            }
+            let name = package_names.get(id).ok_or("missing resolved package")?;
+            if HTTPS_DEPS.contains(name) {
+                return Err(format!(
+                    "QGDXC-TUI-0115: {library} reaches prohibited dependency: {name}"
+                ));
+            }
+            pending.extend(
+                graph
+                    .get(id)
+                    .ok_or("missing resolve node")?
+                    .iter()
+                    .filter_map(Value::as_str),
+            );
+        }
+    }
+    Ok(())
+}
+
+fn dependency_policy(root: &Path) -> Result<(), String> {
+    // Declarations include inactive optional, renamed, and target-specific dependencies.
+    let declarations = cargo_metadata(root, "--no-deps")?;
+    for library in LIBRARIES {
+        library_dependencies(&declarations, library)?;
+    }
+    // The resolved graph catches prohibited packages introduced through an allowed dependency.
+    library_transport_dependencies(&cargo_metadata(root, "--all-features")?)
 }
 // Read rustc's first Make-style rule, whose prerequisites are the complete
 // source inputs. Keep escaped spaces and Windows path separators intact.
@@ -362,10 +442,10 @@ fn dep_info_paths(source: &str) -> Result<Vec<PathBuf>, String> {
     }
     Ok(paths)
 }
-fn compiled_library_sources(root: &Path) -> Result<BTreeSet<PathBuf>, String> {
+fn compiled_library_sources(root: &Path, library: &str) -> Result<BTreeSet<PathBuf>, String> {
     let root = root.canonicalize().map_err(|e| e.to_string())?;
-    let allowed = root.join("crates/qso-graph-dxcluster/src");
-    let manifest = root.join("crates/qso-graph-dxcluster/Cargo.toml");
+    let allowed = root.join("crates").join(library).join("src");
+    let manifest = allowed.with_file_name("Cargo.toml");
     let output = crate::input::output(
         std::process::Command::new("cargo")
             .args([
@@ -373,7 +453,7 @@ fn compiled_library_sources(root: &Path) -> Result<BTreeSet<PathBuf>, String> {
                 "--locked",
                 "--offline",
                 "-p",
-                "qso-graph-dxcluster",
+                library,
                 "--lib",
                 "--tests",
                 "--all-features",
@@ -446,7 +526,10 @@ fn compiled_library_sources(root: &Path) -> Result<BTreeSet<PathBuf>, String> {
 }
 pub fn policy() -> Result<(), String> {
     dependency_policy(Path::new("."))?;
-    let sources = compiled_library_sources(Path::new("."))?;
+    let mut sources = BTreeSet::new();
+    for library in LIBRARIES {
+        sources.extend(compiled_library_sources(Path::new("."), library)?);
+    }
     for source in &sources {
         let text = crate::input::text(source).map_err(|e| e.to_string())?;
         if source_violation(&text, true) {
@@ -481,6 +564,7 @@ pub fn policy() -> Result<(), String> {
     }
     for (root, library) in [
         ("crates/qso-graph-dxcluster", true),
+        ("crates/qso-graph-spaceweather", true),
         ("crates/qso-graph-dxcluster-cli", false),
     ] {
         for file in files(Path::new(root))? {
@@ -493,7 +577,12 @@ pub fn policy() -> Result<(), String> {
             }
             if file.extension().is_some_and(|e| e == "rs") {
                 let s = crate::input::text(&file).map_err(|e| e.to_string())?;
-                if source_violation(&s, library) || s.contains("#[path") {
+                // Space-weather integration tests compile as separate executables
+                // and read the NOAA fixtures under QGDXC-SWX-0007. The library
+                // check includes every file compiled into the library above.
+                let weather_integration = root == "crates/qso-graph-spaceweather"
+                    && file.starts_with(Path::new(root).join("tests"));
+                if source_violation(&s, library && !weather_integration) || s.contains("#[path") {
                     return Err(format!("source policy: {}", file.display()));
                 }
                 if file
@@ -1018,6 +1107,10 @@ const NCDXF_BEACON_CALLS: [&[&str]; 18] = [
     &["OA", "4B"],
     &["YV", "5B"],
 ];
+/// The station whose hourly geophysical summary cluster nodes relay as WCY, written in
+/// pieces so this file holds none, and the only two files that may name it (its credit).
+const WCY_STATION: [&str; 2] = ["DK", "0WCY"];
+const WCY_CREDIT_FILES: [&str; 2] = ["README.md", "spec/annex-f-tui.md"];
 const ADIF_CALL_SHAPED_MODES: &[&[&str]] = &[
     &["8", "PSK", "1000", "F"],
     &["8", "PSK", "1200", "F"],
@@ -1170,6 +1263,22 @@ pub(crate) fn public_file_sanitized(file: &Path, source: &str) -> bool {
                 .collect::<Vec<_>>()
                 .join(" ");
         }
+        // The WCY summary's source station, credited in exactly these two files (F.10).
+        if WCY_CREDIT_FILES.iter().any(|f| file == Path::new(f)) {
+            let station = WCY_STATION.concat();
+            line = line
+                .split(' ')
+                .map(|word| {
+                    let core = word.trim_end_matches([',', '.', ';', ':']);
+                    if core == station {
+                        word.replacen(&station, "STATION", 1)
+                    } else {
+                        word.to_owned()
+                    }
+                })
+                .collect::<Vec<_>>()
+                .join(" ");
+        }
         if file == Path::new(BEACON_FILE) {
             // Exactly the 18 quoted beacon calls; any other call in the file still fails.
             for parts in NCDXF_BEACON_CALLS {
@@ -1315,7 +1424,42 @@ pub fn vet() -> Result<(), String> {
     }
     Ok(())
 }
+// QGDXC-SWX-0007: start each smoke run with the corresponding NOAA fixture.
+pub const WEATHER_FUZZ: [(&str, &str, &str); 9] = [
+    ("swx_solar_flux", "products_summary_10cm-flux.json", "4097"),
+    ("swx_flux_history", "json_f107_cm_flux.json", "65537"),
+    (
+        "swx_planetary_k",
+        "products_noaa-planetary-k-index.json",
+        "65537",
+    ),
+    ("swx_scales", "products_noaa-scales.json", "16385"),
+    ("swx_xrays", "json_goes_primary_xrays-6-hour.json", "524289"),
+    (
+        "swx_wind_speed",
+        "products_summary_solar-wind-speed.json",
+        "4097",
+    ),
+    (
+        "swx_wind_field",
+        "products_summary_solar-wind-mag-field.json",
+        "4097",
+    ),
+    ("swx_alerts", "products_alerts.json", "262145"),
+    ("swx_alert_force", "products_alerts.json", "262153"),
+];
 pub fn seed_fuzz() -> Result<(), String> {
+    for (target, fixture, _) in WEATHER_FUZZ {
+        let dir = Path::new("fuzz/corpus").join(target);
+        fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+        let source = Path::new("crates/qso-graph-spaceweather/tests/fixtures").join(fixture);
+        let mut bytes = fs::read(&source).map_err(|e| format!("{}: {e}", source.display()))?;
+        if target == "swx_alert_force" {
+            // 2026-11-19 01:30 UTC.
+            bytes.extend_from_slice(&1_795_051_800_i64.to_le_bytes());
+        }
+        fs::write(dir.join("noaa.json"), bytes).map_err(|e| e.to_string())?;
+    }
     for target in [
         "values", "dx_de", "cc11", "other", "rbn", "framer", "telnet", "session", "sources",
         "prefixes",
@@ -1388,7 +1532,7 @@ mod tests {
         let library = "// SPDX-License-Identifier: GPL-3.0-or-later\n#![forbid(unsafe_code)]\nmod inside;\npub struct Session;\nimpl Session { pub fn new() -> Self { inside::probe(); Self } }\n";
         fs::write(source.join("inside.rs"), inside).unwrap();
         fs::write(source.join("lib.rs"), library).unwrap();
-        let baseline = compiled_library_sources(&root).unwrap();
+        let baseline = compiled_library_sources(&root, LIBRARIES[0]).unwrap();
         assert_eq!(baseline.len(), 2);
         assert!(baseline.contains(&source.join("inside.rs").canonicalize().unwrap()));
         fs::write(root.join("shared.rs"), "// SPDX-License-Identifier: GPL-3.0-or-later\npub fn probe() { let _ = std::fs::metadata(\"Cargo.toml\"); }\n").unwrap();
@@ -1401,14 +1545,17 @@ mod tests {
         );
         fs::write(source.join("lib.rs"), &redirected).unwrap();
         assert!(source_violation(&redirected, true));
-        let error = compiled_library_sources(&root).unwrap_err();
+        let error = compiled_library_sources(&root, LIBRARIES[0]).unwrap_err();
         assert!(
             error.contains("compiled library source outside src:"),
             "{error}"
         );
         assert!(error.contains("shared.rs"), "{error}");
         fs::write(source.join("lib.rs"), library).unwrap();
-        assert_eq!(compiled_library_sources(&root).unwrap(), baseline);
+        assert_eq!(
+            compiled_library_sources(&root, LIBRARIES[0]).unwrap(),
+            baseline
+        );
         // A conventional module name can also escape through a symlink, with
         // no path attribute at all. Canonical source locations catch this.
         #[cfg(unix)]
@@ -1419,14 +1566,17 @@ mod tests {
                 source.join("inside.rs"),
             )
             .unwrap();
-            let error = compiled_library_sources(&root).unwrap_err();
+            let error = compiled_library_sources(&root, LIBRARIES[0]).unwrap_err();
             assert!(
                 error.contains("compiled library source outside src:"),
                 "{error}"
             );
             fs::remove_file(source.join("inside.rs")).unwrap();
             fs::write(source.join("inside.rs"), inside).unwrap();
-            assert_eq!(compiled_library_sources(&root).unwrap(), baseline);
+            assert_eq!(
+                compiled_library_sources(&root, LIBRARIES[0]).unwrap(),
+                baseline
+            );
         }
         fs::remove_dir_all(root).unwrap();
     }
@@ -1487,7 +1637,8 @@ mod tests {
             "[target.'cfg(target_os = \"none\")'.dev-dependencies]\nsignals = { package = \"ctrlc\", version = \"=3.5.1\" }\n",
         ] {
             fs::write(root.join("Cargo.toml"), format!("{base}{declaration}")).unwrap();
-            let result = dependency_policy(&root);
+            let result = cargo_metadata(&root, "--no-deps")
+                .and_then(|metadata| library_dependencies(&metadata, LIBRARIES[0]));
             if declaration.is_empty() {
                 result.unwrap();
             } else {
@@ -1500,6 +1651,45 @@ mod tests {
             }
         }
         fs::remove_dir_all(root).unwrap();
+    }
+    #[test]
+    fn policy_rejects_transport_dependencies_in_either_library() {
+        // QGDXC-TUI-0115: model a resolved Cargo graph with the transport
+        // first confined to the CLI, then reachable through a JSON dependency.
+        let mut graph = serde_json::json!({
+            "packages": [
+                {"id": "cluster", "name": LIBRARIES[0]},
+                {"id": "weather", "name": LIBRARIES[1]},
+                {"id": "cli", "name": "qso-graph-dxcluster-cli"},
+                {"id": "json", "name": "serde_json", "source": "registry"},
+                {"id": "transport", "name": "ureq", "source": "registry"},
+            ],
+            "resolve": {"nodes": [
+                {"id": "cluster", "dependencies": []},
+                {"id": "weather", "dependencies": ["json"]},
+                {"id": "cli", "dependencies": ["cluster", "weather", "transport"]},
+                {"id": "json", "dependencies": []},
+                {"id": "transport", "dependencies": []},
+            ]},
+        });
+        library_transport_dependencies(&graph).unwrap();
+        for prohibited in HTTPS_DEPS {
+            graph["packages"][4]["name"] = serde_json::json!(prohibited);
+            graph["resolve"]["nodes"][3]["dependencies"] = serde_json::json!(["transport"]);
+            let error = library_transport_dependencies(&graph).unwrap_err();
+            assert!(
+                error.contains(LIBRARIES[1]) && error.ends_with(prohibited),
+                "{error}"
+            );
+            graph["resolve"]["nodes"][3]["dependencies"] = serde_json::json!([]);
+            graph["resolve"]["nodes"][0]["dependencies"] = serde_json::json!(["transport"]);
+            let error = library_transport_dependencies(&graph).unwrap_err();
+            assert!(
+                error.contains(LIBRARIES[0]) && error.ends_with(prohibited),
+                "{error}"
+            );
+            graph["resolve"]["nodes"][0]["dependencies"] = serde_json::json!([]);
+        }
     }
     #[test]
     fn sanitization_rejects_digit_initial_calls_and_identity_field_mutations() {
@@ -1843,6 +2033,46 @@ mod privacy_complexity_tests {
         let small = cost(4096).max(std::time::Duration::from_micros(50));
         let large = cost(65536);
         assert!(large < small * 64, "4096: {small:?}, 65536: {large:?}");
+    }
+}
+#[cfg(test)]
+mod wcy_credit_exemption {
+    use super::*;
+    #[test]
+    fn exempts_only_the_wcy_station_in_its_two_credit_files() {
+        let station = WCY_STATION.concat();
+        let credit =
+            format!("are the hourly summary of {station}, run by volunteers of the DARC.\n");
+        for file in WCY_CREDIT_FILES {
+            assert!(public_file_sanitized(Path::new(file), &credit), "{file}");
+        }
+        // The same credit anywhere else still fails.
+        for file in ["docs/CONFORMANCE.md", "spec/annex-b-dxspider.md"] {
+            assert!(!public_file_sanitized(Path::new(file), &credit), "{file}");
+        }
+        let literal = format!("let credit = \"summary of {station}, run by the DARC\";\n");
+        assert!(!public_file_sanitized(
+            Path::new("crates/qso-graph-dxcluster-cli/src/tui/tests.rs"),
+            &literal
+        ));
+        // Inside a credit file, another call, or the station joined to other text, still fails.
+        let call = ["W", "1", "ABC"].concat();
+        assert!(!public_file_sanitized(
+            Path::new("README.md"),
+            &format!("spotted by {call} today\n")
+        ));
+        assert!(!public_file_sanitized(
+            Path::new("README.md"),
+            &format!("see {station}-2 also\n")
+        ));
+        // The real files pass as a whole.
+        for file in WCY_CREDIT_FILES {
+            let source = std::fs::read_to_string(
+                Path::new(env!("CARGO_MANIFEST_DIR")).join("..").join(file),
+            )
+            .unwrap();
+            assert!(public_file_sanitized(Path::new(file), &source), "{file}");
+        }
     }
 }
 #[cfg(test)]

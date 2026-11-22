@@ -9,6 +9,7 @@ pub(crate) mod sources;
 #[cfg(test)]
 mod tests;
 mod theme;
+mod weather;
 use config::Options;
 use crossterm::{
     cursor::{Hide, RestorePosition, SavePosition, Show},
@@ -16,7 +17,7 @@ use crossterm::{
     execute,
     terminal::{self, EnterAlternateScreen, LeaveAlternateScreen},
 };
-use model::{Input, Model, sanitize};
+use model::{Input, Model, SpotsView, sanitize};
 use ratatui::{
     Terminal,
     backend::{Backend, CrosstermBackend},
@@ -132,12 +133,14 @@ fn present<B: Backend>(
     terminal: &mut Terminal<B>,
     model: &Model,
     now: Duration,
-) -> Result<(), B::Error> {
+) -> Result<bool, B::Error> {
     terminal.autoresize()?;
-    render::draw(&mut terminal.get_frame(), model, now);
+    let mut frame = terminal.get_frame();
+    let flux_chart_drawn = render::draw(&mut frame, model, now);
     terminal.flush()?;
     terminal.swap_buffers();
-    terminal.backend_mut().flush()
+    terminal.backend_mut().flush()?;
+    Ok(flux_chart_drawn)
 }
 fn present_picker<B: Backend>(
     terminal: &mut Terminal<B>,
@@ -234,6 +237,9 @@ pub fn run(args: &[String]) -> Result<u8, String> {
             options.keep_skimmer,
         );
         model.appearance = appearance;
+        if options.space_weather {
+            model.spots_view = SpotsView::Weather;
+        }
         model.utc_epoch = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap_or_default()
@@ -243,16 +249,25 @@ pub fn run(args: &[String]) -> Result<u8, String> {
             workers: Workers::new(stop.clone()),
         };
         interface.workers.start(options, origin);
+        let mut weather = weather::Worker::default();
         let mut redraw = Redraw::default();
         while !model.quit && !stop.load(Ordering::Relaxed) {
             interface.workers.drain(&mut model, origin);
             let now = origin.elapsed();
-            if redraw.due(now) {
+            let flux_chart_drawn = if redraw.due(now) {
                 let size = terminal.size()?;
                 model.page =
                     render::list_rows(size.width, size.height, model.sources.len()).max(1) as usize;
-                present(&mut terminal, &model, now)?;
-            }
+                present(&mut terminal, &model, now)?
+            } else {
+                false
+            };
+            weather.poll(
+                model.spots_view == SpotsView::Weather,
+                flux_chart_drawn,
+                |update| model.apply_weather(update),
+                || weather::start(origin),
+            )?;
             if event::poll(Duration::from_millis(5))?
                 && let Some(input) = input(event::read()?)
             {

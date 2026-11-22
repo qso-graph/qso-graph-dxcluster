@@ -424,6 +424,7 @@ its later `cancel_timer`.
 - [Annex E: Reverse Beacon Network](annex-e-rbn.md)
 - [Annex F: `qg-dxc tui`, the terminal interface](annex-f-tui.md)
 - [Annex G: NCDXF/IARU beacons](annex-g-beacons.md)
+- [Annex H: space weather](annex-h-space-weather.md)
 
 Capture citations refer to the supplied 2026-11-16 evidence set by basename and
 physical record number, including notes. A frame split across records cites all

@@ -9,6 +9,7 @@ publish = false
 cargo-fuzz = true
 [workspace]
 [dependencies]
+qso-graph-spaceweather = { path = "../crates/qso-graph-spaceweather", version = "=0.5.0" }
 libfuzzer-sys = "=0.4.10"
 qso-graph-dxcluster = { path = "../crates/qso-graph-dxcluster", version = "=0.5.0" }
 qso-graph-dxcluster-cli = { path = "../crates/qso-graph-dxcluster-cli", version = "=0.5.0" }
@@ -79,6 +80,69 @@ bench = false
 [[bin]]
 name = "prefixes"
 path = "fuzz_targets/prefixes.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "swx_solar_flux"
+path = "fuzz_targets/swx_solar_flux.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "swx_flux_history"
+path = "fuzz_targets/swx_flux_history.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "swx_planetary_k"
+path = "fuzz_targets/swx_planetary_k.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "swx_scales"
+path = "fuzz_targets/swx_scales.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "swx_xrays"
+path = "fuzz_targets/swx_xrays.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "swx_wind_speed"
+path = "fuzz_targets/swx_wind_speed.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "swx_wind_field"
+path = "fuzz_targets/swx_wind_field.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "swx_alerts"
+path = "fuzz_targets/swx_alerts.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "swx_alert_force"
+path = "fuzz_targets/swx_alert_force.rs"
 test = false
 doc = false
 bench = false

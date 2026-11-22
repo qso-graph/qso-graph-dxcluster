@@ -252,13 +252,13 @@ fn runtime_limits_evict_oldest_per_kind_and_preserve_activity_and_pause() {
 
 #[test]
 fn limits_footer_and_help_fit_compact_and_wide_layouts() {
-    // QGDXC-TUI-0012 QGDXC-TUI-0070 QGDXC-TUI-0060
+    // QGDXC-TUI-0012 QGDXC-TUI-0070 QGDXC-TUI-0060 QGDXC-TUI-0110
     use ratatui::style::Modifier;
     let mut m = Model::new(args(&["one"]), DEFAULT_KEEP, DEFAULT_KEEP);
     for _ in 0..5 {
         for paused in [false, true] {
             m.paused = paused;
-            for width in [80, 100, 120, 130, 140] {
+            for width in [80, 100, 120, 130, 140, 150] {
                 let screen = grid(&m, width, 24);
                 let footer = text(&screen, 23);
                 for hint in ["q quit", "b band", "m mode", "/ call", "k kind", "l limits"] {
@@ -271,15 +271,17 @@ fn limits_footer_and_help_fit_compact_and_wide_layouts() {
                 let keys = match width {
                     80 => "k kind d s 1-8 p",
                     100 => "k kind d s 1-8 src p",
-                    120 | 130 => "k kind d dupes s self 1-8 source p",
+                    120 => "k kind d dupes s self 1-8 src p",
+                    130 | 140 => "k kind d dupes s self 1-8 source p",
                     _ => "k kind  d dupes  s self  1-8 source  p",
                 };
                 assert!(footer.contains(keys), "{footer}");
                 let tail = match width {
-                    80 => "t M B ?",
-                    100 => "t M map B ? help",
-                    120 | 130 => "t theme M map B beacons ? help",
-                    _ => "t theme  M map  B beacons  ? help",
+                    80 => "t M B W ?",
+                    100 => "t M map B W ? help",
+                    120 => "t theme M map B W ? help",
+                    130 | 140 => "t theme M map B beacons W weather ? help",
+                    _ => "t theme  M map  B beacons  W weather  ? help",
                 };
                 assert!(footer.contains(tail), "{footer}");
                 let theme = format!("{} ", m.appearance.theme.name());
@@ -290,6 +292,23 @@ fn limits_footer_and_help_fit_compact_and_wide_layouts() {
                         .modifier
                         .contains(Modifier::BOLD)
                 );
+
+                for (view, before, after) in [
+                    (SpotsView::Map, "M map", "M list"),
+                    (SpotsView::Beacons, "B beacons", "B list"),
+                    (SpotsView::Weather, "W weather", "W list"),
+                ] {
+                    m.spots_view = view;
+                    let screen = grid(&m, width, 24);
+                    let footer = text(&screen, 23);
+                    let tail = tail.replace(before, after);
+                    assert!(footer.contains(&tail), "{footer}");
+                    assert!(footer.ends_with(&theme), "{footer}");
+                    assert!(
+                        find(&screen, 23, &tail) + (tail.len() as u16) < width - theme.len() as u16
+                    );
+                }
+                m.spots_view = SpotsView::List;
             }
         }
         key(&mut m, KeyCode::Char('t'));
@@ -2269,28 +2288,28 @@ fn map_model() -> Model {
 fn map_key_toggles_the_view_and_is_listed() {
     // QGDXC-TUI-0080
     let mut m = map_model();
-    assert!(!m.map);
+    assert_eq!(m.spots_view, SpotsView::List);
     assert!(text(&grid(&m, 120, 36), 35).contains("M map"));
-    assert!(text(&grid(&m, 80, 36), 35).contains("t M B ?"));
+    assert!(text(&grid(&m, 80, 36), 35).contains("t M B W ?"));
     // QGDXC-TUI-0070: the version sits beside the logo in both layouts.
     for wide in [120u16, 80] {
         let version = concat!(" QG DX Cluster  v", env!("CARGO_PKG_VERSION"), "  0 ");
         assert!(text(&grid(&m, wide, 36), 0).starts_with(version), "{wide}");
     }
     key(&mut m, KeyCode::Char('M'));
-    assert!(m.map);
+    assert_eq!(m.spots_view, SpotsView::Map);
     let b = grid(&m, 120, 36);
     assert!(text(&b, 35).contains("M list"));
     assert!((0..36).any(|y| text(&b, y).contains("─ map ")));
     key(&mut m, KeyCode::Char('M'));
-    assert!(!m.map);
+    assert_eq!(m.spots_view, SpotsView::List);
     // Lowercase m is still the mode filter, and M typed into the callsign editor is data.
     key(&mut m, KeyCode::Char('m'));
     assert!(matches!(m.editor, Editor::Select { band: false, .. }));
     key(&mut m, KeyCode::Esc);
     key(&mut m, KeyCode::Char('/'));
     key(&mut m, KeyCode::Char('M'));
-    assert!(!m.map);
+    assert_eq!(m.spots_view, SpotsView::List);
     assert!(matches!(&m.editor, Editor::Calls { text, .. } if text == "M"));
     key(&mut m, KeyCode::Esc);
     key(&mut m, KeyCode::Char('?'));
@@ -2392,7 +2411,7 @@ fn map_paths_follow_filters_age_kind_and_the_cap() {
 fn map_draws_paths_over_the_coastline() {
     // QGDXC-TUI-0081 QGDXC-TUI-0084
     let mut m = map_model();
-    m.map = true;
+    m.spots_view = SpotsView::Map;
     let empty = grid(&m, 120, 36);
     assert!(text(&empty, 35).contains("M list"));
     assert!((0..36).any(|y| text(&empty, y).contains(" 0 paths · M list ")));
@@ -2792,26 +2811,28 @@ fn beacon_report(beacon: usize, hz: i64, snr: Option<i64>) -> ClusterEvent {
 fn beacon_key_switches_views_and_is_listed() {
     // QGDXC-TUI-0101
     let mut m = Model::new(args(&["one"]), 100, 100);
-    assert!(text(&grid(&m, 120, 36), 35).contains("B beacons"));
+    assert!(text(&grid(&m, 130, 36), 35).contains("B beacons"));
+    assert!(text(&grid(&m, 120, 36), 35).contains(" M map B W "));
     key(&mut m, KeyCode::Char('B'));
-    assert!(m.beacons && !m.map);
-    let b = grid(&m, 120, 36);
+    assert_eq!(m.spots_view, SpotsView::Beacons);
+    let b = grid(&m, 130, 36);
     assert!(text(&b, 35).contains("B list"));
+    assert!(text(&grid(&m, 120, 36), 35).contains(" M map B W "));
     assert!((0..36).any(|y| text(&b, y).contains("NCDXF/IARU beacons")));
     // M leaves the beacon view for the map, and B leaves the map.
     key(&mut m, KeyCode::Char('M'));
-    assert!(m.map && !m.beacons);
+    assert_eq!(m.spots_view, SpotsView::Map);
     key(&mut m, KeyCode::Char('B'));
-    assert!(m.beacons && !m.map);
+    assert_eq!(m.spots_view, SpotsView::Beacons);
     key(&mut m, KeyCode::Char('B'));
-    assert!(!m.beacons && !m.map);
+    assert_eq!(m.spots_view, SpotsView::List);
     // Lowercase b is still the band filter, and B typed into the callsign editor is data.
     key(&mut m, KeyCode::Char('b'));
     assert!(matches!(m.editor, Editor::Select { band: true, .. }));
     key(&mut m, KeyCode::Esc);
     key(&mut m, KeyCode::Char('/'));
     key(&mut m, KeyCode::Char('B'));
-    assert!(!m.beacons);
+    assert_eq!(m.spots_view, SpotsView::List);
     key(&mut m, KeyCode::Esc);
     key(&mut m, KeyCode::Char('?'));
     assert!((0..36).any(|y| text(&grid(&m, 120, 36), y).contains("B: beacons")));

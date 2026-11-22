@@ -15,6 +15,8 @@ url = "https://raw.githubusercontent.com/zcash/rust-ecosystem/main/supply-chain/
 audit-as-crates-io = false
 [policy.qso-graph-dxcluster-cli]
 audit-as-crates-io = false
+[policy.qso-graph-spaceweather]
+audit-as-crates-io = false
 [policy.xtask]
 criteria = "safe-to-run"
 
@@ -517,3 +519,133 @@ notes = "SPDX-License-Identifier: GPL-3.0-or-later. Not audited yet: exact-versi
 version = "0.4.0"
 criteria = "safe-to-deploy"
 notes = "SPDX-License-Identifier: GPL-3.0-or-later. Not audited yet: exact-version Rust-only terminal dependency review backlog; see docs/DEPENDENCIES.md."
+
+[[exemptions.base64]]
+version = "0.23.1"
+criteria = "safe-to-deploy"
+notes = "Not audited yet (D4): Base64 used by ureq (proxy credentials) and ureq-proto."
+
+[[exemptions.bytes]]
+version = "1.12.1"
+criteria = "safe-to-deploy"
+notes = "Not audited yet (D4): Byte buffers used by the http crate."
+
+[[exemptions.fs_extra]]
+version = "1.3.0"
+criteria = "safe-to-deploy"
+notes = "Not audited yet (D4): a build tool for AWS-LC (file copying, via aws-lc-sys); runs only while AWS-LC is built, never shipped."
+
+[[exemptions.http]]
+version = "1.5.0"
+criteria = "safe-to-deploy"
+notes = "Not audited yet (D4): HTTP request and response types used by ureq."
+
+[[exemptions.httparse]]
+version = "1.10.1"
+criteria = "safe-to-deploy"
+notes = "Not audited yet (D4): HTTP/1.1 response parser used by ureq-proto."
+
+[[exemptions.once_cell]]
+version = "1.21.4"
+criteria = "safe-to-deploy"
+notes = "Not audited yet (D4): credential backend support and build-time helpers. Resolved through keyring 4.2.0 with Desktop defaults; no matching audit or existing publisher coverage is available in the offline cache."
+
+[[exemptions.percent-encoding]]
+version = "2.3.2"
+criteria = "safe-to-deploy"
+notes = "Not audited yet (D4): URL percent-encoding used by ureq."
+
+[[exemptions.ring]]
+version = "0.17.14"
+criteria = "safe-to-deploy"
+notes = "Not audited yet (D4): Not built: an optional rustls/rustls-webpki provider whose feature is off (rustls uses aws-lc-rs); it appears only in cargo-vet's all-features graph."
+
+[[exemptions.rustls]]
+version = "0.23.46"
+criteria = "safe-to-deploy"
+notes = "Not audited yet (D4): TLS for the NOAA SWPC requests, with AWS-LC (aws-lc-rs, already trusted) as its cryptography; certificate verification is never turned off."
+
+[[exemptions.rustls-pki-types]]
+version = "1.15.1"
+criteria = "safe-to-deploy"
+notes = "Not audited yet (D4): Shared certificate and key types for rustls, ureq and webpki-roots."
+
+[[exemptions.rustls-webpki]]
+version = "0.103.16"
+criteria = "safe-to-deploy"
+notes = "Not audited yet (D4): rustls's certificate and host-name verification, for the NOAA SWPC requests."
+
+[[exemptions.untrusted]]
+version = "0.9.0"
+criteria = "safe-to-deploy"
+notes = "Not audited yet (D4): Bounds-checked input reading used by rustls-webpki's certificate parser."
+
+[[exemptions.ureq]]
+version = "3.5.1"
+criteria = "safe-to-deploy"
+notes = "Not audited yet (D4): qg-trust's HTTPS client for the one NOAA SWPC requests (transport.rs): HTTPS only, no redirects, a time limit, Mozilla's roots."
+
+[[exemptions.ureq-proto]]
+version = "0.7.1"
+criteria = "safe-to-deploy"
+notes = "Not audited yet (D4): ureq's HTTP/1.1 protocol state machine, for the NOAA SWPC requests."
+
+[[exemptions.utf8-zero]]
+version = "0.8.1"
+criteria = "safe-to-deploy"
+notes = "Not audited yet (D4): UTF-8 decoding used by ureq."
+
+[[exemptions.webpki-roots]]
+version = "1.0.11"
+criteria = "safe-to-deploy"
+notes = "Not audited yet (D4): Mozilla's root certificates, built in, so LoTW's certificate is checked the same way on every computer."
+
+[[exemptions.windows-sys]]
+version = "0.52.0"
+criteria = "safe-to-deploy"
+notes = "Not audited yet (D4): Not built: Microsoft's Windows bindings at the version only ring's (unbuilt) dependency names; appears only in cargo-vet's all-features graph."
+
+[[exemptions.windows-targets]]
+version = "0.52.6"
+criteria = "safe-to-deploy"
+notes = "Not audited yet (D4): Not built: Microsoft's Windows bindings at the version only ring's (unbuilt) dependency names; appears only in cargo-vet's all-features graph."
+
+[[exemptions.windows_aarch64_gnullvm]]
+version = "0.52.6"
+criteria = "safe-to-deploy"
+notes = "Not audited yet (D4): Not built: Microsoft's Windows bindings at the version only ring's (unbuilt) dependency names; appears only in cargo-vet's all-features graph."
+
+[[exemptions.windows_aarch64_msvc]]
+version = "0.52.6"
+criteria = "safe-to-deploy"
+notes = "Not audited yet (D4): Not built: Microsoft's Windows bindings at the version only ring's (unbuilt) dependency names; appears only in cargo-vet's all-features graph."
+
+[[exemptions.windows_i686_gnu]]
+version = "0.52.6"
+criteria = "safe-to-deploy"
+notes = "Not audited yet (D4): Not built: Microsoft's Windows bindings at the version only ring's (unbuilt) dependency names; appears only in cargo-vet's all-features graph."
+
+[[exemptions.windows_i686_gnullvm]]
+version = "0.52.6"
+criteria = "safe-to-deploy"
+notes = "Not audited yet (D4): Not built: Microsoft's Windows bindings at the version only ring's (unbuilt) dependency names; appears only in cargo-vet's all-features graph."
+
+[[exemptions.windows_i686_msvc]]
+version = "0.52.6"
+criteria = "safe-to-deploy"
+notes = "Not audited yet (D4): Not built: Microsoft's Windows bindings at the version only ring's (unbuilt) dependency names; appears only in cargo-vet's all-features graph."
+
+[[exemptions.windows_x86_64_gnu]]
+version = "0.52.6"
+criteria = "safe-to-deploy"
+notes = "Not audited yet (D4): Not built: Microsoft's Windows bindings at the version only ring's (unbuilt) dependency names; appears only in cargo-vet's all-features graph."
+
+[[exemptions.windows_x86_64_gnullvm]]
+version = "0.52.6"
+criteria = "safe-to-deploy"
+notes = "Not audited yet (D4): Not built: Microsoft's Windows bindings at the version only ring's (unbuilt) dependency names; appears only in cargo-vet's all-features graph."
+
+[[exemptions.windows_x86_64_msvc]]
+version = "0.52.6"
+criteria = "safe-to-deploy"
+notes = "Not audited yet (D4): Not built: Microsoft's Windows bindings at the version only ring's (unbuilt) dependency names; appears only in cargo-vet's all-features graph."
