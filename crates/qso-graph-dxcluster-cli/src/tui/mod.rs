@@ -9,6 +9,7 @@ pub(crate) mod sources;
 #[cfg(test)]
 mod tests;
 mod theme;
+mod weather;
 use config::Options;
 use crossterm::{
     cursor::{Hide, RestorePosition, SavePosition, Show},
@@ -234,6 +235,7 @@ pub fn run(args: &[String]) -> Result<u8, String> {
             options.keep_skimmer,
         );
         model.appearance = appearance;
+        model.weather = options.space_weather;
         model.utc_epoch = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap_or_default()
@@ -243,9 +245,13 @@ pub fn run(args: &[String]) -> Result<u8, String> {
             workers: Workers::new(stop.clone()),
         };
         interface.workers.start(options, origin);
+        let mut weather = weather::Worker::default();
         let mut redraw = Redraw::default();
         while !model.quit && !stop.load(Ordering::Relaxed) {
             interface.workers.drain(&mut model, origin);
+            weather.poll(model.weather, &mut model.weather_data, || {
+                weather::start(origin)
+            })?;
             let now = origin.elapsed();
             if redraw.due(now) {
                 let size = terminal.size()?;

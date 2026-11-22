@@ -77,6 +77,14 @@ answers. The beacon schedule is the
 [NCDXF/IARU International Beacon Project](https://www.ncdxf.org/beacon/)'s, published by
 the Northern California DX Foundation; the beacons are built and run by NCDXF, the
 IARU and their volunteer hosts.
+
+Press `W` (capital) for space weather, with data from the
+[NOAA Space Weather Prediction Center](https://www.swpc.noaa.gov/).
+Fetching starts when you first open the view or use `--space-weather`.
+Solar flux, planetary K, and NOAA scales have a 15-minute minimum between
+requests. X-rays, solar wind, and alerts have a five-minute minimum
+(`QGDXC-TUI-0111`).
+
 Press `?` for keys;
 Scrolling down holds your place while reception continues, and Home returns to the newest spots; `p` pauses and resumes too, and `t` cycles the five themes.
 Use `--theme color|daylight|phosphor|amber|mono` to choose a theme at startup.

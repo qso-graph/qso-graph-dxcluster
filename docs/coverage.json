@@ -1948,6 +1948,164 @@
         }
       ],
       "vectors": []
+    },
+    "QGDXC-SWX-0001": {
+      "tests": [
+        {
+          "file": "crates/qso-graph-spaceweather/tests/products.rs",
+          "name": "parses_all_noaa_fixtures"
+        }
+      ],
+      "vectors": []
+    },
+    "QGDXC-SWX-0002": {
+      "tests": [
+        {
+          "file": "crates/qso-graph-spaceweather/tests/products.rs",
+          "name": "rejects_bad_json_and_kept_values_without_partial_results"
+        }
+      ],
+      "vectors": []
+    },
+    "QGDXC-SWX-0003": {
+      "tests": [
+        {
+          "file": "crates/qso-graph-spaceweather/tests/products.rs",
+          "name": "validates_calendar_and_timestamp_shapes"
+        }
+      ],
+      "vectors": []
+    },
+    "QGDXC-SWX-0004": {
+      "tests": [
+        {
+          "file": "crates/qso-graph-spaceweather/tests/products.rs",
+          "name": "time_order_and_last_duplicate_win"
+        }
+      ],
+      "vectors": []
+    },
+    "QGDXC-SWX-0005": {
+      "tests": [
+        {
+          "file": "crates/qso-graph-spaceweather/tests/products.rs",
+          "name": "classes_use_thresholds_and_truncate"
+        }
+      ],
+      "vectors": []
+    },
+    "QGDXC-SWX-0006": {
+      "tests": [
+        {
+          "file": "crates/qso-graph-spaceweather/tests/products.rs",
+          "name": "alerts_preserve_headlines_validate_lengths_and_sort_fractional_seconds"
+        }
+      ],
+      "vectors": []
+    },
+    "QGDXC-SWX-0007": {
+      "tests": [
+        {
+          "file": "crates/qso-graph-spaceweather/tests/products.rs",
+          "name": "parses_all_noaa_fixtures"
+        },
+        {
+          "file": "crates/qso-graph-spaceweather/tests/products.rs",
+          "name": "rejects_bad_json_and_kept_values_without_partial_results"
+        }
+      ],
+      "vectors": []
+    },
+    "QGDXC-TUI-0110": {
+      "tests": [
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/tui/weather/tests.rs",
+          "name": "space_weather_switches_with_other_views_and_is_listed"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/tui/tests.rs",
+          "name": "limits_footer_and_help_fit_compact_and_wide_layouts"
+        }
+      ],
+      "vectors": []
+    },
+    "QGDXC-TUI-0111": {
+      "tests": [
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/tui/weather/tests.rs",
+          "name": "worker_starts_once_on_opt_in_and_keeps_polling"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/tui/weather/tests.rs",
+          "name": "floors_and_failures_keep_good_values"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/tui/weather/tests.rs",
+          "name": "space_weather_switches_with_other_views_and_is_listed"
+        }
+      ],
+      "vectors": []
+    },
+    "QGDXC-TUI-0112": {
+      "tests": [
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/tui/weather/tests.rs",
+          "name": "https_configuration_and_read_cap"
+        }
+      ],
+      "vectors": []
+    },
+    "QGDXC-TUI-0113": {
+      "tests": [
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/tui/weather/tests.rs",
+          "name": "retry_after_pauses_all_feeds_and_preserves_their_floors"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/tui/weather/tests.rs",
+          "name": "floors_and_failures_keep_good_values"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/tui/weather/tests.rs",
+          "name": "view_shows_waiting_values_alerts_and_refresh_status"
+        }
+      ],
+      "vectors": []
+    },
+    "QGDXC-TUI-0114": {
+      "tests": [
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/tui/weather/tests.rs",
+          "name": "view_shows_waiting_values_alerts_and_refresh_status"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/tui/weather/tests.rs",
+          "name": "weather_roles_alert_privacy_and_minimum_height"
+        }
+      ],
+      "vectors": []
+    },
+    "QGDXC-TUI-0115": {
+      "tests": [
+        {
+          "file": "xtask/src/checks.rs",
+          "name": "policy_rejects_transport_dependencies_in_either_library"
+        }
+      ],
+      "vectors": []
+    },
+    "QGDXC-TUI-0116": {
+      "tests": [
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/tui/weather/tests.rs",
+          "name": "worker_starts_once_on_opt_in_and_keeps_polling"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/tui/weather/tests.rs",
+          "name": "floors_and_failures_keep_good_values"
+        }
+      ],
+      "vectors": []
     }
   },
   "scenarios": {

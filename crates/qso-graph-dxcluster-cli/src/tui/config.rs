@@ -12,6 +12,7 @@ pub enum Source {
 }
 pub struct Options {
     pub theme: Theme,
+    pub space_weather: bool,
     pub keep_human: usize,
     pub keep_skimmer: usize,
     pub sources: Vec<Source>,
@@ -22,6 +23,7 @@ pub struct Options {
 impl Options {
     pub fn parse(args: &[String]) -> Result<Self, String> {
         let mut theme = None;
+        let mut space_weather = false;
         let mut keep_human = None;
         let mut keep_skimmer = None;
         let mut nodes = vec![];
@@ -31,6 +33,11 @@ impl Options {
         let mut i = 0;
         while i < args.len() {
             let flag = &args[i];
+            if flag == "--space-weather" && !space_weather {
+                space_weather = true;
+                i += 1;
+                continue;
+            }
             let value = args
                 .get(i + 1)
                 .filter(|s| !s.starts_with("--"))
@@ -119,6 +126,7 @@ impl Options {
             }
         }
         Ok(Self {
+            space_weather,
             keep_human: keep_human.unwrap_or(DEFAULT_KEEP),
             keep_skimmer: keep_skimmer.unwrap_or(DEFAULT_KEEP),
             theme: Theme::initial(

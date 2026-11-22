@@ -15,11 +15,11 @@ allow-wildcard-paths = false
 deny = [
     { crate = "autotools", reason = "builds native code" },
     { crate = "bindgen", reason = "generates native bindings" },
-    { crate = "cc", reason = "builds native code" },
-    { crate = "cmake", reason = "builds native code" },
+    { crate = "cc", reason = "builds native code; allowed to build AWS-LC for QGDXC-TUI-0115 (D4)", wrappers = ["aws-lc-sys", "cmake"] },
+    { crate = "cmake", reason = "builds native code; allowed to build AWS-LC for QGDXC-TUI-0115 (D4)", wrappers = ["aws-lc-sys"] },
     { crate = "cxx-build", reason = "builds native code" },
     { crate = "nasm-rs", reason = "builds assembly" },
-    { crate = "pkg-config", reason = "finds native libraries" },
+    { crate = "pkg-config", reason = "finds native libraries; allowed to build AWS-LC for QGDXC-TUI-0115 (D4)", wrappers = ["aws-lc-sys"] },
     { crate = "vcpkg", reason = "finds native libraries" },
 ]
 
@@ -31,3 +31,28 @@ allow = ["Apache-2.0", "GPL-3.0-or-later", "MIT", "Unicode-3.0"]
 [[licenses.exceptions]]
 crate = "foldhash:=0.2.0"
 allow = ["Zlib"]
+
+# The Mozilla root certificate dataset used by the CLI (QGDXC-TUI-0112).
+[[licenses.exceptions]]
+crate = "webpki-roots:=1.0.11"
+allow = ["CDLA-Permissive-2.0"]
+
+[[licenses.exceptions]]
+crate = "aws-lc-rs:=1.18.1"
+allow = ["ISC"]
+
+[[licenses.exceptions]]
+crate = "aws-lc-sys:=0.45.0"
+allow = ["BSD-3-Clause", "ISC"]
+
+[[licenses.exceptions]]
+crate = "rustls-webpki:=0.103.16"
+allow = ["ISC"]
+
+[[licenses.exceptions]]
+crate = "subtle:=2.6.1"
+allow = ["BSD-3-Clause"]
+
+[[licenses.exceptions]]
+crate = "untrusted:=0.9.0"
+allow = ["ISC"]

@@ -258,7 +258,7 @@ fn limits_footer_and_help_fit_compact_and_wide_layouts() {
     for _ in 0..5 {
         for paused in [false, true] {
             m.paused = paused;
-            for width in [80, 100, 120, 130, 140] {
+            for width in [80, 100, 120, 130, 140, 150] {
                 let screen = grid(&m, width, 24);
                 let footer = text(&screen, 23);
                 for hint in ["q quit", "b band", "m mode", "/ call", "k kind", "l limits"] {
@@ -271,15 +271,17 @@ fn limits_footer_and_help_fit_compact_and_wide_layouts() {
                 let keys = match width {
                     80 => "k kind d s 1-8 p",
                     100 => "k kind d s 1-8 src p",
-                    120 | 130 => "k kind d dupes s self 1-8 source p",
+                    120 => "k kind d dupes s self 1-8 src p",
+                    130 | 140 => "k kind d dupes s self 1-8 source p",
                     _ => "k kind  d dupes  s self  1-8 source  p",
                 };
                 assert!(footer.contains(keys), "{footer}");
                 let tail = match width {
-                    80 => "t M B ?",
-                    100 => "t M map B ? help",
-                    120 | 130 => "t theme M map B beacons ? help",
-                    _ => "t theme  M map  B beacons  ? help",
+                    80 => "t M B W ?",
+                    100 => "t M map B W ? help",
+                    120 => "t theme M map B W ? help",
+                    130 | 140 => "t theme M map B beacons W weather ? help",
+                    _ => "t theme  M map  B beacons  W weather  ? help",
                 };
                 assert!(footer.contains(tail), "{footer}");
                 let theme = format!("{} ", m.appearance.theme.name());
@@ -290,6 +292,17 @@ fn limits_footer_and_help_fit_compact_and_wide_layouts() {
                         .modifier
                         .contains(Modifier::BOLD)
                 );
+
+                m.map = true;
+                let map_screen = grid(&m, width, 24);
+                let map_footer = text(&map_screen, 23);
+                let map_tail = tail.replace("M map", "M list");
+                assert!(map_footer.contains(&map_tail), "{map_footer}");
+                assert!(
+                    find(&map_screen, 23, &map_tail) + (map_tail.len() as u16)
+                        < width - theme.len() as u16
+                );
+                m.map = false;
             }
         }
         key(&mut m, KeyCode::Char('t'));
@@ -2271,7 +2284,7 @@ fn map_key_toggles_the_view_and_is_listed() {
     let mut m = map_model();
     assert!(!m.map);
     assert!(text(&grid(&m, 120, 36), 35).contains("M map"));
-    assert!(text(&grid(&m, 80, 36), 35).contains("t M B ?"));
+    assert!(text(&grid(&m, 80, 36), 35).contains("t M B W ?"));
     // QGDXC-TUI-0070: the version sits beside the logo in both layouts.
     for wide in [120u16, 80] {
         let version = concat!(" QG DX Cluster  v", env!("CARGO_PKG_VERSION"), "  0 ");
@@ -2792,11 +2805,13 @@ fn beacon_report(beacon: usize, hz: i64, snr: Option<i64>) -> ClusterEvent {
 fn beacon_key_switches_views_and_is_listed() {
     // QGDXC-TUI-0101
     let mut m = Model::new(args(&["one"]), 100, 100);
-    assert!(text(&grid(&m, 120, 36), 35).contains("B beacons"));
+    assert!(text(&grid(&m, 130, 36), 35).contains("B beacons"));
+    assert!(text(&grid(&m, 120, 36), 35).contains(" M map B W "));
     key(&mut m, KeyCode::Char('B'));
     assert!(m.beacons && !m.map);
-    let b = grid(&m, 120, 36);
+    let b = grid(&m, 130, 36);
     assert!(text(&b, 35).contains("B list"));
+    assert!(text(&grid(&m, 120, 36), 35).contains(" M map B W "));
     assert!((0..36).any(|y| text(&b, y).contains("NCDXF/IARU beacons")));
     // M leaves the beacon view for the map, and B leaves the map.
     key(&mut m, KeyCode::Char('M'));

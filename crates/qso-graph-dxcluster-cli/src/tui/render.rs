@@ -10,6 +10,8 @@ use ratatui::text::Span;
 use ratatui::{Frame, layout::Rect, widgets::Paragraph};
 use std::time::Duration;
 
+mod space_weather;
+
 pub fn field(frame: &mut Frame<'_>, rect: Rect, text: &str, marker: bool) {
     if rect.width == 0 || rect.height == 0 {
         return;
@@ -153,6 +155,7 @@ pub fn draw(frame: &mut Frame<'_>, model: &Model, now: Duration) {
             for (i, source) in model.sources.iter().enumerate() {
                 line(frame, area, 10 + i as u16, &source.line(now));
             }
+            line(frame, area, 18, "W: space weather");
             line(frame, area, 19, &model.summary());
             return;
         }
@@ -401,7 +404,7 @@ fn comma(value: u64) -> String {
         })
 }
 // Gregorian conversion from days since the Unix epoch; UTC uses no local zone.
-fn utc(seconds: u64) -> String {
+pub(super) fn utc_parts(seconds: u64) -> (i64, i64, i64) {
     let days = (seconds / 86400) as i64 + 719468;
     let era = days / 146097;
     let doe = days - era * 146097;
@@ -411,7 +414,10 @@ fn utc(seconds: u64) -> String {
     let mp = (5 * doy + 2) / 153;
     let day = doy - (153 * mp + 2) / 5 + 1;
     let month = mp + if mp < 10 { 3 } else { -9 };
-    let year = year + i64::from(month <= 2);
+    (year + i64::from(month <= 2), month, day)
+}
+fn utc(seconds: u64) -> String {
+    let (year, month, day) = utc_parts(seconds);
     format!(
         "{year:04}-{month:02}-{day:02}  {:02}:{:02}:{:02}Z",
         seconds / 3600 % 24,
@@ -615,6 +621,11 @@ fn dashboard(frame: &mut Frame<'_>, m: &Model, now: Duration) {
             }
         )
     };
+    if m.weather {
+        space_weather::draw(frame, (title_y, area.height - 2), m, now);
+        footer(frame, area.height - 1, w, m);
+        return;
+    }
     if m.beacons {
         // QGDXC-TUI-0103: what the view uses, not the spot list's filters.
         beacon_view(
@@ -1273,22 +1284,22 @@ fn display_comment(spot: &Spot, wide: bool) -> &str {
     };
     derive().or_else(mode_word).unwrap_or(original)
 }
-/// From this width every footer key carries its label (QGDXC-TUI-0070).
-const FULL_FOOTER: u16 = 120;
+const FILTER_FOOTER: u16 = 120;
+/// From this width the source, beacons, and weather hints carry full labels.
+const FULL_FOOTER: u16 = 130;
 /// From this width footer hints are separated by two spaces instead of one.
-const ROOMY_FOOTER: u16 = 140;
+const ROOMY_FOOTER: u16 = 150;
 fn footer(frame: &mut Frame<'_>, y: u16, w: u16, m: &Model) {
     let a = m.appearance;
     let theme = format!("{} ", a.theme.name());
-    let mut row = Row::new(frame, 1, y, w - theme.len() as u16 - 2);
-    for (key, label) in [
+    let hints = [
         ("q", "quit"),
         ("b", "band"),
         ("m", "mode"),
         ("/", "call"),
         ("k", "kind"),
-        ("d", if w >= FULL_FOOTER { "dupes" } else { "" }),
-        ("s", if w >= FULL_FOOTER { "self" } else { "" }),
+        ("d", if w >= FILTER_FOOTER { "dupes" } else { "" }),
+        ("s", if w >= FILTER_FOOTER { "self" } else { "" }),
         (
             "1-8",
             match w {
@@ -1299,7 +1310,7 @@ fn footer(frame: &mut Frame<'_>, y: u16, w: u16, m: &Model) {
         ),
         ("p", if m.paused { "resume" } else { "pause" }),
         ("l", "limits"),
-        ("t", if w >= FULL_FOOTER { "theme" } else { "" }),
+        ("t", if w >= FILTER_FOOTER { "theme" } else { "" }),
         (
             "M",
             match (w >= 100, m.map) {
@@ -1316,16 +1327,31 @@ fn footer(frame: &mut Frame<'_>, y: u16, w: u16, m: &Model) {
                 (true, false) => "beacons",
             },
         ),
+        (
+            "W",
+            match (w >= FULL_FOOTER, m.weather) {
+                (false, _) => "",
+                (true, true) => "list",
+                (true, false) => "weather",
+            },
+        ),
         ("?", if w >= 100 { "help" } else { "" }),
-    ] {
+    ];
+    let separator = if w >= ROOMY_FOOTER { "  " } else { " " };
+    let hint_width = hints
+        .iter()
+        .map(|(key, label)| key.len() + label.len() + usize::from(!label.is_empty()))
+        .sum::<usize>()
+        + (hints.len() - 1) * separator.len();
+    let theme_x = w - theme.len() as u16;
+    let left = u16::from(hint_width + 1 < theme_x as usize);
+    let mut row = Row::new(frame, left, y, theme_x - left - 1);
+    for (key, label) in hints {
         row.ui(key, a.style(Role::Accent).add_modifier(Modifier::BOLD));
         if !label.is_empty() {
             row.ui(&format!(" {label}"), a.style(Role::Dim));
         }
-        row.ui(
-            if w >= ROOMY_FOOTER { "  " } else { " " },
-            a.style(Role::Dim),
-        );
+        row.ui(separator, a.style(Role::Dim));
     }
     put(
         frame,

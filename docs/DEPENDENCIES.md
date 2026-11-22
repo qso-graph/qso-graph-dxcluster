@@ -1,11 +1,14 @@
 <!-- SPDX-License-Identifier: GPL-3.0-or-later -->
 # Dependencies
 
-The library has zero normal, build, and development dependencies.
+The DX cluster library has zero normal, build, and development dependencies.
 The policy gate reads `cargo metadata --locked --offline --no-deps` package
 declarations for every target (QGDXC-IO-0001). It rejects normal and build
 dependencies, lists development dependencies, and checks them against the
 explicit, currently empty `LIBRARY_DEV_ALLOWLIST` in `xtask/src/checks.rs`.
+The space-weather library uses the CLI's JSON pins without derive (QGDXC-SWX-0001).
+The gate also checks the resolved dependency graph for prohibited transport
+packages reachable from either library (QGDXC-TUI-0115).
 Planted manifest tests cover individual dependency tables, optional aliases,
 and target-specific normal, build, and development declarations. CLI argument handling,
 base64, event serialization, framing, and protocol parsing use first-party Rust.
@@ -26,8 +29,10 @@ enable bracketed paste (QGDXC-TUI-0041). Other additions are transitive terminal
 Every registry package below is an explicit decision. Versions are locked in
 Cargo.lock; exact-version cargo-vet exemptions mean **not audited yet**, not an
 audit. The store follows the sibling project's four imported audit sources.
-No C or C++ source is built or bundled in shipped dependencies. OS bindings call
-platform system libraries; they are Rust packages, not bundled native libraries.
+The CLI builds AWS-LC for verified HTTPS to NOAA SWPC (QGDXC-TUI-0112 and
+QGDXC-TUI-0115). Its locked dependencies follow QG Trust's audit imports,
+publisher trust, and exact-version exemptions in `supply-chain/`. OS bindings
+call platform system libraries.
 
 | Package | Locked version | Purpose | Review status |
 |---|---|---|---|

@@ -587,6 +587,8 @@ pub struct Model {
     pub solar: Option<Solar>,
     /// Show the beacon view instead of the list (QGDXC-TUI-0101).
     pub beacons: bool,
+    pub weather: bool,
+    pub(super) weather_data: super::weather::Cache,
     /// Each beacon's latest report on each frequency (QGDXC-TUI-0102).
     pub heard: [[Option<super::beacons::Heard>; 5]; 18],
 }
@@ -666,6 +668,8 @@ impl Model {
             prefixes: qso_graph_dxcluster_cli::prefixes::builtin(),
             solar: None,
             beacons: false,
+            weather: false,
+            weather_data: super::weather::Cache::default(),
             heard: Default::default(),
         }
     }
@@ -1000,10 +1004,17 @@ impl Model {
                 Input::Char('M') => {
                     self.map = !self.map;
                     self.beacons = false;
+                    self.weather = false;
                 }
                 Input::Char('B') => {
                     self.beacons = !self.beacons;
                     self.map = false;
+                    self.weather = false;
+                }
+                Input::Char('W') => {
+                    self.weather = !self.weather;
+                    self.map = false;
+                    self.beacons = false;
                 }
                 Input::Char('b' | 'm') => {
                     let is_band = matches!(input, Input::Char('b'));
