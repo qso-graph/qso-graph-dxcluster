@@ -1,6 +1,18 @@
 <!-- SPDX-License-Identifier: GPL-3.0-or-later -->
 # Changelog
 
+## [0.4.0]
+
+### Features
+
+- tui: hide self-spots with s, and drop a repeated mode word
+- tui: put All at the top of the band and mode dialogs
+- tui: show a spot relayed by several nodes once
+
+### Bug Fixes
+
+- tui: say how to start when there is no sources file
+
 ## [0.3.0]
 
 ### Features
