@@ -2669,7 +2669,7 @@ fn solar_figures_show_in_both_layouts() {
         Duration::ZERO,
     );
     let wide = grid(&m, 120, 40);
-    let (x, y) = locate(&wide, "²WWV 06Z · SFI 145 · A 8 · K 2 ").expect("wide strip");
+    let (x, y) = locate(&wide, "²WWV 06:00 UTC · SFI 145 · A 8 · K 2 ").expect("wide strip");
     // In the bands box's bottom border, the right half of the screen.
     assert!(x >= 60, "{}", text(&wide, y));
     assert!(text(&wide, y).starts_with('╰'));
@@ -2697,7 +2697,7 @@ fn solar_figures_show_in_both_layouts() {
     assert!(
         locate(
             &grid(&m, 120, 40),
-            "¹WCY 07Z · SFI 150 · A 9 · K 3 · expK 4 · R 85 "
+            "¹WCY 07:00 UTC · SFI 150 · A 9 · K 3 · expK 4 · R 85 "
         )
         .is_some()
     );
@@ -2705,7 +2705,7 @@ fn solar_figures_show_in_both_layouts() {
     assert!(locate(&grid(&m, 80, 24), " SFI 150 A 9 K 3 ").is_some());
     // Missing fields are omitted, not shown as blanks.
     m.receive(0, solar("wwv", 8, &[("k", 5)]), Duration::ZERO);
-    assert!(locate(&grid(&m, 120, 40), "¹WWV 08Z · K 5 ").is_some());
+    assert!(locate(&grid(&m, 120, 40), "¹WWV 08:00 UTC · K 5 ").is_some());
     // Compact drops the strip when it would touch the border labels.
     m.receive(
         0,
@@ -2940,4 +2940,44 @@ fn map_marks_the_beacons_on_air() {
     // One located beacon on air, plus the legend; the four unknown places are omitted.
     assert_eq!(marks, 2);
     assert!(locate(&screen, "beacon ◆").is_some());
+}
+#[test]
+fn solar_strip_fits_the_bands_box_at_its_narrowest() {
+    // QGDXC-TUI-0091: drop expK and R first, then shorten the hour.
+    let mut m = Model::new(args(&["one"]), 100, 100);
+    let full = [
+        ("sfi", 150),
+        ("a", 9),
+        ("k", 3),
+        ("expected_k", 4),
+        ("r", 85),
+    ];
+    m.receive(0, solar("wcy", 7, &full), Duration::ZERO);
+    let at = |m: &Model, width, now| grid_at(m, width, 40, Duration::from_secs(now));
+    // Fresh, at 100 columns: everything but expK and R fits with the full hour.
+    let screen = at(&m, 100, 10);
+    assert!(locate(&screen, " ¹WCY 07:00 UTC · SFI 150 · A 9 · K 3 ─").is_some());
+    assert!(locate(&screen, "expK").is_none());
+    // Stale, at 100 columns: still the full hour, just fitting.
+    let screen = at(&m, 100, 3_601);
+    assert!(locate(&screen, " ¹WCY 07:00 UTC · SFI 150 · A 9 · K 3 · stale ─╯").is_some());
+    // Wider figures no longer fit with the full hour, so it shortens.
+    let wide = [
+        ("sfi", 300),
+        ("a", 100),
+        ("k", 3),
+        ("expected_k", 4),
+        ("r", 85),
+    ];
+    m.receive(0, solar("wcy", 7, &wide), Duration::ZERO);
+    let screen = at(&m, 100, 3_601);
+    assert!(locate(&screen, " ¹WCY 07Z · SFI 300 · A 100 · K 3 · stale ").is_some());
+    // With room, the full text comes back.
+    assert!(
+        locate(
+            &at(&m, 140, 10),
+            " ¹WCY 07:00 UTC · SFI 300 · A 100 · K 3 · expK 4 · R 85 "
+        )
+        .is_some()
+    );
 }

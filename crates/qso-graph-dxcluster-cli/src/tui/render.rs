@@ -567,8 +567,9 @@ fn dashboard(frame: &mut Frame<'_>, m: &Model, now: Duration) {
         border(frame, (0, rows + 2, lw), false, "", "", a);
         border(frame, (lw, rows + 2, rw), false, "", "", a);
         if let Some(solar) = &m.solar {
-            let parts = solar_parts(solar, now, true);
-            let mut row = Row::new(frame, lw + 2, rows + 2, rw.saturating_sub(4));
+            let room = rw.saturating_sub(4);
+            let parts = solar_parts(solar, now, true, room as usize);
+            let mut row = Row::new(frame, lw + 2, rows + 2, room);
             for (text, role) in &parts {
                 row.ui(text, a.style(*role));
             }
@@ -697,7 +698,7 @@ fn dashboard(frame: &mut Frame<'_>, m: &Model, now: Duration) {
     );
     if !wide && let Some(solar) = &m.solar {
         // QGDXC-TUI-0091: centered between the two labels, only when it fits.
-        let parts = solar_parts(solar, now, false);
+        let parts = solar_parts(solar, now, false, usize::MAX);
         let len: u16 = parts.iter().map(|(t, _)| t.chars().count() as u16).sum();
         // Each label's extent as `border` places it; one border cell must remain on each side.
         let left_end = 2 + format!(" {} received ", comma(m.total)).chars().count() as u16;
@@ -721,47 +722,73 @@ fn dashboard(frame: &mut Frame<'_>, m: &Model, now: Duration) {
     footer(frame, area.height - 1, w, m);
 }
 /// QGDXC-TUI-0091 and QGDXC-TUI-0092: the kept WWV or WCY figures, with their roles.
-fn solar_parts(solar: &super::model::Solar, now: Duration, wide: bool) -> Vec<(String, Role)> {
-    let stale = solar.stale(now);
-    let role = |r: Role| if stale { Role::Dim } else { r };
-    let k_role = |k: i64| match k {
-        4 => Role::Warning,
-        5..=9 => Role::Bad,
-        _ => Role::Text,
-    };
-    let mut fields = vec![("SFI", solar.sfi, Role::Text), ("A", solar.a, Role::Text)];
-    fields.push(("K", solar.k, solar.k.map_or(Role::Text, k_role)));
-    if wide {
-        fields.push(("expK", solar.expected_k, Role::Text));
-        fields.push(("R", solar.r, Role::Text));
-    }
-    let mut parts = vec![];
-    if wide {
-        let hour = solar.hour.map(|h| format!(" {h:02}Z")).unwrap_or_default();
-        parts.push((SUP[solar.source.min(7)].to_string(), role(Role::Accent)));
-        parts.push((
-            format!("{}{hour}", if solar.wcy { "WCY" } else { "WWV" }),
-            role(Role::Title),
-        ));
-    }
-    let sep = if wide { " · " } else { " " };
-    for (name, value, r) in fields {
-        let Some(value) = value else { continue };
-        if !parts.is_empty() {
-            parts.push((sep.into(), role(Role::Dim)));
+/// In the wide layout the text is fitted to `room` cells: first everything with the hour as
+/// `hh:00 UTC`, then without expK and R, then with the hour as `hhZ`.
+fn solar_parts(
+    solar: &super::model::Solar,
+    now: Duration,
+    wide: bool,
+    room: usize,
+) -> Vec<(String, Role)> {
+    let build = |utc: bool, extras: bool| {
+        let stale = solar.stale(now);
+        let role = |r: Role| if stale { Role::Dim } else { r };
+        let k_role = |k: i64| match k {
+            4 => Role::Warning,
+            5..=9 => Role::Bad,
+            _ => Role::Text,
+        };
+        let mut fields = vec![("SFI", solar.sfi, Role::Text), ("A", solar.a, Role::Text)];
+        fields.push(("K", solar.k, solar.k.map_or(Role::Text, k_role)));
+        if wide && extras {
+            fields.push(("expK", solar.expected_k, Role::Text));
+            fields.push(("R", solar.r, Role::Text));
         }
-        parts.push((format!("{name} "), role(Role::Dim)));
-        parts.push((value.to_string(), role(r)));
+        let mut parts: Vec<(String, Role)> = vec![];
+        if wide {
+            let hour = solar
+                .hour
+                .map(|h| {
+                    if utc {
+                        format!(" {h:02}:00 UTC")
+                    } else {
+                        format!(" {h:02}Z")
+                    }
+                })
+                .unwrap_or_default();
+            parts.push((SUP[solar.source.min(7)].to_string(), role(Role::Accent)));
+            parts.push((
+                format!("{}{hour}", if solar.wcy { "WCY" } else { "WWV" }),
+                role(Role::Title),
+            ));
+        }
+        let sep = if wide { " · " } else { " " };
+        for (name, value, r) in fields {
+            let Some(value) = value else { continue };
+            if !parts.is_empty() {
+                parts.push((sep.into(), role(Role::Dim)));
+            }
+            parts.push((format!("{name} "), role(Role::Dim)));
+            parts.push((value.to_string(), role(r)));
+        }
+        if wide && stale {
+            parts.push((" · stale".into(), Role::Dim));
+        }
+        if !parts.is_empty() {
+            parts.insert(0, (" ".into(), Role::Dim));
+            parts.push((" ".into(), Role::Dim));
+        }
+        parts
+    };
+    if !wide {
+        return build(false, false);
     }
-    if wide && stale {
-        parts.push((" · stale".into(), Role::Dim));
-    }
-    if parts.is_empty() {
-        return parts;
-    }
-    parts.insert(0, (" ".into(), Role::Dim));
-    parts.push((" ".into(), Role::Dim));
-    parts
+    let width = |p: &Vec<(String, Role)>| p.iter().map(|(t, _)| t.chars().count()).sum::<usize>();
+    [(true, true), (true, false), (false, false)]
+        .into_iter()
+        .map(|(utc, extras)| build(utc, extras))
+        .find(|p| width(p) <= room)
+        .unwrap_or_else(|| build(false, false))
 }
 fn right_filters(m: &Model, filters: &str) -> String {
     if m.paused {
