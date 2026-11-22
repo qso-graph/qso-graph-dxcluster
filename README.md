@@ -6,9 +6,21 @@ want several cluster nodes and the Reverse Beacon Network in one live,
 filterable spot list. `qg-dxc` brings the feeds together in your terminal. It is
 receive-only and never sends a password.
 
-Download a single self-contained program for macOS, Windows, or Linux from
-[GitHub Releases](https://github.com/qso-graph/qso-graph-dxcluster/releases).
-Unpack it and run `qg-dxc --help`. Or install from crates.io:
+Install it with your package manager:
+
+```sh
+brew install qso-graph/tap/qso-graph-dxcluster     # macOS (Apple Silicon), Linux
+sudo apt install qso-graph-dxcluster               # Debian, Ubuntu
+sudo dnf install qso-graph-dxcluster               # Fedora, RHEL, Rocky
+```
+
+apt and dnf need QSO Graph's signed package repository first; the
+[packages page](https://github.com/qso-graph/qso-graph-packages) has the two-line setup.
+Or download a single self-contained program for macOS (Apple Silicon, signed and
+notarized), Windows (x86_64, signed), or Linux (x86_64 and arm64, including
+Raspberry Pi) from [GitHub Releases](https://github.com/qso-graph/qso-graph-dxcluster/releases).
+Unpack it and run `qg-dxc --help`. Every download carries a build attestation:
+`gh attestation verify <file> -R qso-graph/qso-graph-dxcluster`. Or install from crates.io:
 
 ```sh
 cargo install qso-graph-dxcluster-cli
@@ -83,7 +95,7 @@ and [conformance and caller responsibilities](docs/CONFORMANCE.md).
 Run the complete offline check suite with `cargo xtask verify`. See
 [CONTRIBUTING.md](CONTRIBUTING.md) for dependencies and vector regeneration.
 
-Status: implementation of specification 0.1.0 under conformance review; no release
-or publication automation is included. [CHANGELOG.md](CHANGELOG.md) tracks changes.
+Releases are published to GitHub Releases, crates.io, Homebrew, apt and dnf.
+[CHANGELOG.md](CHANGELOG.md) tracks changes.
 
 GPL-3.0-or-later. See [LICENSE](LICENSE).

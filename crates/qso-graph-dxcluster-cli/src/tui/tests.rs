@@ -884,29 +884,30 @@ fn wildcard_pathological_processing_growth_is_bounded() {
         previous = work;
     }
     // Also measure relative runtime growth on the adversarial failing suffix.
-    // Median batches reduce scheduler noise; the limit is a growth ratio,
-    // independent of absolute CPU speed. DP step counts above pin the bound.
+    // DP step counts above pin the bound; this checks the code does what they
+    // count. Short and long batches alternate so both see the same machine
+    // load, and the fastest of each is compared: noise only ever adds time.
+    // Eight times the length is 8x linear and 64x quadratic, so 32x separates
+    // them with room for a busy shared runner.
     let pattern = "*Q".repeat(9) + "*Z";
-    let measure = |length| {
-        let call = "Q".repeat(length);
-        let mut samples = vec![];
-        for _ in 0..7 {
-            let start = Instant::now();
-            for _ in 0..32 {
-                std::hint::black_box(wildcard_work(
-                    std::hint::black_box(&pattern),
-                    std::hint::black_box(&call),
-                ));
-            }
-            samples.push(start.elapsed());
+    let batch = |call: &str| {
+        let start = Instant::now();
+        for _ in 0..32 {
+            std::hint::black_box(wildcard_work(
+                std::hint::black_box(&pattern),
+                std::hint::black_box(call),
+            ));
         }
-        samples.sort();
-        samples[3]
+        start.elapsed()
     };
-    let small = measure(256);
-    let large = measure(2048);
+    let (short, long) = ("Q".repeat(256), "Q".repeat(2048));
+    let (mut small, mut large) = (Duration::MAX, Duration::MAX);
+    for _ in 0..9 {
+        small = small.min(batch(&short));
+        large = large.min(batch(&long));
+    }
     assert!(
-        large.as_nanos() <= small.as_nanos() * 16,
+        large.as_nanos() <= small.as_nanos() * 32,
         "superlinear timing growth: {small:?} -> {large:?}"
     );
     for (p, c, yes) in [
