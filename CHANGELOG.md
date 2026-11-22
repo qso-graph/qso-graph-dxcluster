@@ -1,6 +1,24 @@
 <!-- SPDX-License-Identifier: GPL-3.0-or-later -->
 # Changelog
 
+## [0.6.0]
+
+### Features
+
+- tui: one space-weather page with charts below, in NOAA's Kp colours
+- space-weather ribbon for HF-relevant NOAA items in force
+- tui: space-weather history page of four charts
+- tui: space-weather view shows current conditions in two columns
+- space-weather view on W, with a NOAA SWPC library
+- tui: show the WWV/WCY report hour as 18:00 UTC
+
+### Documentation
+
+- spec: one space-weather page with the charts below, and a Kp scale
+- spec: space-weather ribbon for HF-relevant items in force
+- spec: space-weather history page
+- spec: space-weather view shows current conditions, not history
+
 ## [0.5.0]
 
 ### Features
