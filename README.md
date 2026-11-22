@@ -67,6 +67,14 @@ When two nodes relay the same spot, the list shows it once, and its source reads
 Press `s` to hide self-spots, where a station spots itself (`QGDXC-TUI-0045`).
 The latest solar figures from the nodes' WWV and WCY broadcasts (SFI, A, K, and
 from WCY expK and R) show under the band chart, and go dim once out of date (F.10).
+Press `B` (capital) for the NCDXF/IARU beacons: which of the 18 beacons is on
+14.100, 18.110, 21.150, 24.930 and 28.200 MHz right now and which is next, worked
+out from the clock, with each beacon's recent reception reports from the Reverse
+Beacon Network and the source that carried them. On the map, the beacons on air show
+as `◆` (F.11). The beacon schedule is the
+[NCDXF/IARU International Beacon Project](https://www.ncdxf.org/beacon/)'s, published by
+the Northern California DX Foundation; the beacons are built and run by NCDXF, the
+IARU and their volunteer hosts.
 Press `?` for keys;
 Scrolling down holds your place while reception continues, and Home returns to the newest spots; `p` pauses and resumes too, and `t` cycles the five themes.
 Use `--theme color|daylight|phosphor|amber|mono` to choose a theme at startup.

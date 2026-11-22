@@ -1,10 +1,12 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 use super::{
+    beacons,
     model::{CHART_BANDS, Editor, Model, Spot, clip, frequency, frequency_text, sanitize},
     theme::{Appearance, Role},
 };
 use qso_graph_dxcluster::Value;
 use ratatui::style::{Modifier, Style};
+use ratatui::text::Span;
 use ratatui::{Frame, layout::Rect, widgets::Paragraph};
 use std::time::Duration;
 
@@ -135,7 +137,7 @@ pub fn draw(frame: &mut Frame<'_>, model: &Model, now: Duration) {
                 "QG DX Cluster: receive-only multi-source spot viewer",
                 "q / Ctrl-C: quit   b: bands   m: modes   /: callsign patterns",
                 "k: all/human/skimmer   s: hide self-spots   1-8: hide/show source   c: clear",
-                "p: pause/resume scrolling (reception continues)   t: theme   M: map   d: dupes",
+                "p: pause/resume scrolling (reception continues)   t: theme   M: map   B: beacons   d: dupes",
                 "Up/Down/PageUp/PageDown/Home: scroll   l limits   ?: help",
                 "Callsign editor: printable keys are data; Backspace deletes",
                 "Enter commits; Escape cancels. Wildcards: * any run, ? one character",
@@ -612,6 +614,17 @@ fn dashboard(frame: &mut Frame<'_>, m: &Model, now: Duration) {
             }
         )
     };
+    if m.beacons {
+        beacon_view(
+            frame,
+            (title_y, area.height - 2),
+            m,
+            now,
+            &right_filters(m, &filters),
+        );
+        footer(frame, area.height - 1, w, m);
+        return;
+    }
     if m.map {
         spot_map(
             frame,
@@ -806,9 +819,19 @@ fn spot_map(
         (0, bottom, w),
         false,
         &format!(" {} paths · M list ", paths.len()),
-        " grid ● · prefix ○ ",
+        " grid ● · prefix ○ · beacon ◆ ",
         a,
     );
+    // QGDXC-TUI-0104: the beacons transmitting now.
+    let utc = m.utc_epoch.saturating_add(now.as_secs());
+    let on_air: Vec<_> = (0..beacons::FREQUENCIES.len())
+        .filter_map(|band| {
+            let beacon = &beacons::BEACONS[beacons::on_air(utc, band)];
+            m.prefixes
+                .lookup(beacon.call)
+                .map(|place| (place, band_role(beacons::FREQUENCIES[band].1)))
+        })
+        .collect();
     let rect = Rect::new(
         1,
         top + 1,
@@ -859,8 +882,144 @@ fn spot_map(
                     }
                 }
             }
+            ctx.layer();
+            for (place, role) in &on_air {
+                ctx.print(place.lon, place.lat, Span::styled("◆", a.style(*role)));
+            }
         });
     frame.render_widget(canvas, rect);
+}
+/// A report's age, in seconds below a minute and whole minutes after.
+fn age(elapsed: Duration) -> String {
+    match elapsed.as_secs() {
+        s @ 0..60 => format!("{s}s"),
+        s => format!("{}m", s / 60),
+    }
+}
+/// QGDXC-TUI-0103: the NCDXF/IARU beacons, on air now and recently heard.
+fn beacon_view(
+    frame: &mut Frame<'_>,
+    (top, bottom): (u16, u16),
+    m: &Model,
+    now: Duration,
+    right: &str,
+) {
+    use beacons::{BEACONS, FREQUENCIES};
+    let a = m.appearance;
+    let w = frame.area().width;
+    let utc = m.utc_epoch.saturating_add(now.as_secs());
+    border(
+        frame,
+        (0, top, w),
+        true,
+        &format!(
+            " NCDXF/IARU beacons · next in {}s ",
+            beacons::seconds_left(utc)
+        ),
+        right,
+        a,
+    );
+    for y in top + 1..bottom {
+        sides(frame, 0, y, w, a);
+    }
+    border(
+        frame,
+        (0, bottom, w),
+        false,
+        " B list ",
+        " schedule: NCDXF/IARU International Beacon Project ",
+        a,
+    );
+    fn recent(h: &Option<beacons::Heard>, now: Duration) -> Option<&beacons::Heard> {
+        h.as_ref()
+            .filter(|h| now.saturating_sub(h.at) <= beacons::RECENT)
+    }
+    let inner = w.saturating_sub(2);
+    let mut y = top + 1;
+    let mut line = |frame: &mut Frame<'_>, draw: &mut dyn FnMut(&mut Row<'_, '_>)| {
+        if y < bottom {
+            let mut row = Row::new(frame, 1, y, inner);
+            draw(&mut row);
+            y += 1;
+        }
+    };
+    line(frame, &mut |row| {
+        row.ui(
+            " MHz     Band  On air now               Next     Last report",
+            a.style(Role::Heading),
+        );
+    });
+    for (band, (hz, name)) in FREQUENCIES.iter().enumerate() {
+        let index = beacons::on_air(utc, band);
+        let beacon = &BEACONS[index];
+        let next = &BEACONS[(index + 1) % BEACONS.len()];
+        let role = band_role(name);
+        line(frame, &mut |row| {
+            row.ui(
+                &format!(" {:<8}", format!("{:.3}", *hz as f64 / 1e6)),
+                a.style(Role::Frequency),
+            );
+            row.ui(&format!("{name:<6}"), a.style(role));
+            row.ui(
+                &format!("{:<7}", beacon.call),
+                a.style(role).add_modifier(Modifier::BOLD),
+            );
+            row.ui(&format!("{:<18}", beacon.place), a.style(Role::Text));
+            row.ui(&format!("{:<9}", next.call), a.style(Role::Dim));
+            if let Some(h) = recent(&m.heard[index][band], now) {
+                if let Some(snr) = h.snr_db {
+                    row.ui(&format!("{snr} dB · "), a.style(snr_role(Some(snr))));
+                }
+                row.ui(
+                    &format!("{} · ", age(now.saturating_sub(h.at))),
+                    a.style(Role::Time),
+                );
+                row.safe(
+                    &h.spotter,
+                    h.spotter.chars().count().min(12),
+                    false,
+                    a.style(Role::Spotter),
+                    true,
+                );
+                row.ui(" · ", a.style(Role::Dim));
+                let label = m
+                    .sources
+                    .get(h.source)
+                    .map_or("", |s| short_label(&s.label));
+                row.safe(
+                    label,
+                    label.chars().count().min(12),
+                    false,
+                    a.style(Role::Dim),
+                    true,
+                );
+            } else {
+                row.ui("not heard", a.style(Role::Dim));
+            }
+        });
+    }
+    line(frame, &mut |_| {});
+    line(frame, &mut |row| {
+        row.ui(" Beacon  Location          ", a.style(Role::Heading));
+        for (_, name) in FREQUENCIES {
+            row.ui(&format!("{name:>5}"), a.style(band_role(name)));
+        }
+    });
+    for (index, beacon) in BEACONS.iter().enumerate() {
+        line(frame, &mut |row| {
+            row.ui(&format!(" {:<8}", beacon.call), a.style(Role::Text));
+            row.ui(&format!("{:<18}", beacon.place), a.style(Role::Dim));
+            for (band, (_, name)) in FREQUENCIES.iter().enumerate() {
+                match recent(&m.heard[index][band], now) {
+                    Some(h) => {
+                        let text = h.snr_db.map_or("+".into(), |s| s.to_string());
+                        row.ui(&format!("{text:>5}"), a.style(band_role(name)));
+                    }
+                    None => row.ui(&format!("{:>5}", "·"), a.style(Role::Dim)),
+                }
+            }
+        });
+    }
 }
 fn spot_header(frame: &mut Frame<'_>, y: u16, w: u16, wide: bool, a: Appearance, src: usize) {
     let mut row = Row::new(frame, 1, y, w - 2);
@@ -1089,7 +1248,7 @@ fn display_comment(spot: &Spot, wide: bool) -> &str {
 /// From this width every footer key carries its label (QGDXC-TUI-0070).
 const FULL_FOOTER: u16 = 120;
 /// From this width footer hints are separated by two spaces instead of one.
-const ROOMY_FOOTER: u16 = 130;
+const ROOMY_FOOTER: u16 = 140;
 fn footer(frame: &mut Frame<'_>, y: u16, w: u16, m: &Model) {
     let a = m.appearance;
     let theme = format!("{} ", a.theme.name());
@@ -1119,6 +1278,14 @@ fn footer(frame: &mut Frame<'_>, y: u16, w: u16, m: &Model) {
                 (false, _) => "",
                 (true, true) => "list",
                 (true, false) => "map",
+            },
+        ),
+        (
+            "B",
+            match (w >= FULL_FOOTER, m.beacons) {
+                (false, _) => "",
+                (true, true) => "list",
+                (true, false) => "beacons",
             },
         ),
         ("?", if w >= 100 { "help" } else { "" }),
