@@ -17,11 +17,10 @@ use crossterm::{
     execute,
     terminal::{self, EnterAlternateScreen, LeaveAlternateScreen},
 };
-use model::{Editor, Input, Model, SpotsView, sanitize};
+use model::{Input, Model, SpotsView, sanitize};
 use ratatui::{
     Terminal,
     backend::{Backend, CrosstermBackend},
-    layout::Rect,
 };
 use sources::Workers;
 use std::{
@@ -134,15 +133,14 @@ fn present<B: Backend>(
     terminal: &mut Terminal<B>,
     model: &Model,
     now: Duration,
-) -> Result<Rect, B::Error> {
+) -> Result<bool, B::Error> {
     terminal.autoresize()?;
     let mut frame = terminal.get_frame();
-    let area = frame.area();
-    render::draw(&mut frame, model, now);
+    let flux_chart_drawn = render::draw(&mut frame, model, now);
     terminal.flush()?;
     terminal.swap_buffers();
     terminal.backend_mut().flush()?;
-    Ok(area)
+    Ok(flux_chart_drawn)
 }
 fn present_picker<B: Backend>(
     terminal: &mut Terminal<B>,
@@ -256,20 +254,17 @@ pub fn run(args: &[String]) -> Result<u8, String> {
         while !model.quit && !stop.load(Ordering::Relaxed) {
             interface.workers.drain(&mut model, origin);
             let now = origin.elapsed();
-            let mut history_shown = false;
-            if redraw.due(now) {
+            let flux_chart_drawn = if redraw.due(now) {
                 let size = terminal.size()?;
                 model.page =
                     render::list_rows(size.width, size.height, model.sources.len()).max(1) as usize;
-                let drawn = present(&mut terminal, &model, now)?;
-                history_shown = model.spots_view == SpotsView::History
-                    && matches!(model.editor, Editor::Normal)
-                    && drawn.width >= 80
-                    && drawn.height >= 24;
-            }
+                present(&mut terminal, &model, now)?
+            } else {
+                false
+            };
             weather.poll(
-                matches!(model.spots_view, SpotsView::Weather | SpotsView::History),
-                history_shown,
+                model.spots_view == SpotsView::Weather,
+                flux_chart_drawn,
                 |update| model.apply_weather(update),
                 || weather::start(origin),
             )?;

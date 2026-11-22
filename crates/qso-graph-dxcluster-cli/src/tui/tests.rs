@@ -252,7 +252,7 @@ fn runtime_limits_evict_oldest_per_kind_and_preserve_activity_and_pause() {
 
 #[test]
 fn limits_footer_and_help_fit_compact_and_wide_layouts() {
-    // QGDXC-TUI-0012 QGDXC-TUI-0070 QGDXC-TUI-0060 QGDXC-TUI-0120
+    // QGDXC-TUI-0012 QGDXC-TUI-0070 QGDXC-TUI-0060 QGDXC-TUI-0110
     use ratatui::style::Modifier;
     let mut m = Model::new(args(&["one"]), DEFAULT_KEEP, DEFAULT_KEEP);
     for _ in 0..5 {
@@ -296,8 +296,7 @@ fn limits_footer_and_help_fit_compact_and_wide_layouts() {
                 for (view, before, after) in [
                     (SpotsView::Map, "M map", "M list"),
                     (SpotsView::Beacons, "B beacons", "B list"),
-                    (SpotsView::Weather, "W weather", "W history"),
-                    (SpotsView::History, "W weather", "W list"),
+                    (SpotsView::Weather, "W weather", "W list"),
                 ] {
                     m.spots_view = view;
                     let screen = grid(&m, width, 24);

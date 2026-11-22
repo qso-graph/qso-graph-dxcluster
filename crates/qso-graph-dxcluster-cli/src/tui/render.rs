@@ -13,7 +13,7 @@ use ratatui::{Frame, layout::Rect, widgets::Paragraph};
 use std::time::Duration;
 
 mod ribbon;
-mod space_weather;
+pub(super) mod space_weather;
 mod weather_history;
 
 pub fn field(frame: &mut Frame<'_>, rect: Rect, text: &str, marker: bool) {
@@ -26,7 +26,8 @@ pub fn field(frame: &mut Frame<'_>, rect: Rect, text: &str, marker: bool) {
 fn line(frame: &mut Frame<'_>, area: Rect, y: u16, text: &str) {
     field(frame, Rect::new(area.x, y, area.width, 1), text, false);
 }
-pub fn draw(frame: &mut Frame<'_>, model: &Model, now: Duration) {
+/// Returns whether this frame drew the solar flux chart (QGDXC-TUI-0123).
+pub fn draw(frame: &mut Frame<'_>, model: &Model, now: Duration) -> bool {
     let area = frame.area();
     if area.width < 80 || area.height < 24 {
         if area.height > 0 {
@@ -37,7 +38,7 @@ pub fn draw(frame: &mut Frame<'_>, model: &Model, now: Duration) {
                 "Enlarge window to at least 80 columns and 24 rows. q: quit",
             );
         }
-        return;
+        return false;
     }
     for cell in &mut frame.buffer_mut().content {
         cell.set_style(model.appearance.style(Role::Text));
@@ -73,7 +74,7 @@ pub fn draw(frame: &mut Frame<'_>, model: &Model, now: Duration) {
                 );
             }
             line(frame, area, area.height - 2, error);
-            return;
+            return false;
         }
         Editor::Calls { text, error, .. } => {
             line(
@@ -95,7 +96,7 @@ pub fn draw(frame: &mut Frame<'_>, model: &Model, now: Duration) {
                 line(frame, area, index as u16 + 2, text);
             }
             line(frame, area, area.height - 2, error);
-            return;
+            return false;
         }
         Editor::Select {
             band,
@@ -136,7 +137,7 @@ pub fn draw(frame: &mut Frame<'_>, model: &Model, now: Duration) {
                     ),
                 );
             }
-            return;
+            return false;
         }
         Editor::Help => {
             for (y, text) in [
@@ -159,13 +160,13 @@ pub fn draw(frame: &mut Frame<'_>, model: &Model, now: Duration) {
             for (i, source) in model.sources.iter().enumerate() {
                 line(frame, area, 10 + i as u16, &source.line(now));
             }
-            line(frame, area, 18, "W: space weather, again for history");
+            line(frame, area, 18, "W: space weather");
             line(frame, area, 19, &model.summary());
-            return;
+            return false;
         }
         Editor::Normal => {}
     }
-    dashboard(frame, model, now);
+    dashboard(frame, model, now)
 }
 
 const SUP: [&str; 8] = ["¹", "²", "³", "⁴", "⁵", "⁶", "⁷", "⁸"];
@@ -430,7 +431,7 @@ fn utc(seconds: u64) -> String {
         seconds % 60
     )
 }
-fn dashboard(frame: &mut Frame<'_>, m: &Model, now: Duration) {
+fn dashboard(frame: &mut Frame<'_>, m: &Model, now: Duration) -> bool {
     let area = frame.area();
     let w = area.width;
     let wide = w >= 100;
@@ -641,9 +642,11 @@ fn dashboard(frame: &mut Frame<'_>, m: &Model, now: Duration) {
     };
     let bounds = (title_y, area.height - 2);
     let compact_ribbon = ribbon.as_ref().filter(|_| !wide);
+    let mut flux_chart_drawn = false;
     match m.spots_view {
-        SpotsView::Weather => space_weather::draw(frame, bounds, m, now, compact_ribbon),
-        SpotsView::History => weather_history::draw(frame, bounds, m, now, compact_ribbon),
+        SpotsView::Weather => {
+            flux_chart_drawn = space_weather::draw(frame, bounds, m, now, compact_ribbon);
+        }
         SpotsView::Beacons => beacon_view(
             frame,
             bounds,
@@ -664,7 +667,7 @@ fn dashboard(frame: &mut Frame<'_>, m: &Model, now: Duration) {
     }
     if m.spots_view != SpotsView::List {
         footer(frame, area.height - 1, w, m);
-        return;
+        return flux_chart_drawn;
     }
     let left = " spots newest first ";
     let right = if m.paused {
@@ -748,6 +751,7 @@ fn dashboard(frame: &mut Frame<'_>, m: &Model, now: Duration) {
         }
     }
     footer(frame, area.height - 1, w, m);
+    false
 }
 /// QGDXC-TUI-0091 and QGDXC-TUI-0092: the kept WWV or WCY figures, with their roles.
 /// In the wide layout the text is fitted to `room` cells: first everything with the hour as
@@ -1352,8 +1356,7 @@ fn footer(frame: &mut Frame<'_>, y: u16, w: u16, m: &Model) {
             "W",
             match (w >= FULL_FOOTER, m.spots_view) {
                 (false, _) => "",
-                (true, SpotsView::Weather) => "history",
-                (true, SpotsView::History) => "list",
+                (true, SpotsView::Weather) => "list",
                 (true, _) => "weather",
             },
         ),

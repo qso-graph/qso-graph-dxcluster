@@ -2,7 +2,10 @@
 //! NOAA SWPC space-weather view (QGDXC-TUI-0114, QGDXC-TUI-0117–0119).
 
 use super::ribbon::{self, Ribbon};
-use super::{Appearance, Frame, Model, Rect, Role, Row, age, border, put, sides, spark, utc_parts};
+use super::{
+    Appearance, Frame, Model, Rect, Role, Row, age, border, put, sides, spark, utc_parts,
+    weather_history,
+};
 use crate::tui::weather::{ALERTS, Data, FEEDS, FLUX_HISTORY, Sample};
 use qso_graph_spaceweather::Alert;
 use std::time::Duration;
@@ -16,7 +19,7 @@ pub(super) fn draw(
     m: &Model,
     now: Duration,
     ribbon: Option<&Ribbon<'_>>,
-) {
+) -> bool {
     let width = frame.area().width;
     let appearance = m.appearance;
     let data = &m.weather_data;
@@ -55,10 +58,11 @@ pub(super) fn draw(
         .div_ceil(rows.max(1))
         .min(usize::from(max_columns));
     let compact = columns > 1;
+    let figures_end = (first + measurement_feeds.len().div_ceil(columns) as u16).min(bottom);
     let alert_row = match (wide, border_headings) {
         (true, true) => first,
         (true, false) => top + 1,
-        (false, _) => first + measurement_feeds.len().div_ceil(columns) as u16,
+        (false, _) => figures_end,
     };
     if alert_row >= bottom {
         let alert_stale = alert_sample.stale(alert_feed, now);
@@ -131,7 +135,7 @@ pub(super) fn draw(
             break;
         }
         let column = index % columns;
-        // In the two-row stacked layout, give the charts and wind field
+        // In the two-row stacked layout, give the sparklines and wind field
         // the widest cells.
         let (offset, room) = if !wide && columns == 3 {
             let extra = usize::from(left) - 97;
@@ -168,7 +172,7 @@ pub(super) fn draw(
         show_failure(&mut row, sample, now, appearance);
     }
 
-    if alert_row < bottom {
+    let alerts_end = if alert_row < bottom {
         let area = Rect::new(alert_x, alert_row, width - 1 - alert_x, bottom - alert_row);
         alerts(
             frame,
@@ -178,22 +182,39 @@ pub(super) fn draw(
             utc_now,
             !border_headings,
             recent.as_deref(),
-        );
-    }
+        )
+    } else {
+        bottom
+    };
+    let charts_top = figures_end.max(alerts_end);
+    weather_history::draw(
+        frame,
+        Rect::new(1, charts_top, width - 2, bottom - charts_top),
+        m,
+        now,
+    )
 }
 
-pub(super) fn countdown(wait: Duration) -> String {
+fn countdown(wait: Duration) -> String {
     let seconds = wait.as_secs() + u64::from(wait.subsec_nanos() != 0);
     age(Duration::from_secs(seconds))
 }
 
-pub(super) fn kp_role(kp: f64) -> Role {
-    if kp >= 5.0 {
-        Role::Bad
-    } else if kp >= 4.0 {
-        Role::Warning
+/// QGDXC-TUI-0122: NOAA's planetary K colours. A value counts at its nearest whole level,
+/// except that only a full 9o (9.00) is G5; 9- (8.67) is still G4.
+pub(in crate::tui) fn kp_role(kp: f64) -> Role {
+    let level = if kp >= 9.0 {
+        9
     } else {
-        Role::Text
+        (kp.round() as i64).clamp(0, 8)
+    };
+    match level {
+        9 => Role::G5,
+        8 => Role::G4,
+        7 => Role::G3,
+        6 => Role::G2,
+        5 => Role::G1,
+        _ => Role::KpQuiet,
     }
 }
 
@@ -343,7 +364,7 @@ fn alerts(
     utc_now: i64,
     heading: bool,
     recent: Option<&[(&Alert, usize)]>,
-) {
+) -> u16 {
     let feed = FEEDS[ALERTS];
     let sample = &m.weather_data.samples[ALERTS];
     let a = m.appearance;
@@ -383,8 +404,8 @@ fn alerts(
         );
     }
     show_failure(&mut row, sample, now, a);
-    let start = area.y + u16::from(row.x > area.x);
-    for (&(alert, count), y) in recent.into_iter().flatten().zip(start..area.bottom()) {
+    let mut next = area.y + u16::from(row.x > area.x);
+    for (&(alert, count), y) in recent.into_iter().flatten().zip(next..area.bottom()) {
         let mut row = Row::new(frame, area.x, y, area.width);
         row.safe(
             &alert.product_id,
@@ -401,7 +422,9 @@ fn alerts(
             row.ui(" ", style);
             row.safe(headline, usize::from(row.end - row.x), false, style, true);
         }
+        next = y + 1;
     }
+    next
 }
 
 fn show_failure(row: &mut Row<'_, '_>, sample: &Sample, now: Duration, a: Appearance) {

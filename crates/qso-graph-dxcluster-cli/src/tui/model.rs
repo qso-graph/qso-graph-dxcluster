@@ -571,18 +571,6 @@ pub enum SpotsView {
     Map,
     Beacons,
     Weather,
-    History,
-}
-
-impl SpotsView {
-    // QGDXC-TUI-0120.
-    pub fn next_weather(self) -> Self {
-        match self {
-            Self::Weather => Self::History,
-            Self::History => Self::List,
-            Self::List | Self::Map | Self::Beacons => Self::Weather,
-        }
-    }
 }
 
 #[derive(Default)]
@@ -1065,7 +1053,12 @@ impl Model {
                         SpotsView::Beacons
                     };
                 }
-                Input::Char('W') => self.spots_view = self.spots_view.next_weather(),
+                Input::Char('W') => {
+                    self.spots_view = match self.spots_view {
+                        SpotsView::Weather => SpotsView::List,
+                        _ => SpotsView::Weather,
+                    };
+                }
                 Input::Char('b' | 'm') => {
                     let is_band = matches!(input, Input::Char('b'));
                     let selected = if is_band {

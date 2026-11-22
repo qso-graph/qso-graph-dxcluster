@@ -344,7 +344,7 @@ impl Worker {
     pub(super) fn poll(
         &mut self,
         visible: bool,
-        history_shown: bool,
+        flux_chart_drawn: bool,
         mut apply: impl FnMut(Update),
         start: impl FnOnce() -> io::Result<Running>,
     ) -> io::Result<()> {
@@ -352,7 +352,7 @@ impl Worker {
             self.0 = Some(start()?);
         }
         if let Some(running) = &mut self.0 {
-            if history_shown && !running.history_requested {
+            if flux_chart_drawn && !running.history_requested {
                 let _ = running.control.send(());
                 running.history_requested = true;
             }

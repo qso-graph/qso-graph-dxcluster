@@ -180,7 +180,7 @@ fn retry_after_pauses_all_feeds_and_preserves_their_floors() {
 }
 
 #[test]
-fn history_activates_once_with_its_own_floor() {
+fn flux_chart_activates_history_once_with_its_own_floor() {
     // QGDXC-TUI-0123. Check all start times against the original per-feed floors.
     let mut scheduler = Scheduler::default();
     let clock = FakeClock::default();
@@ -191,9 +191,19 @@ fn history_activates_once_with_its_own_floor() {
         ..Script::default()
     };
     let mut starts: [Vec<u64>; FEEDS.len()] = Default::default();
+    let mut m = weather_model();
+    install_layout_alerts(&mut m, 9);
     for second in 0..=7_600 {
         clock.at(second);
-        if [400, 401, 3_999].contains(&second) {
+        if [399, 400, 401, 3_999].contains(&second)
+            && present(
+                &mut Terminal::new(TestBackend::new(80, if second == 399 { 24 } else { 25 }))
+                    .unwrap(),
+                &m,
+                clock.elapsed(),
+            )
+            .unwrap()
+        {
             scheduler.activate_history(clock.elapsed());
         }
         while let Some(update) = scheduler.step(&mut fetch, &clock) {
@@ -321,23 +331,59 @@ fn worker_starts_once_on_opt_in_and_keeps_polling() {
         .unwrap();
     assert!(cache.samples[0].good.is_some());
     assert_eq!(commands.try_recv(), Err(mpsc::TryRecvError::Empty));
-    for _ in 0..2 {
+}
+
+#[test]
+fn worker_requests_flux_history_only_when_the_chart_is_drawn() {
+    // QGDXC-TUI-0123.
+    let mut m = weather_model();
+    install_layout_alerts(&mut m, 9);
+    let mut worker = Worker::default();
+    let (_send, updates) = mpsc::sync_channel(1);
+    let (control, commands) = mpsc::channel();
+    let mut running = Some(Running {
+        control,
+        history_requested: false,
+        updates,
+    });
+    for (height, key, expected_draw, expected_request) in [
+        (24, None, false, false),
+        (25, Some(Input::Char('?')), false, false),
+        (25, Some(Input::Escape), true, true),
+        (25, None, true, false),
+    ] {
+        if let Some(key) = key {
+            m.key(key);
+        }
+        let mut terminal = Terminal::new(TestBackend::new(80, height)).unwrap();
+        let drawn = present(&mut terminal, &m, Duration::ZERO).unwrap();
+        assert_eq!(drawn, expected_draw);
+        assert_eq!(
+            screen_text(terminal.backend().buffer()).contains(HISTORY_TITLES[0]),
+            expected_draw
+        );
         worker
             .poll(
-                true,
-                true,
-                |update| cache.apply(update),
-                || panic!("started a second worker"),
+                m.spots_view == SpotsView::Weather,
+                drawn,
+                |_| panic!("unexpected update"),
+                || Ok(running.take().expect("started a second worker")),
             )
             .unwrap();
+        assert_eq!(
+            commands.try_recv(),
+            if expected_request {
+                Ok(())
+            } else {
+                Err(mpsc::TryRecvError::Empty)
+            }
+        );
     }
-    assert_eq!(commands.try_recv(), Ok(()));
-    assert_eq!(commands.try_recv(), Err(mpsc::TryRecvError::Empty));
 }
 
 #[test]
 fn space_weather_switches_with_other_views_and_is_listed() {
-    // QGDXC-TUI-0120 and QGDXC-TUI-0111.
+    // QGDXC-TUI-0110 and QGDXC-TUI-0111.
     let base = ["--call", "Q1ABC", "--node", "source.example.invalid:7300"];
     let args = |opt: bool| {
         base.into_iter()
@@ -362,16 +408,8 @@ fn space_weather_switches_with_other_views_and_is_listed() {
     for y in 0..8 {
         assert_eq!(row(&list, y), row(&weather, y));
     }
-    assert!(row(&weather, 23).contains("W history"));
+    assert!(row(&weather, 23).contains("W list"));
     assert!(row(&screen(&m, 80, 24, Duration::ZERO), 23).contains(" B W ?"));
-    key(&mut m, 'W');
-    assert_eq!(m.spots_view, SpotsView::History);
-    let history = screen(&m, 130, 24, Duration::ZERO);
-    assert!(row(&history, 23).contains("W list"));
-    location(&history, "Solar flux (sfu) · 30 days");
-    for y in 0..8 {
-        assert_eq!(row(&list, y), row(&history, y));
-    }
     key(&mut m, 'W');
     assert_eq!(m.spots_view, SpotsView::List);
     assert_eq!(screen(&m, 130, 24, Duration::ZERO), list);
@@ -380,27 +418,23 @@ fn space_weather_switches_with_other_views_and_is_listed() {
         ('M', SpotsView::Map, " map "),
         ('B', SpotsView::Beacons, "NCDXF/IARU beacons"),
     ] {
-        for weather_keys in [1, 2] {
-            m.spots_view = SpotsView::List;
-            for _ in 0..weather_keys {
-                key(&mut m, 'W');
-            }
-            key(&mut m, shortcut);
-            assert_eq!(m.spots_view, view);
-            let other = screen(&m, 130, 24, Duration::ZERO);
-            assert!(location(&other, title).1 < 23);
-            key(&mut m, 'W');
-            assert_eq!(m.spots_view, SpotsView::Weather);
-            assert_eq!(screen(&m, 130, 24, Duration::ZERO), weather);
-        }
+        key(&mut m, 'W');
+        key(&mut m, shortcut);
+        assert_eq!(m.spots_view, view);
+        let other = screen(&m, 130, 24, Duration::ZERO);
+        assert!(location(&other, title).1 < 23);
+        key(&mut m, 'W');
+        assert_eq!(m.spots_view, SpotsView::Weather);
+        assert_eq!(screen(&m, 130, 24, Duration::ZERO), weather);
+        key(&mut m, 'W');
     }
     m.spots_view = SpotsView::List;
     key(&mut m, '?');
     key(&mut m, 'W');
     assert_eq!(m.spots_view, SpotsView::List);
-    location(
-        &screen(&m, 80, 24, Duration::ZERO),
-        "W: space weather, again for history",
+    assert_eq!(
+        row(&screen(&m, 80, 24, Duration::ZERO), 18).trim_end(),
+        "W: space weather"
     );
 }
 
@@ -451,7 +485,6 @@ const HISTORY_TITLES: [&str; 4] = [
 
 fn history_model() -> Model {
     let mut m = weather_model();
-    m.spots_view = SpotsView::History;
     let mut scheduler = Scheduler::default();
     scheduler.activate_history(Duration::ZERO);
     let mut fetch = fixture_script();
@@ -466,76 +499,116 @@ fn history_model() -> Model {
 }
 
 #[test]
-fn history_layout_and_utc_axes_fit_the_spots_box() {
-    // QGDXC-TUI-0121. The 80-column layout has four charts at minimum height.
-    let m = history_model();
+fn weather_charts_fill_the_rows_below_figures_and_alerts() {
+    // QGDXC-TUI-0120 and QGDXC-TUI-0121.
+    let mut m = history_model();
     let now = Duration::from_secs(600);
-    for (width, height) in [(120, 40), (160, 40), (100, 40), (80, 24)] {
+    for (width, height, alerts) in [(120, 40, 2), (160, 50, 8), (100, 40, 2)] {
+        install_layout_alerts(&mut m, alerts);
         let grid = screen(&m, width, height, now);
         let [(fx, fy), (kx, ky), (xx, xy), (wx, wy)] =
             HISTORY_TITLES.map(|title| location(&grid, title));
-        assert_eq!((fx, xx), (2, 2));
+        let figure_y = location(&grid, "Bt 2 Bz -2 nT").1;
+        let alert_y = location(&grid, &format!("QX{alerts:02}")).1;
+        assert_eq!(fy, figure_y.max(alert_y) + 1, "{}", screen_text(&grid));
+        assert_eq!((fx, xx), (3, 3));
+        let bottom = height - 2;
         if width >= 120 {
             assert_eq!((kx, wx), (width / 2 + 2, width / 2 + 2));
             assert_eq!(fy, ky);
             assert_eq!(xy, wy);
-            assert!(fy < xy);
+            assert!(xy - fy >= 4 && bottom - xy >= 4);
         } else {
-            assert_eq!((kx, wx), (2, 2));
+            assert_eq!((kx, wx), (3, 3));
             assert!(ky - fy >= 4 && xy - ky >= 4 && wy - xy >= 4);
-            assert!(height - 1 - wy >= 4);
+            assert!(bottom - wy >= 4);
         }
-        for (x, y, left, right) in [
-            (fx, fy, "10-23", "11-21"),
-            (kx, ky, "11-15", "11-22"),
-            (xx, xy, "13:40", "19:40"),
-            (wx, wy, "20:01", "20:11"),
-        ] {
-            let room = if width >= 120 { width / 2 } else { width };
-            let labels = (y + 1..height - 1)
-                .map(|line| {
-                    row(&grid, line)
-                        .chars()
-                        .skip((x - 2) as usize)
-                        .take(room as usize)
-                        .collect::<String>()
-                })
-                .find(|line| line.contains(left) && line.contains(right))
-                .unwrap_or_else(|| panic!("{left}, {right}\n{}", screen_text(&grid)));
-            assert!(labels.contains(" UTC "), "{labels}");
+        let chart_bottoms = if width >= 120 {
+            [xy, xy, bottom, bottom]
+        } else {
+            [ky, xy, wy, bottom]
+        };
+        for ((x, left, right), next) in [
+            (fx, "10-23", "11-21"),
+            (kx, "11-15", "11-22"),
+            (xx, "13:40", "19:40"),
+            (wx, "20:01", "20:11"),
+        ]
+        .into_iter()
+        .zip(chart_bottoms)
+        {
+            let room = if width >= 120 {
+                width / 2 - 1
+            } else {
+                width - 2
+            };
+            let axis: String = row(&grid, next - 1)
+                .chars()
+                .skip(usize::from(x - 2))
+                .take(usize::from(room))
+                .collect();
+            assert!(
+                axis.contains(left) && axis.contains(right) && axis.contains(" UTC "),
+                "{axis}"
+            );
         }
-    }
-    let mut crowded = history_model();
-    crowded.sources = Model::new((1..=8).map(|i| format!("source{i}")).collect(), 100, 100).sources;
-    let short = screen_text(&screen(&crowded, 100, 24, now));
-    assert!(short.contains(HISTORY_TITLES[0]));
-    for title in &HISTORY_TITLES[1..] {
-        assert!(!short.contains(title), "{short}");
-    }
-    let wide_short = screen(&crowded, 120, 24, now);
-    for title in HISTORY_TITLES {
-        let (_, y) = location(&wide_short, title);
-        assert!(row(&wide_short, y).contains("UTC"));
-    }
-    let (x, y) = location(&wide_short, "Speed");
-    let (bz_x, bz_y) = location(&wide_short, "Bz");
-    assert_eq!(y, bz_y);
-    let wind_row = row(&wide_short, y)
-        .chars()
-        .skip(x as usize)
-        .collect::<Vec<_>>();
-    let (speed, bz) = wind_row.split_at(usize::from(bz_x - x));
-    for series in [speed, bz] {
-        assert!(
-            series
-                .iter()
-                .any(|ch| ('\u{2801}'..='\u{28ff}').contains(ch))
-        );
     }
 }
 
 #[test]
-fn history_kp_bars_use_text_warning_and_bad_at_three_four_and_five() {
+fn weather_charts_show_only_what_fits_on_short_screens() {
+    // QGDXC-TUI-0121.
+    let mut m = history_model();
+    for (width, height, alerts, chart_count) in [(80, 24, 2, 2), (80, 24, 9, 0), (120, 24, 8, 2)] {
+        install_layout_alerts(&mut m, alerts);
+        let grid = screen(&m, width, height, Duration::ZERO);
+        let text = screen_text(&grid);
+        let figure_y = location(&grid, "Bt 2 Bz -2 nT").1;
+        let alert_y = location(&grid, &format!("QX{alerts:02}")).1;
+        if width < 120 {
+            assert!(alert_y > figure_y);
+        }
+        for (i, title) in HISTORY_TITLES.into_iter().enumerate() {
+            assert_eq!(text.contains(title), i < chart_count, "{text}");
+        }
+        if chart_count > 0 {
+            let (_, flux_y) = location(&grid, HISTORY_TITLES[0]);
+            let (_, kp_y) = location(&grid, HISTORY_TITLES[1]);
+            assert_eq!(flux_y, figure_y.max(alert_y) + 1);
+            if width < 120 {
+                assert!(kp_y - flux_y >= 4);
+            } else {
+                assert_eq!(kp_y, flux_y);
+            }
+            assert!(height - 2 - kp_y >= 4);
+        }
+    }
+}
+
+#[test]
+fn weather_kp_scale_labels_are_left_of_the_bars() {
+    // QGDXC-TUI-0122. Check the full scale and minimum-height fallback.
+    let mut m = history_model();
+    install_layout_alerts(&mut m, 8);
+    for (width, height, label_order) in [(120, 40, "9530"), (120, 24, "950")] {
+        let grid = screen(&m, width, height, Duration::ZERO);
+        let (x, top) = location(&grid, HISTORY_TITLES[1]);
+        let (_, bottom) = location(&grid, "11-15");
+        let scale: String = (top + 1..=bottom)
+            .map(|y| grid[(x - 1, y)].symbol())
+            .filter(|symbol| *symbol != " ")
+            .collect();
+        assert_eq!(scale, label_order, "{}", screen_text(&grid));
+        assert!((x..width - 2).any(|x| (top + 1..bottom).any(|y| {
+            grid[(x, y)]
+                .symbol()
+                .starts_with(|ch| ('▁'..='█').contains(&ch))
+        })));
+    }
+}
+
+#[test]
+fn history_kp_bars_use_noaa_storm_colours() {
     // QGDXC-TUI-0122. Inspect the bars in the rendered grid.
     let mut m = history_model();
     let (feed, _) = m.weather_data.sample(Product::PlanetaryK);
@@ -547,11 +620,12 @@ fn history_kp_bars_use_text_warning_and_bad_at_three_four_and_five() {
         panic!("Kp fixture was missing");
     };
     let time = values.last().unwrap().time;
-    *values = [3.0, 4.0, 5.0]
+    let kps = [3.0, 4.67, 6.0, 7.0, 8.67, 9.0];
+    *values = kps
         .into_iter()
         .enumerate()
         .map(|(i, kp)| swx::PlanetaryK {
-            time: time - (2 - i as i64) * 10_800,
+            time: time - (kps.len() as i64 - 1 - i as i64) * 10_800,
             kp,
             a_running: 0.0,
         })
@@ -569,34 +643,99 @@ fn history_kp_bars_use_text_warning_and_bad_at_three_four_and_five() {
         .collect();
     assert_eq!(
         bars,
-        [Role::Text, Role::Warning, Role::Bad].map(|role| m.appearance.color(role))
+        [
+            Role::KpQuiet,
+            Role::G1,
+            Role::G2,
+            Role::G3,
+            Role::G4,
+            Role::G5
+        ]
+        .map(|role| m.appearance.color(role))
     );
+}
+
+#[test]
+fn kp_levels_follow_noaa_thirds_and_single_hue_themes_bold_strong_storms() {
+    // QGDXC-TUI-0122: nearest whole level, but only 9o (9.00) is G5.
+    use super::super::render::space_weather::kp_role;
+    for (kp, role) in [
+        (0.0, Role::KpQuiet),
+        (4.33, Role::KpQuiet),
+        (4.67, Role::G1),
+        (5.33, Role::G1),
+        (5.67, Role::G2),
+        (6.33, Role::G2),
+        (6.67, Role::G3),
+        (7.33, Role::G3),
+        (7.67, Role::G4),
+        (8.67, Role::G4),
+        (9.0, Role::G5),
+    ] {
+        assert_eq!(kp_role(kp), role, "Kp {kp}");
+    }
+    use super::super::theme::{Appearance, Theme};
+    use ratatui::style::Modifier;
+    for theme in Theme::ALL {
+        let a = Appearance {
+            theme,
+            ..Appearance::default()
+        };
+        let single_hue = matches!(theme, Theme::Phosphor | Theme::Amber | Theme::Mono);
+        for role in [Role::G3, Role::G4, Role::G5] {
+            assert_eq!(
+                a.style(role).add_modifier.contains(Modifier::BOLD),
+                single_hue,
+                "{theme:?}"
+            );
+        }
+        assert!(!a.style(Role::G2).add_modifier.contains(Modifier::BOLD));
+    }
+    // The colour theme gives each level its own colour.
+    let a = Appearance::default();
+    let colours: std::collections::BTreeSet<_> = [
+        Role::KpQuiet,
+        Role::G1,
+        Role::G2,
+        Role::G3,
+        Role::G4,
+        Role::G5,
+    ]
+    .map(|r| format!("{:?}", a.color(r)))
+    .into_iter()
+    .collect();
+    assert_eq!(colours.len(), 6);
 }
 
 #[test]
 fn history_xray_axis_labels_are_at_each_logarithmic_decade() {
     // QGDXC-TUI-0122. Labels on the y-axis read X through A from top to bottom.
-    let m = history_model();
-    for (width, height) in [(120, 40), (80, 24)] {
+    let mut m = history_model();
+    install_layout_alerts(&mut m, 2);
+    for (width, height) in [(120, 40), (100, 40)] {
         let grid = screen(&m, width, height, Duration::ZERO);
         let (_, title) = location(&grid, HISTORY_TITLES[2]);
         let bottom = if width == 120 {
-            height - 2
+            height - 3
         } else {
             location(&grid, HISTORY_TITLES[3]).1 - 1
         };
         for (i, label) in ["A", "B", "C", "M", "X"].into_iter().enumerate() {
             let y = bottom - 1 - i as u16 * (bottom - title - 2) / 4;
-            assert_eq!(grid[(1, y)].symbol(), label, "{}", screen_text(&grid));
+            assert_eq!(grid[(2, y)].symbol(), label, "{}", screen_text(&grid));
         }
     }
+    install_alerts(&mut m, &[]);
+    location(
+        &screen(&m, 80, 24, Duration::ZERO),
+        "X-rays (W/m²) · 6 hours · A B C M X",
+    );
 }
 
 #[test]
 fn history_waiting_stale_and_mono_are_visible_in_the_grid() {
     // QGDXC-TUI-0124.
-    let mut m = weather_model();
-    m.spots_view = SpotsView::History;
+    let m = weather_model();
     let grid = screen(&m, 120, 40, Duration::ZERO);
     for title in HISTORY_TITLES {
         let (x, y) = location(&grid, title);
@@ -609,7 +748,10 @@ fn history_waiting_stale_and_mono_are_visible_in_the_grid() {
     }
     let mut m = history_model();
     let grid = screen(&m, 120, 40, Duration::from_secs(10_800));
-    assert_eq!(screen_text(&grid).matches("stale").count(), 3);
+    for title in &HISTORY_TITLES[1..] {
+        location(&grid, &format!("{title} · stale"));
+    }
+    assert!(!screen_text(&grid).contains("Solar flux (sfu) · 30 days · stale"));
     let grid = screen(&m, 120, 40, Duration::from_secs(10_801));
     for title in HISTORY_TITLES {
         let (x, y) = location(&grid, &format!("{title} · stale"));
@@ -675,13 +817,21 @@ fn wind_history_retains_the_latest_288_successes_of_each_series() {
         assert_eq!(series.front(), Some(&(WEATHER_EPOCH + 12 * 300, value)));
         assert_eq!(series.back(), Some(&(WEATHER_EPOCH + 299 * 300, value)));
     }
-    m.spots_view = SpotsView::History;
-    let grid = screen(&m, 120, 40, Duration::from_secs(300 * 300));
-    location(&grid, "Speed");
-    location(&grid, "Bz");
-    let axis = row(&grid, 38);
+    m.spots_view = SpotsView::Weather;
+    let grid = screen(&m, 120, 26, Duration::from_secs(300 * 300));
+    let (x, y) = location(&grid, HISTORY_TITLES[3]);
+    for (label, y) in [("Speed", y + 1), ("Bz", y + 2)] {
+        let series: String = row(&grid, y).chars().skip(usize::from(x - 1)).collect();
+        assert!(series.starts_with(label), "{series}");
+        assert!(
+            series
+                .chars()
+                .any(|ch| ('\u{2801}'..='\u{28ff}').contains(&ch))
+        );
+    }
+    let axis = row(&grid, 23);
     assert!(axis.chars().skip(60).collect::<String>().contains("11-22"));
-    assert!(axis.trim_end_matches('┘').trim_end().ends_with("11-23"));
+    assert!(axis.contains("11-23 ┘"));
 }
 
 fn install_alerts(m: &mut Model, alerts: &[(&str, &str, &str)]) {
@@ -693,6 +843,15 @@ fn install_alerts(m: &mut Model, alerts: &[(&str, &str, &str)]) {
         .collect();
     let data = Data::parse(Product::Alerts, &serde_json::to_vec(&items).unwrap()).unwrap();
     m.weather_data.samples[ALERTS].good = Some((data, Duration::ZERO));
+}
+
+fn install_layout_alerts(m: &mut Model, count: usize) {
+    let ids: Vec<_> = (1..=count).map(|i| format!("QX{i:02}")).collect();
+    let alerts: Vec<_> = ids
+        .iter()
+        .map(|id| (id.as_str(), "2026-11-22 20:00:00", "SUMMARY: Example"))
+        .collect();
+    install_alerts(m, &alerts);
 }
 
 #[test]
@@ -785,11 +944,14 @@ fn ribbon_uses_the_first_free_bands_row_or_the_top_border() {
                 "ALERT: Geomagnetic storm\nIssue Time: 2026 Nov 22 2000 UTC",
             )],
         );
-        let grid = screen(&m, 100, 24, Duration::ZERO);
         let expected = if sources == 3 { (52, 7) } else { (59, 1) };
-        assert_eq!(location(&grid, "▌ALERT Geomagnetic"), expected);
-        assert_eq!(grid[(99, 1)].symbol(), "╮");
-        assert!(row(&grid, 6).chars().skip(50).any(|ch| ch == '0'));
+        for view in [SpotsView::List, SpotsView::Weather] {
+            m.spots_view = view;
+            let grid = screen(&m, 100, 24, Duration::ZERO);
+            assert_eq!(location(&grid, "▌ALERT Geomagnetic"), expected);
+            assert_eq!(grid[(99, 1)].symbol(), "╮");
+            assert!(row(&grid, 6).chars().skip(50).any(|ch| ch == '0'));
+        }
     }
 }
 
@@ -817,7 +979,6 @@ fn ribbon_is_compact_on_the_top_border_of_every_page() {
         (SpotsView::Map, "map"),
         (SpotsView::Beacons, "NCDXF/IARU beacons"),
         (SpotsView::Weather, "space weather · NOAA SWPC"),
-        (SpotsView::History, "Solar flux (sfu) · 30 days"),
     ] {
         m.spots_view = page;
         let grid = screen(&m, 80, 24, Duration::ZERO);
@@ -861,7 +1022,7 @@ fn view_shows_waiting_values_alerts_and_refresh_status() {
     // QGDXC-TUI-0113 and QGDXC-TUI-0114.
     let mut m = weather_model();
     let initial = screen_text(&screen(&m, 80, 24, Duration::ZERO));
-    assert_eq!(initial.matches("waiting").count(), FLUX_HISTORY);
+    assert_eq!(initial.matches("waiting").count(), FLUX_HISTORY + 3);
     assert!(initial.contains("space weather · NOAA SWPC"));
     assert!(initial.contains("data: NOAA Space Weather Prediction Center"));
     let (cache, _, _, _) = collect_fixtures();
@@ -932,10 +1093,11 @@ fn weather_roles_alert_privacy_and_minimum_height() {
             .apply(scheduler.step(&mut script, &clock).unwrap());
     }
     let screen_buf = screen(&m, 130, 40, Duration::ZERO);
+    // Kp 5 is NOAA's G1 colour; Bz at or below -10 nT is bad.
+    let g1 = m.appearance.style(Role::G1).fg.unwrap();
+    assert_eq!(screen_buf[location(&screen_buf, "5.0 A 400")].fg, g1);
     let bad = m.appearance.style(Role::Bad).fg.unwrap();
-    for field in ["5.0 A 400", "-199.9 nT"] {
-        assert_eq!(screen_buf[location(&screen_buf, field)].fg, bad);
-    }
+    assert_eq!(screen_buf[location(&screen_buf, "-199.9 nT")].fg, bad);
     let first = location(&screen_buf, "QX02");
     assert!(first.1 < location(&screen_buf, "QX01").1);
     let headline = row(&screen_buf, first.1);
@@ -951,10 +1113,11 @@ fn weather_roles_alert_privacy_and_minimum_height() {
         panic!("missing planetary K sample");
     };
     values.last_mut().unwrap().kp = 4.0;
-    let warning = screen(&m, 130, 40, Duration::ZERO);
+    // Kp 4 is below NOAA's G1, so it reads as quiet.
+    let quiet = screen(&m, 130, 40, Duration::ZERO);
     assert_eq!(
-        warning[location(&warning, "4.0 A 400")].fg,
-        m.appearance.style(Role::Warning).fg.unwrap()
+        quiet[location(&quiet, "4.0 A 400")].fg,
+        m.appearance.style(Role::KpQuiet).fg.unwrap()
     );
 }
 

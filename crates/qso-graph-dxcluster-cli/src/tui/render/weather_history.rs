@@ -1,38 +1,31 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //! Space-weather history (QGDXC-TUI-0121, QGDXC-TUI-0122, QGDXC-TUI-0124).
 
-use super::{Appearance, Frame, Model, Rect, Role, put, ribbon::Ribbon, space_weather, utc_parts};
+use super::{Appearance, Frame, Model, Rect, Role, put, space_weather, utc_parts};
 use crate::tui::theme::Theme;
 use crate::tui::weather::{Data, Sample};
 use qso_graph_spaceweather::Product;
 use ratatui::{
     buffer::Buffer,
-    layout::{Alignment, Constraint, Direction, Layout},
+    layout::{Alignment, Constraint, Layout},
     style::{Modifier, Style},
     symbols::Marker,
     text::Line,
-    widgets::{
-        Axis, Bar, BarChart, BarGroup, Block, Borders, Chart, Dataset, GraphType, Paragraph, Widget,
-    },
+    widgets::{Axis, Bar, BarChart, BarGroup, Block, Chart, Dataset, GraphType, Paragraph, Widget},
 };
 use std::time::Duration;
 
 const DAY: i64 = 86_400;
 const HOUR: i64 = 3_600;
 
-pub(super) fn draw(
-    frame: &mut Frame<'_>,
-    (top, bottom): (u16, u16),
-    model: &Model,
-    now: Duration,
-    ribbon: Option<&Ribbon<'_>>,
-) {
-    let width = frame.area().width;
-    let height = bottom - top + 1;
-    let columns = if width >= 120 { 2 } else { 1 };
-    let rows = if columns == 2 { 2 } else { (height / 4).min(4) };
-    let mut heights = [height / rows; 4];
-    heights[usize::from(rows - 1)] += height % rows;
+pub(super) fn draw(frame: &mut Frame<'_>, area: Rect, model: &Model, now: Duration) -> bool {
+    if area.height < 4 {
+        return false;
+    }
+    let columns = if frame.area().width >= 120 { 2 } else { 1 };
+    let rows = (area.height / 4).min(4 / columns);
+    let mut heights = [area.height / rows; 4];
+    heights[usize::from(rows - 1)] += area.height % rows;
     if columns == 1 && rows >= 3 {
         // Give the X-ray axis five plot rows when the other panels can spare them.
         for other in [0, 1, 3].into_iter().filter(|&i| i < usize::from(rows)) {
@@ -43,63 +36,40 @@ pub(super) fn draw(
             heights[2] += transfer;
         }
     }
-    let column_width = width / columns;
-    flux(
-        frame,
-        Rect::new(0, top, column_width, heights[0]),
-        model,
-        now,
-        ribbon,
-    );
-    let charts = [kp, xrays, wind];
-    for (i, draw) in (1..columns * rows).zip(charts) {
+    let column_width = area.width / columns;
+    for (i, draw) in (0..columns * rows).zip([flux, kp, xrays, wind]) {
         let (column, row) = (i % columns, i / columns);
-        let x = column * (width / columns);
-        let y = top + heights[..usize::from(row)].iter().sum::<u16>();
-        let right = if column + 1 == columns {
-            width
+        let x = area.x + column * column_width;
+        let y = area.y + heights[..usize::from(row)].iter().sum::<u16>();
+        let width = if column + 1 == columns {
+            area.right() - x
         } else {
-            width / columns
+            column_width
         };
         draw(
             frame,
-            Rect::new(x, y, right - x, heights[usize::from(row)]),
+            Rect::new(x, y, width, heights[usize::from(row)]),
             model,
             now,
         );
     }
-    if now < model.weather_data.pause {
-        // Keep the shared service pause visible on the history page, too.
-        let wait = space_weather::countdown(model.weather_data.pause - now);
-        let text = format!(" Retry-After {wait} ");
-        let len = text.len() as u16;
-        put(
-            frame,
-            width - len - 2,
-            top,
-            len,
-            &text,
-            model.appearance.style(Role::Warning),
-        );
-    }
+    true
 }
 
-struct Panel<'a> {
+struct Panel {
     area: Rect,
     appearance: Appearance,
     stale: bool,
     failed: bool,
-    ribbon: Option<&'a Ribbon<'a>>,
 }
 
-impl Panel<'_> {
+impl Panel {
     fn new(area: Rect, appearance: Appearance) -> Self {
         Self {
             area,
             appearance,
             stale: false,
             failed: false,
-            ribbon: None,
         }
     }
 
@@ -130,26 +100,10 @@ impl Panel<'_> {
             block = block
                 .title_top(Line::styled(" failed ", self.style(Role::Warning)).right_aligned());
         }
-        if self.area.height < 3 {
-            block = block.borders(Borders::TOP | Borders::LEFT | Borders::RIGHT);
-            if let Some(window) = window {
-                let mut labels = format!(
-                    " {}–{} UTC ",
-                    window.label(window.start),
-                    window.label(window.end)
-                );
-                let remaining = usize::from(self.area.width)
-                    .saturating_sub(title.chars().count() + stale.chars().count() + 4);
-                if labels.chars().count() > remaining {
-                    labels = format!(" {} UTC ", window.label(window.end));
-                }
-                block =
-                    block.title_top(Line::styled(labels, self.style(Role::Dim)).right_aligned());
-            }
-        } else if let Some(window) = window {
+        if let Some(window) = window {
             block = block
                 .title_bottom(Line::styled(
-                    format!(" {} ", window.label(window.start)),
+                    format!("  {} ", window.label(window.start)),
                     self.style(Role::Dim),
                 ))
                 .title_bottom(Line::styled(" UTC ", self.style(Role::Dim)).centered())
@@ -163,18 +117,6 @@ impl Panel<'_> {
         }
         let inner = block.inner(self.area);
         frame.render_widget(block, self.area);
-        if let Some(ribbon) = self.ribbon {
-            let start = 3 + (title.chars().count() + stale.chars().count()) as u16;
-            let room = self
-                .area
-                .width
-                .saturating_sub(start + 1 + if self.failed { 8 } else { 0 });
-            ribbon.draw(
-                frame,
-                (self.area.x + start, self.area.y, room),
-                self.appearance,
-            );
-        }
         if window.is_none() {
             frame.render_widget(
                 Paragraph::new("waiting")
@@ -233,16 +175,9 @@ fn value_axis(points: impl Iterator<Item = f64>, step: f64, floor: f64) -> Axis<
         .labels([format!("{low}"), format!("{high}")])
 }
 
-fn flux(
-    frame: &mut Frame<'_>,
-    area: Rect,
-    model: &Model,
-    now: Duration,
-    ribbon: Option<&Ribbon<'_>>,
-) {
-    let (mut panel, sample) =
+fn flux(frame: &mut Frame<'_>, area: Rect, model: &Model, now: Duration) {
+    let (panel, sample) =
         Panel::new(area, model.appearance).product(model, Product::SolarFluxHistory, now);
-    panel.ribbon = ribbon;
     let title = "Solar flux (sfu) · 30 days";
     let Some((Data::SolarFluxHistory(values), _)) = &sample.good else {
         panel.open(frame, title, None);
@@ -321,6 +256,20 @@ fn kp(frame: &mut Frame<'_>, area: Rect, model: &Model, now: Duration) {
         days: true,
     };
     let inner = panel.open(frame, title, Some(window));
+    // The baseline is on the bottom border, leaving two plot rows at minimum height.
+    for (value, label) in [(9, "9"), (5, "5"), (3, "3"), (0, "0")] {
+        if value != 3 || inner.height >= 3 {
+            let offset = (u32::from(inner.height) * (9 - value) + 4) / 9;
+            put(
+                frame,
+                inner.x,
+                inner.y + offset as u16,
+                1,
+                label,
+                panel.style(Role::Dim),
+            );
+        }
+    }
     let mut bars = vec![Bar::default(); SLOTS];
     for value in values.iter().filter(|value| value.time > window.start) {
         let slot = SLOTS - 1 - ((end - value.time) / SLOT) as usize;
@@ -328,10 +277,11 @@ fn kp(frame: &mut Frame<'_>, area: Rect, model: &Model, now: Duration) {
             .style(panel.style(space_weather::kp_role(value.kp)))
             .text_value("");
     }
-    let width = inner.width / SLOTS as u16;
+    let bar_space = inner.width - 1;
+    let width = bar_space / SLOTS as u16;
     let used = width * SLOTS as u16;
     let plot = Rect::new(
-        inner.x + (inner.width - used) / 2,
+        inner.x + 1 + (bar_space - used) / 2,
         inner.y,
         used,
         inner.height,
@@ -414,12 +364,7 @@ fn wind(frame: &mut Frame<'_>, area: Rect, model: &Model, now: Duration) {
         days: end.saturating_sub(start) >= DAY as u64,
     };
     let inner = panel.open(frame, title, Some(window));
-    let direction = if inner.height == 1 {
-        Direction::Horizontal
-    } else {
-        Direction::Vertical
-    };
-    let areas: [Rect; 2] = Layout::new(direction, [Constraint::Ratio(1, 2); 2]).areas(inner);
+    let areas: [Rect; 2] = Layout::vertical([Constraint::Ratio(1, 2); 2]).areas(inner);
     let series = [
         (&history.speed, "Speed", Role::Accent, 50.0, 0.0),
         (&history.bz, "Bz", Role::Text, 5.0, f64::NEG_INFINITY),
