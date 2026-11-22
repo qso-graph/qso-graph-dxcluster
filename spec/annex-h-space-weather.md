@@ -22,6 +22,7 @@ replaced by invented `QXnn` IDs, as every capture in this repository is sanitize
 | Solar wind speed | `/products/summary/solar-wind-speed.json` | 4 KiB | `proton_speed` (0–3,000 km/s), `time_tag` |
 | Solar wind field | `/products/summary/solar-wind-mag-field.json` | 4 KiB | `bt` (0–200 nT), `bz_gsm` (−200 to 200 nT), `time_tag` |
 | Alerts | `/products/alerts.json` | 256 KiB | each entry's `product_id` (1–16 printable ASCII), `issue_datetime`, and the headline of `message`; at most 100 entries |
+| Solar flux history | `/json/f107_cm_flux.json` | 64 KiB | the entries whose `reporting_schedule` is `Noon` and `frequency` is 2800: `time_tag`, `flux` (0–999), and `ninety_day_mean` (0–999) when not null; at most 400 entries in the product |
 
 ## H.2 Requirements
 
@@ -33,4 +34,5 @@ replaced by invented `QXnn` IDs, as every capture in this repository is sanitize
 | `QGDXC-SWX-0004` | Planetary K entries and X-ray entries MUST be returned in time order, oldest first, whatever order the product lists them in; two entries with the same time MUST keep the later one in the product. | Test |
 | `QGDXC-SWX-0005` | The library MUST give an X-ray flux `f` its class: `X` for `f ≥ 1e-4`, `M` for `f ≥ 1e-5`, `C` for `f ≥ 1e-6`, `B` for `f ≥ 1e-7`, otherwise `A`, followed by `f` divided by the class's lower bound (`A` 1e-8), truncated, not rounded, to one decimal place, so `2.57e-6` is `C2.5` and `1.23e-3` is `X12.3`. | Test |
 | `QGDXC-SWX-0006` | An alert's headline MUST be the first line of its `message` that begins, after optional spaces, with `ALERT:`, `WARNING:`, `WATCH:`, `SUMMARY:`, `CANCEL WARNING:`, `CANCEL WATCH:`, `EXTENDED WARNING:` or `CONTINUED ALERT:`, without its line ending; an alert with none MUST have no headline and MUST still be returned. Messages are at most 16 KiB each; a longer one MUST refuse the product. Alerts MUST be returned newest first by `issue_datetime`. The text is returned as received; callers escape it for display. | Test |
+| `QGDXC-SWX-0008` | The solar flux history MUST return the kept Noon entries oldest first, one per date, keeping the later entry when a date repeats; other `reporting_schedule` values and other frequencies MUST be skipped, not refused. `QGDXC-SWX-0002`–`0004` and `0007` apply to it as to the other products. | Test |
 | `QGDXC-SWX-0007` | Every function MUST be covered by a fuzz target, and by vectors made from the products retrieved for this annex plus planted refusals for each rule of `QGDXC-SWX-0002`. | Test, Inspection |
