@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 use super::{
     beacons,
-    model::{CHART_BANDS, Editor, Model, Spot, clip, frequency, frequency_text, sanitize},
+    model::{
+        CHART_BANDS, Editor, Model, Spot, SpotsView, clip, frequency, frequency_text, sanitize,
+    },
     theme::{Appearance, Role},
 };
 use qso_graph_dxcluster::Value;
@@ -11,6 +13,7 @@ use ratatui::{Frame, layout::Rect, widgets::Paragraph};
 use std::time::Duration;
 
 mod space_weather;
+mod weather_history;
 
 pub fn field(frame: &mut Frame<'_>, rect: Rect, text: &str, marker: bool) {
     if rect.width == 0 || rect.height == 0 {
@@ -155,7 +158,7 @@ pub fn draw(frame: &mut Frame<'_>, model: &Model, now: Duration) {
             for (i, source) in model.sources.iter().enumerate() {
                 line(frame, area, 10 + i as u16, &source.line(now));
             }
-            line(frame, area, 18, "W: space weather");
+            line(frame, area, 18, "W: space weather, again for history");
             line(frame, area, 19, &model.summary());
             return;
         }
@@ -621,31 +624,21 @@ fn dashboard(frame: &mut Frame<'_>, m: &Model, now: Duration) {
             }
         )
     };
-    if m.weather {
-        space_weather::draw(frame, (title_y, area.height - 2), m, now);
-        footer(frame, area.height - 1, w, m);
-        return;
-    }
-    if m.beacons {
-        // QGDXC-TUI-0103: what the view uses, not the spot list's filters.
-        beacon_view(
+    let bounds = (title_y, area.height - 2);
+    match m.spots_view {
+        SpotsView::Weather => space_weather::draw(frame, bounds, m, now),
+        SpotsView::History => weather_history::draw(frame, bounds, m, now),
+        SpotsView::Beacons => beacon_view(
             frame,
-            (title_y, area.height - 2),
+            bounds,
             m,
             now,
             " SNR dB · last 15 min · all sources ",
-        );
-        footer(frame, area.height - 1, w, m);
-        return;
+        ),
+        SpotsView::Map => spot_map(frame, bounds, m, now, &right_filters(m, &filters)),
+        SpotsView::List => {}
     }
-    if m.map {
-        spot_map(
-            frame,
-            (title_y, area.height - 2),
-            m,
-            now,
-            &right_filters(m, &filters),
-        );
+    if m.spots_view != SpotsView::List {
         footer(frame, area.height - 1, w, m);
         return;
     }
@@ -1313,7 +1306,7 @@ fn footer(frame: &mut Frame<'_>, y: u16, w: u16, m: &Model) {
         ("t", if w >= FILTER_FOOTER { "theme" } else { "" }),
         (
             "M",
-            match (w >= 100, m.map) {
+            match (w >= 100, m.spots_view == SpotsView::Map) {
                 (false, _) => "",
                 (true, true) => "list",
                 (true, false) => "map",
@@ -1321,7 +1314,7 @@ fn footer(frame: &mut Frame<'_>, y: u16, w: u16, m: &Model) {
         ),
         (
             "B",
-            match (w >= FULL_FOOTER, m.beacons) {
+            match (w >= FULL_FOOTER, m.spots_view == SpotsView::Beacons) {
                 (false, _) => "",
                 (true, true) => "list",
                 (true, false) => "beacons",
@@ -1329,10 +1322,11 @@ fn footer(frame: &mut Frame<'_>, y: u16, w: u16, m: &Model) {
         ),
         (
             "W",
-            match (w >= FULL_FOOTER, m.weather) {
+            match (w >= FULL_FOOTER, m.spots_view) {
                 (false, _) => "",
-                (true, true) => "list",
-                (true, false) => "weather",
+                (true, SpotsView::Weather) => "history",
+                (true, SpotsView::History) => "list",
+                (true, _) => "weather",
             },
         ),
         ("?", if w >= 100 { "help" } else { "" }),

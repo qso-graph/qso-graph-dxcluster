@@ -92,6 +92,13 @@ doc = false
 bench = false
 
 [[bin]]
+name = "swx_flux_history"
+path = "fuzz_targets/swx_flux_history.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
 name = "swx_planetary_k"
 path = "fuzz_targets/swx_planetary_k.rs"
 test = false

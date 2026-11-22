@@ -1405,8 +1405,9 @@ pub fn vet() -> Result<(), String> {
     Ok(())
 }
 // QGDXC-SWX-0007: start each smoke run with the corresponding NOAA fixture.
-pub const WEATHER_FUZZ: [(&str, &str, &str); 7] = [
+pub const WEATHER_FUZZ: [(&str, &str, &str); 8] = [
     ("swx_solar_flux", "products_summary_10cm-flux.json", "4097"),
+    ("swx_flux_history", "json_f107_cm_flux.json", "65537"),
     (
         "swx_planetary_k",
         "products_noaa-planetary-k-index.json",

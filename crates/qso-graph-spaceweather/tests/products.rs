@@ -3,6 +3,7 @@ use qso_graph_spaceweather::{self as swx, Error, Product, Reason};
 use serde_json::{Value, json};
 
 const FLUX: &str = "products_summary_10cm-flux.json";
+const FLUX_HISTORY: &str = "json_f107_cm_flux.json";
 const KP: &str = "products_noaa-planetary-k-index.json";
 const SCALES: &str = "products_noaa-scales.json";
 const XRAYS: &str = "json_goes_primary_xrays-6-hour.json";
@@ -20,6 +21,18 @@ fn parses_all_noaa_fixtures() {
     // QGDXC-SWX-0001 and QGDXC-SWX-0007.
     let flux = swx::solar_flux(&fixture(FLUX)).unwrap();
     assert_eq!((flux.flux, flux.time), (99.0, 1_795_291_200));
+    let daily = swx::solar_flux_history(&fixture(FLUX_HISTORY)).unwrap();
+    assert_eq!(daily.len(), 41);
+    assert!(
+        daily
+            .windows(2)
+            .all(|w| w[0].time / 86_400 < w[1].time / 86_400)
+    );
+    let last = daily.last().unwrap();
+    assert_eq!(
+        (last.time, last.flux, last.ninety_day_mean),
+        (flux.time, 99.0, Some(111.0))
+    );
     let kp = swx::planetary_k(&fixture(KP)).unwrap();
     assert_eq!(kp.len(), 62);
     assert_eq!(kp.first().unwrap().kp, 2.0);
@@ -56,6 +69,103 @@ fn refusal(product: Product, reason: Reason, result: Result<impl std::fmt::Debug
 
 fn body(name: &str) -> Value {
     serde_json::from_slice(&fixture(name)).unwrap()
+}
+
+#[test]
+fn flux_history_filters_and_keeps_the_last_entry_per_utc_date() {
+    // QGDXC-SWX-0008.
+    let records = br#"[
+        {"time_tag":"2024-03-01T20:00:00","reporting_schedule":"Noon","frequency":2800,"flux":105,"ninety_day_mean":985},
+        {"time_tag":"2024-02-29T20:00:00Z","reporting_schedule":"Noon","frequency":2800,"flux":105,"ninety_day_mean":0},
+        {"reporting_schedule":"Morning"},
+        {"reporting_schedule":"Noon","frequency":1415},
+        {"time_tag":"2024-03-01T17:00:00Z","reporting_schedule":"Noon","frequency":2800,"flux":999,"ninety_day_mean":null}
+    ]"#;
+    let daily = swx::solar_flux_history(records).unwrap();
+    assert_eq!(daily.len(), 2);
+    assert_eq!(daily[1].time - daily[0].time, 21 * 3600);
+    assert_eq!(
+        (daily[0].flux, daily[0].ninety_day_mean),
+        (105.0, Some(0.0))
+    );
+    assert_eq!((daily[1].flux, daily[1].ninety_day_mean), (999.0, None));
+}
+
+#[test]
+fn flux_history_refuses_invalid_products() {
+    // QGDXC-SWX-0002, QGDXC-SWX-0003, QGDXC-SWX-0007 and QGDXC-SWX-0008.
+    let product = Product::SolarFluxHistory;
+    let cases = [
+        (vec![b' '; product.limit() + 1], Reason::ByteLimit),
+        (vec![255], Reason::Utf8),
+        (b"[".to_vec(), Reason::Json),
+        (
+            format!("{}0{}", "[".repeat(17), "]".repeat(17)).into_bytes(),
+            Reason::Depth,
+        ),
+        (
+            br#"[{"reporting_schedule":"Morning","extra":0,"extra":1}]"#.to_vec(),
+            Reason::DuplicateMember,
+        ),
+        (b"{}".to_vec(), Reason::Type("array")),
+        (b"[]".to_vec(), Reason::Empty),
+        (
+            br#"[{"reporting_schedule":"Morning"}]"#.to_vec(),
+            Reason::Empty,
+        ),
+    ];
+    for (bytes, reason) in cases {
+        refusal(product, reason, swx::solar_flux_history(&bytes));
+    }
+    let good = body(FLUX_HISTORY)[1].clone();
+    for (key, bad, reason) in [
+        (
+            "reporting_schedule",
+            json!(0),
+            Reason::Type("reporting_schedule"),
+        ),
+        ("frequency", json!("2800"), Reason::Type("frequency")),
+        ("time_tag", json!("2025-02-29T20:00:00"), Reason::Time),
+        ("time_tag", json!("2024-02-29 20:00:00"), Reason::Time),
+        ("flux", json!(true), Reason::Type("flux")),
+        ("flux", json!(1000), Reason::Range("flux")),
+        (
+            "ninety_day_mean",
+            json!("111"),
+            Reason::Type("ninety_day_mean"),
+        ),
+        (
+            "ninety_day_mean",
+            json!(-1),
+            Reason::Range("ninety_day_mean"),
+        ),
+    ] {
+        let mut changed = good.clone();
+        changed[key] = bad;
+        let bytes = json!([good, changed]).to_string();
+        refusal(product, reason, swx::solar_flux_history(bytes.as_bytes()));
+        changed.as_object_mut().unwrap().remove(key);
+        let bytes = json!([good, changed]).to_string();
+        refusal(
+            product,
+            Reason::Missing(key),
+            swx::solar_flux_history(bytes.as_bytes()),
+        );
+    }
+    let mut records = vec![json!({"reporting_schedule":"Morning"}); 399];
+    records.push(good);
+    assert_eq!(
+        swx::solar_flux_history(json!(records).to_string().as_bytes())
+            .unwrap()
+            .len(),
+        1
+    );
+    records.push(json!({"reporting_schedule":"Noon","frequency":1415}));
+    refusal(
+        product,
+        Reason::EntryLimit,
+        swx::solar_flux_history(json!(records).to_string().as_bytes()),
+    );
 }
 
 #[test]

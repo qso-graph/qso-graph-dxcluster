@@ -81,6 +81,7 @@ IARU and their volunteer hosts.
 Press `W` (capital) for space weather, with data from the
 [NOAA Space Weather Prediction Center](https://www.swpc.noaa.gov/).
 Fetching starts when you first open the view or use `--space-weather`.
+Press `W` again for charts of solar flux, Kp, X-rays, and solar wind (`QGDXC-TUI-0120`).
 Solar flux, planetary K, and NOAA scales have a 15-minute minimum between
 requests. X-rays, solar wind, and alerts have a five-minute minimum
 (`QGDXC-TUI-0111`).

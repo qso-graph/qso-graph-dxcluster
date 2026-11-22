@@ -12,6 +12,7 @@ use std::{collections::BTreeMap, error, fmt};
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Product {
     SolarFlux,
+    SolarFluxHistory,
     PlanetaryK,
     Scales,
     Xrays,
@@ -24,6 +25,7 @@ impl Product {
     pub const fn name(self) -> &'static str {
         match self {
             Self::SolarFlux => "solar flux",
+            Self::SolarFluxHistory => "solar flux history",
             Self::PlanetaryK => "planetary K",
             Self::Scales => "NOAA scales",
             Self::Xrays => "X-rays",
@@ -37,7 +39,7 @@ impl Product {
         match self {
             Self::SolarFlux | Self::WindSpeed | Self::WindField => 4 * 1024,
             Self::Scales => 16 * 1024,
-            Self::PlanetaryK => 64 * 1024,
+            Self::PlanetaryK | Self::SolarFluxHistory => 64 * 1024,
             Self::Alerts => 256 * 1024,
             Self::Xrays => 512 * 1024,
         }
@@ -99,6 +101,13 @@ impl error::Error for Error {}
 pub struct SolarFlux {
     pub time: i64,
     pub flux: f64,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct SolarFluxHistory {
+    pub time: i64,
+    pub flux: f64,
+    pub ninety_day_mean: Option<f64>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -169,7 +178,11 @@ fn string<'a>(value: &'a Value, key: &'static str) -> Result<&'a str, Reason> {
 }
 
 fn number(value: &Value, key: &'static str, min: f64, max: f64) -> Result<f64, Reason> {
-    let number = member(value, key)?.as_f64().ok_or(Reason::Type(key))?;
+    bounded_number(member(value, key)?, key, min, max)
+}
+
+fn bounded_number(value: &Value, key: &'static str, min: f64, max: f64) -> Result<f64, Reason> {
+    let number = value.as_f64().ok_or(Reason::Type(key))?;
     if !(min..=max).contains(&number) {
         return Err(Reason::Range(key));
     }
@@ -204,6 +217,44 @@ pub fn solar_flux(data: &[u8]) -> Result<SolarFlux, Error> {
             time: timestamp(value)?,
             flux: number(value, "flux", 0.0, 999.0)?,
         })
+    })
+}
+
+/// Parse the daily Noon flux and its 90-day mean (QGDXC-SWX-0008).
+pub fn solar_flux_history(data: &[u8]) -> Result<Vec<SolarFluxHistory>, Error> {
+    parse(data, Product::SolarFluxHistory, |value| {
+        let entries = entries(value)?;
+        if entries.len() > 400 {
+            return Err(Reason::EntryLimit);
+        }
+        let mut days = BTreeMap::new();
+        for item in entries {
+            if string(item, "reporting_schedule")? != "Noon"
+                || member(item, "frequency")?
+                    .as_f64()
+                    .ok_or(Reason::Type("frequency"))?
+                    != 2800.0
+            {
+                continue;
+            }
+            let time = timestamp(item)?;
+            let mean = member(item, "ninety_day_mean")?;
+            let ninety_day_mean = (!mean.is_null())
+                .then(|| bounded_number(mean, "ninety_day_mean", 0.0, 999.0))
+                .transpose()?;
+            days.insert(
+                time / 86_400,
+                SolarFluxHistory {
+                    time,
+                    flux: number(item, "flux", 0.0, 999.0)?,
+                    ninety_day_mean,
+                },
+            );
+        }
+        if days.is_empty() {
+            return Err(Reason::Empty);
+        }
+        Ok(days.into_values().collect())
     })
 }
 

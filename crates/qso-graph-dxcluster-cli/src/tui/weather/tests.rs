@@ -2,14 +2,14 @@
 use super::*;
 use crate::tui::{
     config::Options,
-    model::{Input, Model},
+    model::{Input, Model, SpotsView},
     present,
     theme::Role,
 };
 use ratatui::{Terminal, backend::TestBackend, buffer::Buffer};
 use std::{cell::Cell, collections::VecDeque};
 
-const FIXTURES: [&str; FEEDS.len()] = [
+const FIXTURES: [&str; FLUX_HISTORY] = [
     "products_summary_10cm-flux.json",
     "products_noaa-planetary-k-index.json",
     "products_noaa-scales.json",
@@ -18,6 +18,7 @@ const FIXTURES: [&str; FEEDS.len()] = [
     "products_summary_solar-wind-mag-field.json",
     "products_alerts.json",
 ];
+const FLUX_FIXTURE: &str = "json_f107_cm_flux.json";
 
 fn fixture(name: &str) -> Vec<u8> {
     let directory = concat!(
@@ -71,7 +72,7 @@ fn collect_fixtures() -> (Cache, Scheduler, Script, FakeClock) {
     let mut scheduler = Scheduler::default();
     let mut fetch = fixture_script();
     let clock = FakeClock::default();
-    for _ in FEEDS {
+    for _ in FIXTURES {
         cache.apply(scheduler.step(&mut fetch, &clock).unwrap());
     }
     (cache, scheduler, fetch, clock)
@@ -83,9 +84,16 @@ fn floors_and_failures_keep_good_values() {
     let (mut cache, mut scheduler, mut fetch, clock) = collect_fixtures();
     assert_eq!(
         fetch.calls,
-        FEEDS.map(|feed| (feed.url, feed.product.limit()))
+        FEEDS[..FLUX_HISTORY]
+            .iter()
+            .map(|feed| (feed.url, feed.product.limit()))
+            .collect::<Vec<_>>()
     );
-    assert!(cache.samples.iter().all(|sample| sample.good.is_some()));
+    assert!(
+        cache.samples[..FLUX_HISTORY]
+            .iter()
+            .all(|sample| sample.good.is_some())
+    );
     assert_eq!(cache.next, FIVE_MINUTES);
     clock.at(299);
     assert!(scheduler.step(&mut fetch, &clock).is_none());
@@ -172,6 +180,73 @@ fn retry_after_pauses_all_feeds_and_preserves_their_floors() {
 }
 
 #[test]
+fn history_activates_once_with_its_own_floor() {
+    // QGDXC-TUI-0123. Check all start times against the original per-feed floors.
+    let mut scheduler = Scheduler::default();
+    let clock = FakeClock::default();
+    let mut fetch = Script {
+        responses: std::iter::repeat_with(|| Outcome::Error("request failed"))
+            .take(200)
+            .collect(),
+        ..Script::default()
+    };
+    let mut starts: [Vec<u64>; FEEDS.len()] = Default::default();
+    for second in 0..=7_600 {
+        clock.at(second);
+        if [400, 401, 3_999].contains(&second) {
+            scheduler.activate_history(clock.elapsed());
+        }
+        while let Some(update) = scheduler.step(&mut fetch, &clock) {
+            starts[update.index].push(second);
+        }
+    }
+    for (starts, floor) in starts[..FLUX_HISTORY]
+        .iter()
+        .zip([900, 900, 900, 300, 300, 300, 300])
+    {
+        assert_eq!(*starts, (0..=7_600).step_by(floor).collect::<Vec<_>>());
+    }
+    assert_eq!(starts[FLUX_HISTORY], [400, 4_000, 7_600]);
+}
+
+#[test]
+fn history_request_obeys_the_shared_retry_after() {
+    let mut scheduler = Scheduler::default();
+    let clock = FakeClock::default();
+    let mut fetch = fixture_script();
+    for _ in FIXTURES {
+        scheduler.step(&mut fetch, &clock).unwrap();
+    }
+    fetch
+        .responses
+        .push_back(Outcome::Status(429, Some("60".to_owned())));
+    clock.at(300);
+    scheduler.step(&mut fetch, &clock).unwrap();
+    clock.at(301);
+    scheduler.activate_history(clock.elapsed());
+    clock.at(359);
+    assert!(scheduler.step(&mut fetch, &clock).is_none());
+    fetch.responses.extend(
+        FIXTURES[4..]
+            .iter()
+            .map(|name| Outcome::Bytes(fixture(name))),
+    );
+    fetch
+        .responses
+        .push_back(Outcome::Bytes(fixture(FLUX_FIXTURE)));
+    clock.at(360);
+    for _ in 0..3 {
+        assert_ne!(
+            scheduler.step(&mut fetch, &clock).unwrap().index,
+            FLUX_HISTORY
+        );
+    }
+    let update = scheduler.step(&mut fetch, &clock).unwrap();
+    assert_eq!(update.index, FLUX_HISTORY);
+    assert!(matches!(update.data(), Some(Data::SolarFluxHistory(_))));
+}
+
+#[test]
 fn https_configuration_and_read_cap() {
     // QGDXC-TUI-0112. Build the agent without sending a request.
     let agent = https();
@@ -209,34 +284,60 @@ fn worker_starts_once_on_opt_in_and_keeps_polling() {
     let mut worker = Worker::default();
     let mut cache = Cache::default();
     worker
-        .poll(false, &mut cache, || panic!("started before opt-in"))
+        .poll(
+            false,
+            false,
+            |_| panic!("unexpected update"),
+            || panic!("started before opt-in"),
+        )
         .unwrap();
     let (send, updates) = mpsc::sync_channel(1);
-    let (stop, _stopped) = mpsc::channel();
+    let (control, commands) = mpsc::channel();
     worker
-        .poll(true, &mut cache, || {
-            Ok(Running {
-                _stop: stop,
-                updates,
-            })
-        })
+        .poll(
+            true,
+            false,
+            |update| cache.apply(update),
+            || {
+                Ok(Running {
+                    control,
+                    history_requested: false,
+                    updates,
+                })
+            },
+        )
         .unwrap();
     let update = Scheduler::default()
         .step(&mut fixture_script(), &FakeClock::default())
         .unwrap();
     send.send(update).unwrap();
     worker
-        .poll(false, &mut cache, || panic!("started a second worker"))
+        .poll(
+            false,
+            false,
+            |update| cache.apply(update),
+            || panic!("started a second worker"),
+        )
         .unwrap();
     assert!(cache.samples[0].good.is_some());
-    worker
-        .poll(true, &mut cache, || panic!("started a second worker"))
-        .unwrap();
+    assert_eq!(commands.try_recv(), Err(mpsc::TryRecvError::Empty));
+    for _ in 0..2 {
+        worker
+            .poll(
+                true,
+                true,
+                |update| cache.apply(update),
+                || panic!("started a second worker"),
+            )
+            .unwrap();
+    }
+    assert_eq!(commands.try_recv(), Ok(()));
+    assert_eq!(commands.try_recv(), Err(mpsc::TryRecvError::Empty));
 }
 
 #[test]
 fn space_weather_switches_with_other_views_and_is_listed() {
-    // QGDXC-TUI-0110 and QGDXC-TUI-0111.
+    // QGDXC-TUI-0120 and QGDXC-TUI-0111.
     let base = ["--call", "Q1ABC", "--node", "source.example.invalid:7300"];
     let args = |opt: bool| {
         base.into_iter()
@@ -248,35 +349,59 @@ fn space_weather_switches_with_other_views_and_is_listed() {
     assert!(Options::parse(&args(true)).unwrap().space_weather);
     let mut m = Model::new(vec!["source".into()], 100, 100);
     let key = |m: &mut Model, ch| m.key(Input::Char(ch));
-    assert!(!m.weather);
+    assert_eq!(m.spots_view, SpotsView::List);
     let list = screen(&m, 130, 24, Duration::ZERO);
     assert!(row(&list, 23).contains("W weather"));
     key(&mut m, '/');
     key(&mut m, 'W');
-    assert!(!m.weather);
+    assert_eq!(m.spots_view, SpotsView::List);
     m.key(Input::Escape);
     key(&mut m, 'W');
-    assert!(m.weather && !m.map && !m.beacons);
+    assert_eq!(m.spots_view, SpotsView::Weather);
     let weather = screen(&m, 130, 24, Duration::ZERO);
     for y in 0..8 {
         assert_eq!(row(&list, y), row(&weather, y));
     }
-    assert!(row(&weather, 23).contains("W list"));
+    assert!(row(&weather, 23).contains("W history"));
     assert!(row(&screen(&m, 80, 24, Duration::ZERO), 23).contains(" B W ?"));
-    key(&mut m, 'M');
-    assert!(m.map && !m.beacons && !m.weather);
     key(&mut m, 'W');
-    assert!(m.weather && !m.map && !m.beacons);
-    key(&mut m, 'B');
-    assert!(m.beacons && !m.map && !m.weather);
+    assert_eq!(m.spots_view, SpotsView::History);
+    let history = screen(&m, 130, 24, Duration::ZERO);
+    assert!(row(&history, 23).contains("W list"));
+    location(&history, "Solar flux (sfu) · 30 days");
+    for y in 0..8 {
+        assert_eq!(row(&list, y), row(&history, y));
+    }
     key(&mut m, 'W');
-    assert!(m.weather && !m.map && !m.beacons);
-    key(&mut m, 'W');
-    assert!(!m.weather && !m.map && !m.beacons);
+    assert_eq!(m.spots_view, SpotsView::List);
+    assert_eq!(screen(&m, 130, 24, Duration::ZERO), list);
+
+    for (shortcut, view, title) in [
+        ('M', SpotsView::Map, " map "),
+        ('B', SpotsView::Beacons, "NCDXF/IARU beacons"),
+    ] {
+        for weather_keys in [1, 2] {
+            m.spots_view = SpotsView::List;
+            for _ in 0..weather_keys {
+                key(&mut m, 'W');
+            }
+            key(&mut m, shortcut);
+            assert_eq!(m.spots_view, view);
+            let other = screen(&m, 130, 24, Duration::ZERO);
+            assert!(location(&other, title).1 < 23);
+            key(&mut m, 'W');
+            assert_eq!(m.spots_view, SpotsView::Weather);
+            assert_eq!(screen(&m, 130, 24, Duration::ZERO), weather);
+        }
+    }
+    m.spots_view = SpotsView::List;
     key(&mut m, '?');
     key(&mut m, 'W');
-    assert!(!m.weather);
-    assert!(screen_text(&screen(&m, 80, 24, Duration::ZERO)).contains("W: space weather"));
+    assert_eq!(m.spots_view, SpotsView::List);
+    location(
+        &screen(&m, 80, 24, Duration::ZERO),
+        "W: space weather, again for history",
+    );
 }
 
 fn screen(m: &Model, width: u16, height: u16, now: Duration) -> Buffer {
@@ -312,9 +437,251 @@ const WEATHER_EPOCH: u64 = 1_795_377_660; // 2026-11-22 20:01:00 UTC
 
 fn weather_model() -> Model {
     let mut m = Model::new(vec!["source".into()], 100, 100);
-    m.weather = true;
+    m.spots_view = SpotsView::Weather;
     m.utc_epoch = WEATHER_EPOCH;
     m
+}
+
+const HISTORY_TITLES: [&str; 4] = [
+    "Solar flux (sfu) · 30 days",
+    "Kp (index) · 7 days",
+    "X-rays (W/m²) · 6 hours",
+    "Solar wind (km/s, nT) · since start",
+];
+
+fn history_model() -> Model {
+    let mut m = weather_model();
+    m.spots_view = SpotsView::History;
+    let mut scheduler = Scheduler::default();
+    scheduler.activate_history(Duration::ZERO);
+    let mut fetch = fixture_script();
+    fetch
+        .responses
+        .push_back(Outcome::Bytes(fixture(FLUX_FIXTURE)));
+    let clock = FakeClock::default();
+    for _ in FEEDS {
+        m.apply_weather(scheduler.step(&mut fetch, &clock).unwrap());
+    }
+    m
+}
+
+#[test]
+fn history_layout_and_utc_axes_fit_the_spots_box() {
+    // QGDXC-TUI-0121. The 80-column layout has four charts at minimum height.
+    let m = history_model();
+    let now = Duration::from_secs(600);
+    for (width, height) in [(120, 40), (160, 40), (100, 40), (80, 24)] {
+        let grid = screen(&m, width, height, now);
+        let [(fx, fy), (kx, ky), (xx, xy), (wx, wy)] =
+            HISTORY_TITLES.map(|title| location(&grid, title));
+        assert_eq!((fx, xx), (2, 2));
+        if width >= 120 {
+            assert_eq!((kx, wx), (width / 2 + 2, width / 2 + 2));
+            assert_eq!(fy, ky);
+            assert_eq!(xy, wy);
+            assert!(fy < xy);
+        } else {
+            assert_eq!((kx, wx), (2, 2));
+            assert!(ky - fy >= 4 && xy - ky >= 4 && wy - xy >= 4);
+            assert!(height - 1 - wy >= 4);
+        }
+        for (x, y, left, right) in [
+            (fx, fy, "10-23", "11-21"),
+            (kx, ky, "11-15", "11-22"),
+            (xx, xy, "13:40", "19:40"),
+            (wx, wy, "20:01", "20:11"),
+        ] {
+            let room = if width >= 120 { width / 2 } else { width };
+            let labels = (y + 1..height - 1)
+                .map(|line| {
+                    row(&grid, line)
+                        .chars()
+                        .skip((x - 2) as usize)
+                        .take(room as usize)
+                        .collect::<String>()
+                })
+                .find(|line| line.contains(left) && line.contains(right))
+                .unwrap_or_else(|| panic!("{left}, {right}\n{}", screen_text(&grid)));
+            assert!(labels.contains(" UTC "), "{labels}");
+        }
+    }
+    let mut crowded = history_model();
+    crowded.sources = Model::new((1..=8).map(|i| format!("source{i}")).collect(), 100, 100).sources;
+    let short = screen_text(&screen(&crowded, 100, 24, now));
+    assert!(short.contains(HISTORY_TITLES[0]));
+    for title in &HISTORY_TITLES[1..] {
+        assert!(!short.contains(title), "{short}");
+    }
+    let wide_short = screen(&crowded, 120, 24, now);
+    for title in HISTORY_TITLES {
+        let (_, y) = location(&wide_short, title);
+        assert!(row(&wide_short, y).contains("UTC"));
+    }
+    let (x, y) = location(&wide_short, "Speed");
+    let (bz_x, bz_y) = location(&wide_short, "Bz");
+    assert_eq!(y, bz_y);
+    let wind_row = row(&wide_short, y)
+        .chars()
+        .skip(x as usize)
+        .collect::<Vec<_>>();
+    let (speed, bz) = wind_row.split_at(usize::from(bz_x - x));
+    for series in [speed, bz] {
+        assert!(
+            series
+                .iter()
+                .any(|ch| ('\u{2801}'..='\u{28ff}').contains(ch))
+        );
+    }
+}
+
+#[test]
+fn history_kp_bars_use_text_warning_and_bad_at_three_four_and_five() {
+    // QGDXC-TUI-0122. Inspect the bars in the rendered grid.
+    let mut m = history_model();
+    let (feed, _) = m.weather_data.sample(Product::PlanetaryK);
+    let index = FEEDS
+        .iter()
+        .position(|f| f.product == feed.product)
+        .unwrap();
+    let Some((Data::PlanetaryK(values), _)) = &mut m.weather_data.samples[index].good else {
+        panic!("Kp fixture was missing");
+    };
+    let time = values.last().unwrap().time;
+    *values = [3.0, 4.0, 5.0]
+        .into_iter()
+        .enumerate()
+        .map(|(i, kp)| swx::PlanetaryK {
+            time: time - (2 - i as i64) * 10_800,
+            kp,
+            a_running: 0.0,
+        })
+        .collect();
+    let grid = screen(&m, 120, 40, Duration::ZERO);
+    let (_, title_y) = location(&grid, HISTORY_TITLES[1]);
+    let (_, utc_y) = location(&grid, "11-15");
+    let bars: Vec<_> = (60..120)
+        .filter_map(|x| {
+            (title_y + 1..utc_y)
+                .map(|y| &grid[(x, y)])
+                .find(|cell| cell.symbol() == "█")
+                .map(|cell| cell.fg)
+        })
+        .collect();
+    assert_eq!(
+        bars,
+        [Role::Text, Role::Warning, Role::Bad].map(|role| m.appearance.color(role))
+    );
+}
+
+#[test]
+fn history_xray_axis_labels_are_at_each_logarithmic_decade() {
+    // QGDXC-TUI-0122. Labels on the y-axis read X through A from top to bottom.
+    let m = history_model();
+    for (width, height) in [(120, 40), (80, 24)] {
+        let grid = screen(&m, width, height, Duration::ZERO);
+        let (_, title) = location(&grid, HISTORY_TITLES[2]);
+        let bottom = if width == 120 {
+            height - 2
+        } else {
+            location(&grid, HISTORY_TITLES[3]).1 - 1
+        };
+        for (i, label) in ["A", "B", "C", "M", "X"].into_iter().enumerate() {
+            let y = bottom - 1 - i as u16 * (bottom - title - 2) / 4;
+            assert_eq!(grid[(1, y)].symbol(), label, "{}", screen_text(&grid));
+        }
+    }
+}
+
+#[test]
+fn history_waiting_stale_and_mono_are_visible_in_the_grid() {
+    // QGDXC-TUI-0124.
+    let mut m = weather_model();
+    m.spots_view = SpotsView::History;
+    let grid = screen(&m, 120, 40, Duration::ZERO);
+    for title in HISTORY_TITLES {
+        let (x, y) = location(&grid, title);
+        let interior = row(&grid, y + 1)
+            .chars()
+            .skip(x as usize)
+            .take(56)
+            .collect::<String>();
+        assert!(interior.contains("waiting"));
+    }
+    let mut m = history_model();
+    let grid = screen(&m, 120, 40, Duration::from_secs(10_800));
+    assert_eq!(screen_text(&grid).matches("stale").count(), 3);
+    let grid = screen(&m, 120, 40, Duration::from_secs(10_801));
+    for title in HISTORY_TITLES {
+        let (x, y) = location(&grid, &format!("{title} · stale"));
+        assert_eq!(grid[(x, y)].fg, m.appearance.color(Role::Dim));
+    }
+    m.appearance.theme = super::super::theme::Theme::initial(None, Some("1"));
+    let fresh = screen(&m, 120, 40, Duration::ZERO);
+    let (_, top) = location(&fresh, HISTORY_TITLES[0]);
+    let (_, bottom) = location(&fresh, "10-23");
+    let mut dim = Vec::new();
+    for y in top + 1..bottom {
+        for x in 1..59 {
+            let cell = &fresh[(x, y)];
+            if cell
+                .symbol()
+                .starts_with(|ch| ('\u{2801}'..='\u{28ff}').contains(&ch))
+            {
+                dim.push(cell.modifier.contains(ratatui::style::Modifier::DIM));
+            }
+        }
+    }
+    assert!(dim.contains(&true) && dim.contains(&false));
+    let grid = screen(&m, 120, 40, Duration::from_secs(10_801));
+    assert!(
+        grid.content
+            .iter()
+            .all(|cell| cell.fg == ratatui::style::Color::Reset)
+    );
+    let (x, y) = location(&grid, "Solar flux (sfu) · 30 days · stale");
+    assert!(
+        grid[(x, y)]
+            .modifier
+            .contains(ratatui::style::Modifier::DIM)
+    );
+}
+
+#[test]
+fn wind_history_retains_the_latest_288_successes_of_each_series() {
+    // QGDXC-TUI-0122. Capture while the spots list is visible.
+    let mut m = weather_model();
+    m.spots_view = SpotsView::List;
+    for i in 0..300 {
+        for index in [4, 5] {
+            let data = Data::parse(FEEDS[index].product, &fixture(FIXTURES[index])).unwrap();
+            m.apply_weather(Update {
+                index,
+                complete: Duration::from_secs(i * 300),
+                next: Duration::ZERO,
+                pause: Duration::ZERO,
+                result: Ok(data),
+            });
+        }
+    }
+    m.apply_weather(Update {
+        index: 4,
+        complete: Duration::from_secs(300 * 300),
+        next: Duration::ZERO,
+        pause: Duration::ZERO,
+        result: Err("request failed".into()),
+    });
+    for (series, value) in [(&m.wind_history.speed, 343.0), (&m.wind_history.bz, -2.0)] {
+        assert_eq!(series.len(), 288);
+        assert_eq!(series.front(), Some(&(WEATHER_EPOCH + 12 * 300, value)));
+        assert_eq!(series.back(), Some(&(WEATHER_EPOCH + 299 * 300, value)));
+    }
+    m.spots_view = SpotsView::History;
+    let grid = screen(&m, 120, 40, Duration::from_secs(300 * 300));
+    location(&grid, "Speed");
+    location(&grid, "Bz");
+    let axis = row(&grid, 38);
+    assert!(axis.chars().skip(60).collect::<String>().contains("11-22"));
+    assert!(axis.trim_end_matches('┘').trim_end().ends_with("11-23"));
 }
 
 fn install_alerts(m: &mut Model, alerts: &[(&str, &str, &str)]) {
@@ -325,7 +692,7 @@ fn install_alerts(m: &mut Model, alerts: &[(&str, &str, &str)]) {
         })
         .collect();
     let data = Data::parse(Product::Alerts, &serde_json::to_vec(&items).unwrap()).unwrap();
-    m.weather_data.samples.last_mut().unwrap().good = Some((data, Duration::ZERO));
+    m.weather_data.samples[ALERTS].good = Some((data, Duration::ZERO));
 }
 
 #[test]
@@ -333,7 +700,7 @@ fn view_shows_waiting_values_alerts_and_refresh_status() {
     // QGDXC-TUI-0113 and QGDXC-TUI-0114.
     let mut m = weather_model();
     let initial = screen_text(&screen(&m, 80, 24, Duration::ZERO));
-    assert_eq!(initial.matches("waiting").count(), FEEDS.len());
+    assert_eq!(initial.matches("waiting").count(), FLUX_HISTORY);
     assert!(initial.contains("space weather · NOAA SWPC"));
     assert!(initial.contains("data: NOAA Space Weather Prediction Center"));
     let (cache, _, _, _) = collect_fixtures();
@@ -375,7 +742,7 @@ fn view_shows_waiting_values_alerts_and_refresh_status() {
 fn weather_roles_alert_privacy_and_minimum_height() {
     // QGDXC-TUI-0114 and QGDXC-SEC-0005.
     let mut m = Model::new((1..=8).map(|i| format!("source{i}")).collect(), 100, 100);
-    m.weather = true;
+    m.spots_view = SpotsView::Weather;
     m.utc_epoch = WEATHER_EPOCH;
     let mut script = fixture_script();
     let clock = FakeClock::default();
@@ -399,7 +766,7 @@ fn weather_roles_alert_privacy_and_minimum_height() {
         {"product_id":"QX02","issue_datetime":"2026-11-22 20:00:00","message":format!("WARNING: Newest {planted} \u{1b}[31m {}", "Long ".repeat(40))}
     ]);
     script.responses[6] = Outcome::Bytes(alerts.to_string().into_bytes());
-    for _ in FEEDS {
+    for _ in FIXTURES {
         m.weather_data
             .apply(scheduler.step(&mut script, &clock).unwrap());
     }
@@ -566,7 +933,7 @@ fn weather_layout_splits_at_120_columns() {
 fn weather_alerts_clip_to_the_short_box() {
     // QGDXC-TUI-0118 and QGDXC-TUI-0119.
     let mut m = Model::new((1..=8).map(|i| format!("source{i}")).collect(), 100, 100);
-    m.weather = true;
+    m.spots_view = SpotsView::Weather;
     m.utc_epoch = WEATHER_EPOCH;
     m.weather_data = collect_fixtures().0;
     install_alerts(

@@ -1963,6 +1963,10 @@
         {
           "file": "crates/qso-graph-spaceweather/tests/products.rs",
           "name": "rejects_bad_json_and_kept_values_without_partial_results"
+        },
+        {
+          "file": "crates/qso-graph-spaceweather/tests/products.rs",
+          "name": "flux_history_refuses_invalid_products"
         }
       ],
       "vectors": []
@@ -1972,6 +1976,10 @@
         {
           "file": "crates/qso-graph-spaceweather/tests/products.rs",
           "name": "validates_calendar_and_timestamp_shapes"
+        },
+        {
+          "file": "crates/qso-graph-spaceweather/tests/products.rs",
+          "name": "flux_history_refuses_invalid_products"
         }
       ],
       "vectors": []
@@ -1981,6 +1989,10 @@
         {
           "file": "crates/qso-graph-spaceweather/tests/products.rs",
           "name": "time_order_and_last_duplicate_win"
+        },
+        {
+          "file": "crates/qso-graph-spaceweather/tests/products.rs",
+          "name": "flux_history_filters_and_keeps_the_last_entry_per_utc_date"
         }
       ],
       "vectors": []
@@ -2012,6 +2024,10 @@
         {
           "file": "crates/qso-graph-spaceweather/tests/products.rs",
           "name": "rejects_bad_json_and_kept_values_without_partial_results"
+        },
+        {
+          "file": "crates/qso-graph-spaceweather/tests/products.rs",
+          "name": "flux_history_refuses_invalid_products"
         }
       ],
       "vectors": []
@@ -2150,6 +2166,88 @@
         {
           "file": "crates/qso-graph-dxcluster-cli/src/tui/weather/tests.rs",
           "name": "weather_sparklines_grow_to_their_column_width"
+        }
+      ],
+      "vectors": []
+    },
+    "QGDXC-SWX-0008": {
+      "tests": [
+        {
+          "file": "crates/qso-graph-spaceweather/tests/products.rs",
+          "name": "parses_all_noaa_fixtures"
+        },
+        {
+          "file": "crates/qso-graph-spaceweather/tests/products.rs",
+          "name": "flux_history_filters_and_keeps_the_last_entry_per_utc_date"
+        },
+        {
+          "file": "crates/qso-graph-spaceweather/tests/products.rs",
+          "name": "flux_history_refuses_invalid_products"
+        }
+      ],
+      "vectors": []
+    },
+    "QGDXC-TUI-0120": {
+      "tests": [
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/tui/weather/tests.rs",
+          "name": "space_weather_switches_with_other_views_and_is_listed"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/tui/tests.rs",
+          "name": "limits_footer_and_help_fit_compact_and_wide_layouts"
+        }
+      ],
+      "vectors": []
+    },
+    "QGDXC-TUI-0121": {
+      "tests": [
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/tui/weather/tests.rs",
+          "name": "history_layout_and_utc_axes_fit_the_spots_box"
+        }
+      ],
+      "vectors": []
+    },
+    "QGDXC-TUI-0122": {
+      "tests": [
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/tui/weather/tests.rs",
+          "name": "history_kp_bars_use_text_warning_and_bad_at_three_four_and_five"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/tui/weather/tests.rs",
+          "name": "history_xray_axis_labels_are_at_each_logarithmic_decade"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/tui/weather/tests.rs",
+          "name": "wind_history_retains_the_latest_288_successes_of_each_series"
+        }
+      ],
+      "vectors": []
+    },
+    "QGDXC-TUI-0123": {
+      "tests": [
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/tui/weather/tests.rs",
+          "name": "history_activates_once_with_its_own_floor"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/tui/weather/tests.rs",
+          "name": "history_request_obeys_the_shared_retry_after"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/tui/weather/tests.rs",
+          "name": "worker_starts_once_on_opt_in_and_keeps_polling"
+        }
+      ],
+      "vectors": []
+    },
+    "QGDXC-TUI-0124": {
+      "tests": [
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/tui/weather/tests.rs",
+          "name": "history_waiting_stale_and_mono_are_visible_in_the_grid"
         }
       ],
       "vectors": []

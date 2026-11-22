@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //! Pure display state. No clock, terminal, transport, or file access.
-use super::theme::Appearance;
+use super::{
+    theme::Appearance,
+    weather::{Cache, Data, Update},
+};
 use qso_graph_dxcluster::{Event, Value, privacy};
 use std::{
     collections::{BTreeSet, HashSet, VecDeque},
@@ -562,6 +565,42 @@ pub enum Editor {
     },
     Help,
 }
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SpotsView {
+    List,
+    Map,
+    Beacons,
+    Weather,
+    History,
+}
+
+impl SpotsView {
+    // QGDXC-TUI-0120.
+    pub fn next_weather(self) -> Self {
+        match self {
+            Self::Weather => Self::History,
+            Self::History => Self::List,
+            Self::List | Self::Map | Self::Beacons => Self::Weather,
+        }
+    }
+}
+
+#[derive(Default)]
+pub(super) struct WindHistory {
+    pub speed: VecDeque<(u64, f64)>,
+    pub bz: VecDeque<(u64, f64)>,
+}
+
+impl WindHistory {
+    fn push(series: &mut VecDeque<(u64, f64)>, point: (u64, f64)) {
+        // QGDXC-TUI-0122.
+        if series.len() == 288 {
+            series.pop_front();
+        }
+        series.push_back(point);
+    }
+}
+
 pub struct Model {
     pub appearance: Appearance,
     pub utc_epoch: u64,
@@ -580,15 +619,12 @@ pub struct Model {
     pub editor: Editor,
     pub quit: bool,
     pub page: usize,
-    /// Show the spot map instead of the list (QGDXC-TUI-0080).
-    pub map: bool,
+    pub spots_view: SpotsView,
     pub prefixes: &'static qso_graph_dxcluster_cli::prefixes::Prefixes,
     /// The latest WWV or WCY report from any source (QGDXC-TUI-0090).
     pub solar: Option<Solar>,
-    /// Show the beacon view instead of the list (QGDXC-TUI-0101).
-    pub beacons: bool,
-    pub weather: bool,
-    pub(super) weather_data: super::weather::Cache,
+    pub(super) weather_data: Cache,
+    pub(super) wind_history: WindHistory,
     /// Each beacon's latest report on each frequency (QGDXC-TUI-0102).
     pub heard: [[Option<super::beacons::Heard>; 5]; 18],
 }
@@ -664,14 +700,28 @@ impl Model {
             editor: Editor::Normal,
             quit: false,
             page: 10,
-            map: false,
+            spots_view: SpotsView::List,
             prefixes: qso_graph_dxcluster_cli::prefixes::builtin(),
             solar: None,
-            beacons: false,
-            weather: false,
-            weather_data: super::weather::Cache::default(),
+            weather_data: Cache::default(),
+            wind_history: WindHistory::default(),
             heard: Default::default(),
         }
+    }
+    pub(super) fn apply_weather(&mut self, update: Update) {
+        let utc = self
+            .utc_epoch
+            .saturating_add(update.completed_at().as_secs());
+        match update.data() {
+            Some(Data::WindSpeed(value)) => {
+                WindHistory::push(&mut self.wind_history.speed, (utc, value.proton_speed));
+            }
+            Some(Data::WindField(value)) => {
+                WindHistory::push(&mut self.wind_history.bz, (utc, value.bz_gsm));
+            }
+            _ => {}
+        }
+        self.weather_data.apply(update);
     }
     pub fn receive(&mut self, source: usize, mut event: Event, now: Duration) {
         // QGDXC-TUI-0014: defensive application of privacy before retention.
@@ -1002,20 +1052,20 @@ impl Model {
                 }
                 Input::Char('t') => self.appearance.theme = self.appearance.theme.next(),
                 Input::Char('M') => {
-                    self.map = !self.map;
-                    self.beacons = false;
-                    self.weather = false;
+                    self.spots_view = if self.spots_view == SpotsView::Map {
+                        SpotsView::List
+                    } else {
+                        SpotsView::Map
+                    };
                 }
                 Input::Char('B') => {
-                    self.beacons = !self.beacons;
-                    self.map = false;
-                    self.weather = false;
+                    self.spots_view = if self.spots_view == SpotsView::Beacons {
+                        SpotsView::List
+                    } else {
+                        SpotsView::Beacons
+                    };
                 }
-                Input::Char('W') => {
-                    self.weather = !self.weather;
-                    self.map = false;
-                    self.beacons = false;
-                }
+                Input::Char('W') => self.spots_view = self.spots_view.next_weather(),
                 Input::Char('b' | 'm') => {
                     let is_band = matches!(input, Input::Char('b'));
                     let selected = if is_band {

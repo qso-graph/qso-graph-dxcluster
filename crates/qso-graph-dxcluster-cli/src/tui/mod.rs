@@ -17,10 +17,11 @@ use crossterm::{
     execute,
     terminal::{self, EnterAlternateScreen, LeaveAlternateScreen},
 };
-use model::{Input, Model, sanitize};
+use model::{Editor, Input, Model, SpotsView, sanitize};
 use ratatui::{
     Terminal,
     backend::{Backend, CrosstermBackend},
+    layout::Rect,
 };
 use sources::Workers;
 use std::{
@@ -133,12 +134,15 @@ fn present<B: Backend>(
     terminal: &mut Terminal<B>,
     model: &Model,
     now: Duration,
-) -> Result<(), B::Error> {
+) -> Result<Rect, B::Error> {
     terminal.autoresize()?;
-    render::draw(&mut terminal.get_frame(), model, now);
+    let mut frame = terminal.get_frame();
+    let area = frame.area();
+    render::draw(&mut frame, model, now);
     terminal.flush()?;
     terminal.swap_buffers();
-    terminal.backend_mut().flush()
+    terminal.backend_mut().flush()?;
+    Ok(area)
 }
 fn present_picker<B: Backend>(
     terminal: &mut Terminal<B>,
@@ -235,7 +239,9 @@ pub fn run(args: &[String]) -> Result<u8, String> {
             options.keep_skimmer,
         );
         model.appearance = appearance;
-        model.weather = options.space_weather;
+        if options.space_weather {
+            model.spots_view = SpotsView::Weather;
+        }
         model.utc_epoch = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap_or_default()
@@ -249,16 +255,24 @@ pub fn run(args: &[String]) -> Result<u8, String> {
         let mut redraw = Redraw::default();
         while !model.quit && !stop.load(Ordering::Relaxed) {
             interface.workers.drain(&mut model, origin);
-            weather.poll(model.weather, &mut model.weather_data, || {
-                weather::start(origin)
-            })?;
             let now = origin.elapsed();
+            let mut history_shown = false;
             if redraw.due(now) {
                 let size = terminal.size()?;
                 model.page =
                     render::list_rows(size.width, size.height, model.sources.len()).max(1) as usize;
-                present(&mut terminal, &model, now)?;
+                let drawn = present(&mut terminal, &model, now)?;
+                history_shown = model.spots_view == SpotsView::History
+                    && matches!(model.editor, Editor::Normal)
+                    && drawn.width >= 80
+                    && drawn.height >= 24;
             }
+            weather.poll(
+                matches!(model.spots_view, SpotsView::Weather | SpotsView::History),
+                history_shown,
+                |update| model.apply_weather(update),
+                || weather::start(origin),
+            )?;
             if event::poll(Duration::from_millis(5))?
                 && let Some(input) = input(event::read()?)
             {

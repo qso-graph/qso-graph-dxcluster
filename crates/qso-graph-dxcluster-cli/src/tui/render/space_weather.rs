@@ -2,7 +2,7 @@
 //! NOAA SWPC space-weather view (QGDXC-TUI-0114, QGDXC-TUI-0117–0119).
 
 use super::{Appearance, Frame, Model, Rect, Role, Row, age, border, put, sides, spark, utc_parts};
-use crate::tui::weather::{Data, FEEDS, Sample};
+use crate::tui::weather::{ALERTS, Data, FEEDS, FLUX_HISTORY, Sample};
 use qso_graph_spaceweather::Alert;
 use std::time::Duration;
 
@@ -23,9 +23,9 @@ pub(super) fn draw(frame: &mut Frame<'_>, (top, bottom): (u16, u16), m: &Model, 
         )
     };
     let wide = width >= 120;
-    let measurement_feeds = &FEEDS[..FEEDS.len() - 1];
-    let alert_feed = FEEDS[measurement_feeds.len()];
-    let alert_sample = &data.samples[measurement_feeds.len()];
+    let measurement_feeds = &FEEDS[..ALERTS];
+    let alert_feed = FEEDS[ALERTS];
+    let alert_sample = &data.samples[ALERTS];
     let recent = recent_alerts(alert_sample, utc_now);
     let available = width - 3;
     let left = if wide {
@@ -65,7 +65,7 @@ pub(super) fn draw(frame: &mut Frame<'_>, (top, bottom): (u16, u16), m: &Model, 
             Some(_) => {}
         }
     }
-    if let Some((feed, _)) = FEEDS
+    if let Some((feed, _)) = FEEDS[..FLUX_HISTORY]
         .iter()
         .zip(&data.samples)
         .find(|(_, sample)| sample.failure(now).is_some())
@@ -88,7 +88,7 @@ pub(super) fn draw(frame: &mut Frame<'_>, (top, bottom): (u16, u16), m: &Model, 
         frame,
         (0, bottom, width),
         false,
-        " W list ",
+        "",
         " data: NOAA Space Weather Prediction Center ",
         appearance,
     );
@@ -173,9 +173,19 @@ pub(super) fn draw(frame: &mut Frame<'_>, (top, bottom): (u16, u16), m: &Model, 
     }
 }
 
-fn countdown(wait: Duration) -> String {
+pub(super) fn countdown(wait: Duration) -> String {
     let seconds = wait.as_secs() + u64::from(wait.subsec_nanos() != 0);
     age(Duration::from_secs(seconds))
+}
+
+pub(super) fn kp_role(kp: f64) -> Role {
+    if kp >= 5.0 {
+        Role::Bad
+    } else if kp >= 4.0 {
+        Role::Warning
+    } else {
+        Role::Text
+    }
 }
 
 fn decimal(value: f64) -> String {
@@ -208,15 +218,8 @@ fn measurement(
         }
         Data::PlanetaryK(values) => {
             let value = values.last().expect("validated nonempty Kp");
-            let role = if value.kp >= 5.0 {
-                Role::Bad
-            } else if value.kp >= 4.0 {
-                Role::Warning
-            } else {
-                Role::Text
-            };
             row.ui("Kp ", style(Role::Text));
-            row.ui(&format!("{:.1}", value.kp), style(role));
+            row.ui(&format!("{:.1}", value.kp), style(kp_role(value.kp)));
             row.ui(
                 &format!(" A {}", decimal(value.a_running)),
                 style(Role::Text),
@@ -278,7 +281,7 @@ fn measurement(
             }
             (value.time, Vec::new())
         }
-        Data::Alerts(_) => return,
+        Data::Alerts(_) | Data::SolarFluxHistory(_) => return,
     };
     row.ui(&format!(" {}", stamp(time, utc_now)), a.style(Role::Dim));
     if stale {
@@ -331,8 +334,8 @@ fn alerts(
     heading: bool,
     recent: Option<&[(&Alert, usize)]>,
 ) {
-    let feed = *FEEDS.last().expect("alerts feed");
-    let sample = m.weather_data.samples.last().expect("alerts sample");
+    let feed = FEEDS[ALERTS];
+    let sample = &m.weather_data.samples[ALERTS];
     let a = m.appearance;
     let stale = sample.stale(feed, now);
     let role = if stale || recent.is_none() {

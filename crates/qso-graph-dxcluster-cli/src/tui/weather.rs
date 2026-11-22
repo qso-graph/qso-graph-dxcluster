@@ -22,7 +22,7 @@ const FIVE_MINUTES: Duration = Duration::from_secs(300);
 const FAILURE_NOTICE: Duration = Duration::from_secs(15);
 const USER_AGENT: &str = concat!("qg-dxc/", env!("CARGO_PKG_VERSION"));
 
-pub(super) const FEEDS: [Feed; 7] = [
+pub(super) const FEEDS: [Feed; 8] = [
     Feed {
         product: Product::SolarFlux,
         label: "SFI",
@@ -65,10 +65,19 @@ pub(super) const FEEDS: [Feed; 7] = [
         url: "https://services.swpc.noaa.gov/products/alerts.json",
         floor: FIVE_MINUTES,
     },
+    Feed {
+        product: Product::SolarFluxHistory,
+        label: "Flux history",
+        url: "https://services.swpc.noaa.gov/json/f107_cm_flux.json",
+        floor: Duration::from_secs(3_600),
+    },
 ];
+pub(super) const FLUX_HISTORY: usize = FEEDS.len() - 1;
+pub(super) const ALERTS: usize = FLUX_HISTORY - 1;
 
 pub(super) enum Data {
     SolarFlux(swx::SolarFlux),
+    SolarFluxHistory(Vec<swx::SolarFluxHistory>),
     PlanetaryK(Vec<swx::PlanetaryK>),
     Scales(swx::Scales),
     Xrays(Vec<swx::Xray>),
@@ -86,6 +95,7 @@ impl Data {
     fn parse(product: Product, bytes: &[u8]) -> Result<Self, swx::Error> {
         match product {
             Product::SolarFlux => swx::solar_flux(bytes).map(Self::SolarFlux),
+            Product::SolarFluxHistory => swx::solar_flux_history(bytes).map(Self::SolarFluxHistory),
             Product::PlanetaryK => swx::planetary_k(bytes).map(Self::PlanetaryK),
             Product::Scales => swx::scales(bytes).map(Self::Scales),
             Product::Xrays => swx::xrays(bytes).map(Self::Xrays),
@@ -202,6 +212,7 @@ mod retry_after;
 pub(super) struct Scheduler {
     due: [Duration; FEEDS.len()],
     pause: Duration,
+    history_active: bool,
 }
 
 pub(super) struct Update {
@@ -212,13 +223,32 @@ pub(super) struct Update {
     result: Result<Data, String>,
 }
 
+impl Update {
+    pub(super) fn completed_at(&self) -> Duration {
+        self.complete
+    }
+
+    pub(super) fn data(&self) -> Option<&Data> {
+        self.result.as_ref().ok()
+    }
+}
+
 impl Scheduler {
+    // QGDXC-TUI-0123: activation is a one-way transition for this session.
+    fn activate_history(&mut self, now: Duration) {
+        if !self.history_active {
+            self.history_active = true;
+            self.due[FLUX_HISTORY] = now;
+        }
+    }
+
     fn earliest(&self) -> (usize, Duration) {
         let (index, due) = self
             .due
             .iter()
             .copied()
             .enumerate()
+            .filter(|&(index, _)| index != FLUX_HISTORY || self.history_active)
             .min_by_key(|&(_, due)| due)
             .expect("feed table is nonempty");
         (index, due.max(self.pause))
@@ -284,6 +314,14 @@ pub(super) struct Cache {
 }
 
 impl Cache {
+    pub(super) fn sample(&self, product: Product) -> (Feed, &Sample) {
+        FEEDS
+            .into_iter()
+            .zip(&self.samples)
+            .find(|(feed, _)| feed.product == product)
+            .expect("every product has a feed")
+    }
+
     pub(super) fn apply(&mut self, update: Update) {
         self.next = update.next;
         self.pause = update.pause;
@@ -299,7 +337,8 @@ impl Cache {
 }
 
 pub(super) struct Running {
-    _stop: mpsc::Sender<()>,
+    control: mpsc::Sender<()>,
+    history_requested: bool,
     updates: mpsc::Receiver<Update>,
 }
 
@@ -310,15 +349,20 @@ impl Worker {
     pub(super) fn poll(
         &mut self,
         visible: bool,
-        cache: &mut Cache,
+        history_shown: bool,
+        mut apply: impl FnMut(Update),
         start: impl FnOnce() -> io::Result<Running>,
     ) -> io::Result<()> {
         if visible && self.0.is_none() {
             self.0 = Some(start()?);
         }
-        if let Some(running) = &self.0 {
+        if let Some(running) = &mut self.0 {
+            if history_shown && !running.history_requested {
+                let _ = running.control.send(());
+                running.history_requested = true;
+            }
             for update in running.updates.try_iter() {
-                cache.apply(update);
+                apply(update);
             }
         }
         Ok(())
@@ -327,7 +371,7 @@ impl Worker {
 
 pub(super) fn start(origin: Instant) -> io::Result<Running> {
     let (send, updates) = mpsc::sync_channel(FEEDS.len());
-    let (stop, stopped) = mpsc::channel();
+    let (control, commands) = mpsc::channel();
     std::thread::Builder::new()
         .name("space-weather".into())
         .spawn(move || {
@@ -337,9 +381,10 @@ pub(super) fn start(origin: Instant) -> io::Result<Running> {
             // on its own deadline without delaying terminal restoration on exit.
             loop {
                 let wait = scheduler.earliest().1.saturating_sub(origin.elapsed());
-                match stopped.recv_timeout(wait) {
+                match commands.recv_timeout(wait) {
                     Err(mpsc::RecvTimeoutError::Timeout) => {}
-                    _ => break,
+                    Ok(()) => scheduler.activate_history(origin.elapsed()),
+                    Err(mpsc::RecvTimeoutError::Disconnected) => break,
                 }
                 if let Some(update) = scheduler.step(&mut fetcher, &origin)
                     && send.send(update).is_err()
@@ -349,7 +394,8 @@ pub(super) fn start(origin: Instant) -> io::Result<Running> {
             }
         })?;
     Ok(Running {
-        _stop: stop,
+        control,
+        history_requested: false,
         updates,
     })
 }
