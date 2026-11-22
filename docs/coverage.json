@@ -2106,6 +2106,53 @@
         }
       ],
       "vectors": []
+    },
+    "QGDXC-TUI-0117": {
+      "tests": [
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/tui/weather/tests.rs",
+          "name": "weather_times_follow_the_model_utc_date"
+        }
+      ],
+      "vectors": []
+    },
+    "QGDXC-TUI-0118": {
+      "tests": [
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/tui/weather/tests.rs",
+          "name": "weather_alerts_include_the_five_day_boundary"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/tui/weather/tests.rs",
+          "name": "weather_alerts_group_recent_issues_newest_first"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/tui/weather/tests.rs",
+          "name": "weather_alerts_report_an_empty_window"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/tui/weather/tests.rs",
+          "name": "weather_alerts_clip_to_the_short_box"
+        }
+      ],
+      "vectors": []
+    },
+    "QGDXC-TUI-0119": {
+      "tests": [
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/tui/weather/tests.rs",
+          "name": "weather_layout_splits_at_120_columns"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/tui/weather/tests.rs",
+          "name": "weather_alerts_clip_to_the_short_box"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/tui/weather/tests.rs",
+          "name": "weather_sparklines_grow_to_their_column_width"
+        }
+      ],
+      "vectors": []
     }
   },
   "scenarios": {

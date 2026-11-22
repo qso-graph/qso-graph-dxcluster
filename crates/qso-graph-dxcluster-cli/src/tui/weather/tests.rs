@@ -308,11 +308,30 @@ fn location(buffer: &Buffer, text: &str) -> (u16, u16) {
         .unwrap_or_else(|| panic!("{text} missing from screen\n{}", screen_text(buffer)))
 }
 
+const WEATHER_EPOCH: u64 = 1_795_377_660; // 2026-11-22 20:01:00 UTC
+
+fn weather_model() -> Model {
+    let mut m = Model::new(vec!["source".into()], 100, 100);
+    m.weather = true;
+    m.utc_epoch = WEATHER_EPOCH;
+    m
+}
+
+fn install_alerts(m: &mut Model, alerts: &[(&str, &str, &str)]) {
+    let items: Vec<_> = alerts
+        .iter()
+        .map(|(id, time, message)| {
+            serde_json::json!({"product_id": id, "issue_datetime": time, "message": message})
+        })
+        .collect();
+    let data = Data::parse(Product::Alerts, &serde_json::to_vec(&items).unwrap()).unwrap();
+    m.weather_data.samples.last_mut().unwrap().good = Some((data, Duration::ZERO));
+}
+
 #[test]
 fn view_shows_waiting_values_alerts_and_refresh_status() {
     // QGDXC-TUI-0113 and QGDXC-TUI-0114.
-    let mut m = Model::new(vec!["source".into()], 100, 100);
-    m.weather = true;
+    let mut m = weather_model();
     let initial = screen_text(&screen(&m, 80, 24, Duration::ZERO));
     assert_eq!(initial.matches("waiting").count(), FEEDS.len());
     assert!(initial.contains("space weather · NOAA SWPC"));
@@ -329,8 +348,8 @@ fn view_shows_waiting_values_alerts_and_refresh_status() {
         "X-ray B2.3",
         "Wind 343 km/s",
         "Bt 2 Bz -2 nT",
-        "19:41:00Z",
-        "Alerts",
+        "R0 S0 G0 19:41 UTC",
+        "alerts",
         "next refresh 5m",
     ] {
         assert!(text.contains(field), "{field}\n{text}");
@@ -357,6 +376,7 @@ fn weather_roles_alert_privacy_and_minimum_height() {
     // QGDXC-TUI-0114 and QGDXC-SEC-0005.
     let mut m = Model::new((1..=8).map(|i| format!("source{i}")).collect(), 100, 100);
     m.weather = true;
+    m.utc_epoch = WEATHER_EPOCH;
     let mut script = fixture_script();
     let clock = FakeClock::default();
     let mut scheduler = Scheduler::default();
@@ -408,4 +428,209 @@ fn weather_roles_alert_privacy_and_minimum_height() {
         warning[location(&warning, "4.0 A 400")].fg,
         m.appearance.style(Role::Warning).fg.unwrap()
     );
+}
+
+#[test]
+fn weather_times_follow_the_model_utc_date() {
+    // QGDXC-TUI-0117.
+    let mut m = weather_model();
+    m.weather_data = collect_fixtures().0;
+    install_alerts(
+        &mut m,
+        &[
+            ("QX01", "2026-11-22 20:00:14", "WATCH: Current date"),
+            ("QX02", "2026-11-21 20:00:45", "SUMMARY: Prior date"),
+        ],
+    );
+    let current = screen_text(&screen(&m, 120, 24, Duration::ZERO));
+    for text in [
+        "R0 S0 G0 19:41 UTC",
+        "SFI 99 11-21 20:00 UTC",
+        "QX01 20:00 UTC WATCH:",
+        "QX02 11-21 20:00 UTC SUMMARY:",
+    ] {
+        assert!(current.contains(text), "{text}\n{current}");
+    }
+    let after_midnight = screen_text(&screen(&m, 100, 24, Duration::from_hours(4)));
+    for text in ["R0 S0 G0 11-22 19:41 UTC", "QX01 11-22 20:00 UTC"] {
+        assert!(after_midnight.contains(text), "{text}\n{after_midnight}");
+    }
+}
+
+#[test]
+fn weather_alerts_include_the_five_day_boundary() {
+    // QGDXC-TUI-0118.
+    let mut m = weather_model();
+    install_alerts(
+        &mut m,
+        &[
+            ("QX01", "2026-11-17 20:01:00", "WATCH: Exact boundary"),
+            (
+                "QX02",
+                "2026-11-17 20:00:59.999999",
+                "WATCH: Over five days",
+            ),
+            ("QX03", "2026-11-22 20:01:00", "WATCH: Issued now"),
+            ("QX04", "2026-11-22 20:01:01", "WATCH: Issued later"),
+        ],
+    );
+    let buf = screen(&m, 100, 24, Duration::ZERO);
+    let current = screen_text(&buf);
+    assert!(current.contains("QX01 11-17 20:01 UTC WATCH: Exact boundary"));
+    assert!(location(&buf, "QX03").1 < location(&buf, "QX01").1);
+    assert!(!current.contains("QX02"));
+    assert!(!current.contains("QX04"));
+}
+
+#[test]
+fn weather_alerts_group_recent_issues_newest_first() {
+    // QGDXC-TUI-0118.
+    let mut m = weather_model();
+    install_alerts(
+        &mut m,
+        &[
+            ("QX01", "2026-11-22 20:00:00.1", "WATCH: Earlier duplicate"),
+            ("QX02", "2026-11-22 20:00:00.2", "WATCH: Separate issue"),
+            ("QX01", "2026-11-17 20:00:59", "WATCH: Expired duplicate"),
+            ("QX01", "2026-11-22 20:00:00.3", "WATCH: Latest issue"),
+        ],
+    );
+    let buf = screen(&m, 120, 24, Duration::ZERO);
+    let text = screen_text(&buf);
+    assert_eq!(text.matches("QX01").count(), 1, "{text}");
+    assert!(
+        text.contains("QX01 ×2 20:00 UTC WATCH: Latest issue"),
+        "{text}"
+    );
+    assert!(
+        text.contains("QX02 20:00 UTC WATCH: Separate issue"),
+        "{text}"
+    );
+    assert!(location(&buf, "QX01").1 < location(&buf, "QX02").1);
+    assert!(!text.contains("Earlier duplicate"));
+    assert!(!text.contains("Expired duplicate"));
+}
+
+#[test]
+fn weather_alerts_report_an_empty_window() {
+    // QGDXC-TUI-0118.
+    let mut m = weather_model();
+    let expired = [("QX01", "2026-11-16 20:01:00", "WATCH: Expired")];
+    for items in [&[][..], &expired[..]] {
+        install_alerts(&mut m, items);
+        let text = screen_text(&screen(&m, 120, 24, Duration::ZERO));
+        assert!(text.contains("no alerts in the last 5 days"), "{text}");
+        assert!(!text.contains("QX01"));
+    }
+}
+
+#[test]
+fn weather_layout_splits_at_120_columns() {
+    // QGDXC-TUI-0119.
+    let mut m = weather_model();
+    m.weather_data = collect_fixtures().0;
+    install_alerts(&mut m, &[("QX01", "2026-11-22 20:00:00", "WATCH: Example")]);
+    for width in [120, 160] {
+        let buf = screen(&m, width, 24, Duration::ZERO);
+        let (left, heading) = location(&buf, "conditions");
+        let (right, alerts_heading) = location(&buf, "alerts");
+        assert_eq!(heading, alerts_heading, "{width}");
+        assert!(
+            (width * 53 / 100..=width * 58 / 100).contains(&right),
+            "{width}: {right}"
+        );
+        assert_eq!(location(&buf, "SFI ").0, left, "{width}");
+        assert_eq!(location(&buf, "QX01").0, right, "{width}");
+        assert_eq!(
+            location(&buf, "QX01").1,
+            location(&buf, "SFI ").1,
+            "{width}"
+        );
+    }
+    for width in [100, 119] {
+        let buf = screen(&m, width, 24, Duration::ZERO);
+        assert!(!screen_text(&buf).contains("conditions"), "{width}");
+        let (left, last_figure) = location(&buf, "Bt ");
+        let (right, alerts_heading) = location(&buf, "alerts");
+        assert_eq!(left, right, "{width}");
+        assert!(alerts_heading > last_figure, "{width}");
+        assert_eq!(
+            location(&buf, "QX01"),
+            (right, alerts_heading + 1),
+            "{width}"
+        );
+    }
+}
+
+#[test]
+fn weather_alerts_clip_to_the_short_box() {
+    // QGDXC-TUI-0118 and QGDXC-TUI-0119.
+    let mut m = Model::new((1..=8).map(|i| format!("source{i}")).collect(), 100, 100);
+    m.weather = true;
+    m.utc_epoch = WEATHER_EPOCH;
+    m.weather_data = collect_fixtures().0;
+    install_alerts(
+        &mut m,
+        &[
+            ("QX01", "2026-11-22 19:59:00", "WATCH: Earlier"),
+            ("QX02", "2026-11-22 20:00:00", "WATCH: Latest"),
+            ("QX03", "2026-11-22 19:58:00", "WATCH: Clipped"),
+        ],
+    );
+    let buf = screen(&m, 120, 24, Duration::ZERO);
+    let (right, header) = location(&buf, "alerts");
+    assert_eq!(location(&buf, "conditions").1, header);
+    assert_eq!(location(&buf, "QX02"), (right, header + 1));
+    assert_eq!(location(&buf, "QX01"), (right, header + 2));
+    assert!(!screen_text(&buf).contains("QX03"));
+}
+
+#[test]
+fn weather_sparklines_grow_to_their_column_width() {
+    // QGDXC-TUI-0119.
+    let mut m = weather_model();
+    m.weather_data = collect_fixtures().0;
+    let spark_cells = |buf: &Buffer, name| {
+        row(buf, location(buf, name).1)
+            .chars()
+            .filter(|ch| ('▁'..='█').contains(ch))
+            .count()
+    };
+    let small = screen(&m, 120, 24, Duration::ZERO);
+    let large = screen(&m, 160, 24, Duration::ZERO);
+    assert_eq!(spark_cells(&small, "Kp "), 8);
+    assert_eq!(spark_cells(&large, "Kp "), 8);
+    let small_xrays = spark_cells(&small, "X-ray ");
+    let large_xrays = spark_cells(&large, "X-ray ");
+    assert!(small_xrays > 24 && large_xrays > small_xrays);
+    let Some((Data::PlanetaryK(values), _)) = &mut m.weather_data.samples[1].good else {
+        panic!("missing planetary K sample");
+    };
+    let newest = values.last().unwrap().time;
+    *values = (0..80)
+        .rev()
+        .map(|i| swx::PlanetaryK {
+            time: newest - i * 900,
+            kp: 4.0,
+            a_running: 12.0,
+        })
+        .collect();
+    let dense_small = screen(&m, 120, 24, Duration::ZERO);
+    let dense_large = screen(&m, 160, 24, Duration::ZERO);
+    assert!(spark_cells(&dense_large, "Kp ") > spark_cells(&dense_small, "Kp "));
+    for (buf, figure) in [
+        (&small, "X-ray "),
+        (&large, "X-ray "),
+        (&dense_small, "Kp "),
+        (&dense_large, "Kp "),
+    ] {
+        let (right, _) = location(buf, "alerts");
+        let (_, y) = location(buf, figure);
+        assert!(
+            buf[(right - 3, y)]
+                .symbol()
+                .starts_with(|ch| ('▁'..='█').contains(&ch))
+        );
+        assert_eq!(buf[(right - 2, y)].symbol(), " ");
+    }
 }

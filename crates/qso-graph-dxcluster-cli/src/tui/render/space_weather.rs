@@ -1,14 +1,19 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! NOAA SWPC space-weather view (QGDXC-TUI-0114).
+//! NOAA SWPC space-weather view (QGDXC-TUI-0114, QGDXC-TUI-0117–0119).
 
-use super::{Appearance, Frame, Model, Role, Row, age, border, sides, spark, utc};
+use super::{Appearance, Frame, Model, Rect, Role, Row, age, border, put, sides, spark, utc_parts};
 use crate::tui::weather::{Data, FEEDS, Sample};
+use qso_graph_spaceweather::Alert;
 use std::time::Duration;
+
+const DAY: i64 = 86_400;
+const NO_ALERTS: &str = "no alerts in the last 5 days";
 
 pub(super) fn draw(frame: &mut Frame<'_>, (top, bottom): (u16, u16), m: &Model, now: Duration) {
     let width = frame.area().width;
     let appearance = m.appearance;
     let data = &m.weather_data;
+    let utc_now = i64::try_from(m.utc_epoch.saturating_add(now.as_secs())).unwrap_or(i64::MAX);
     let mut status = if now < data.pause {
         format!(" Retry-After {} ", countdown(data.pause - now))
     } else {
@@ -17,18 +22,47 @@ pub(super) fn draw(frame: &mut Frame<'_>, (top, bottom): (u16, u16), m: &Model, 
             countdown(data.next.saturating_sub(now))
         )
     };
-    let rows = (bottom - top - 1) as usize;
-    let feeds = FEEDS.len() - 1; // Alerts follow the six measurements.
-    let columns = feeds.div_ceil(rows.max(1));
+    let wide = width >= 120;
+    let measurement_feeds = &FEEDS[..FEEDS.len() - 1];
+    let alert_feed = FEEDS[measurement_feeds.len()];
+    let alert_sample = &data.samples[measurement_feeds.len()];
+    let recent = recent_alerts(alert_sample, utc_now);
+    let available = width - 3;
+    let left = if wide {
+        (u32::from(available) * 55 / 100) as u16
+    } else {
+        available
+    };
+    let alert_x = if wide { 2 + left + 2 } else { 2 };
+    let mut first = top + 1;
+    let rows = usize::from(bottom - first);
+    // Move the headings onto the border when a heading row would displace a figure.
+    let border_headings = wide && rows <= measurement_feeds.len();
+    if wide && !border_headings {
+        first += 1;
+    }
+    let rows = usize::from(bottom - first);
+    let max_columns = if wide { (left / 41).max(1) } else { 3 };
+    let columns = measurement_feeds
+        .len()
+        .div_ceil(rows.max(1))
+        .min(usize::from(max_columns));
     let compact = columns > 1;
-    let alert_row = top + 1 + feeds.div_ceil(columns) as u16;
+    let alert_row = match (wide, border_headings) {
+        (true, true) => first,
+        (true, false) => top + 1,
+        (false, _) => first + measurement_feeds.len().div_ceil(columns) as u16,
+    };
     if alert_row >= bottom {
-        let alerts = &data.samples[feeds];
-        let alert_feed = FEEDS[feeds];
-        if alerts.good.is_none() {
-            status = format!(" Alerts waiting ·{status}");
-        } else if alerts.stale(alert_feed, now) {
-            status = format!(" Alerts stale ·{status}");
+        let alert_stale = alert_sample.stale(alert_feed, now);
+        match recent.as_deref() {
+            None => status = format!(" alerts waiting ·{status}"),
+            Some([]) => {
+                let stale = if alert_stale { " stale" } else { "" };
+                status = format!(" {NO_ALERTS}{stale} ·{status}");
+            }
+            Some(_) if alert_stale => status = format!(" alerts stale ·{status}"),
+            Some(_) => {}
         }
     }
     if let Some((feed, _)) = FEEDS
@@ -42,7 +76,11 @@ pub(super) fn draw(frame: &mut Frame<'_>, (top, bottom): (u16, u16), m: &Model, 
         frame,
         (0, top, width),
         true,
-        " space weather · NOAA SWPC ",
+        if border_headings {
+            " space weather · NOAA SWPC · conditions "
+        } else {
+            " space weather · NOAA SWPC "
+        },
         &status,
         appearance,
     );
@@ -58,28 +96,47 @@ pub(super) fn draw(frame: &mut Frame<'_>, (top, bottom): (u16, u16), m: &Model, 
         sides(frame, 0, y, width, appearance);
     }
 
-    let available = (width - 3) as usize;
-    for (index, feed) in FEEDS[..feeds].iter().enumerate() {
-        let y = top + 1 + (index / columns) as u16;
+    if border_headings {
+        put(
+            frame,
+            alert_x - 1,
+            top,
+            8,
+            " alerts ",
+            appearance.style(Role::Title),
+        );
+    } else if wide {
+        put(
+            frame,
+            2,
+            top + 1,
+            left,
+            "conditions",
+            appearance.style(Role::Title),
+        );
+    }
+
+    for (index, feed) in measurement_feeds.iter().enumerate() {
+        let y = first + (index / columns) as u16;
         if y >= bottom {
             break;
         }
         let column = index % columns;
-        // At the minimum wide height, give the two charts space alongside
-        // the longest formatted values, timestamps and stale markers.
-        let (offset, room) = if columns == 3 {
-            let extra = available - 97;
+        // In the two-row stacked layout, give the charts and wind field
+        // the widest cells.
+        let (offset, room) = if !wide && columns == 3 {
+            let extra = usize::from(left) - 97;
             let widths = if index < columns {
-                [26, 41 + extra, 28]
+                [28, 39 + extra, 28]
             } else {
-                [32 + extra, 28, 35]
+                [31 + extra, 28, 36]
             };
             (
                 widths[..column].iter().sum::<usize>() + column,
                 widths[column],
             )
         } else {
-            let width = available / columns;
+            let width = usize::from(left) / columns;
             (column * width, width - usize::from(columns > 1))
         };
         let mut row = Row::new(frame, 2 + offset as u16, y, room as u16);
@@ -91,6 +148,7 @@ pub(super) fn draw(frame: &mut Frame<'_>, (top, bottom): (u16, u16), m: &Model, 
                 appearance,
                 sample.stale(*feed, now),
                 compact,
+                utc_now,
             );
         } else {
             row.ui(
@@ -102,7 +160,16 @@ pub(super) fn draw(frame: &mut Frame<'_>, (top, bottom): (u16, u16), m: &Model, 
     }
 
     if alert_row < bottom {
-        alerts(frame, alert_row..bottom, m, now, width, appearance);
+        let area = Rect::new(alert_x, alert_row, width - 1 - alert_x, bottom - alert_row);
+        alerts(
+            frame,
+            area,
+            m,
+            now,
+            utc_now,
+            !border_headings,
+            recent.as_deref(),
+        );
     }
 }
 
@@ -115,12 +182,24 @@ fn decimal(value: f64) -> String {
     format!("{value:.1}").trim_end_matches(".0").to_owned()
 }
 
-fn stamp(time: i64, compact: bool) -> String {
-    let text = utc(time as u64);
-    if compact { text[12..].to_owned() } else { text }
+fn stamp(time: i64, utc_now: i64) -> String {
+    let clock = format!("{:02}:{:02} UTC", time / 3600 % 24, time / 60 % 60);
+    if time / DAY == utc_now / DAY {
+        clock
+    } else {
+        let (_, month, day) = utc_parts(time as u64);
+        format!("{month:02}-{day:02} {clock}")
+    }
 }
 
-fn measurement(row: &mut Row<'_, '_>, data: &Data, a: Appearance, stale: bool, compact: bool) {
+fn measurement(
+    row: &mut Row<'_, '_>,
+    data: &Data,
+    a: Appearance,
+    stale: bool,
+    compact: bool,
+    utc_now: i64,
+) {
     let style = |role| a.style(if stale { Role::Dim } else { role });
     let (time, chart) = match data {
         Data::SolarFlux(value) => {
@@ -144,7 +223,7 @@ fn measurement(row: &mut Row<'_, '_>, data: &Data, a: Appearance, stale: bool, c
             );
             let chart = values
                 .iter()
-                .filter(|sample| sample.time > value.time - 86_400)
+                .filter(|sample| sample.time > value.time - DAY)
                 .map(|sample| (sample.kp * 100.0).round() as u64)
                 .collect();
             (value.time, chart)
@@ -201,13 +280,12 @@ fn measurement(row: &mut Row<'_, '_>, data: &Data, a: Appearance, stale: bool, c
         }
         Data::Alerts(_) => return,
     };
-    row.ui(&format!(" {}", stamp(time, compact)), a.style(Role::Dim));
+    row.ui(&format!(" {}", stamp(time, utc_now)), a.style(Role::Dim));
     if stale {
         row.ui(" stale", a.style(Role::Dim));
     }
     let cells = usize::from(row.end.saturating_sub(row.x))
         .saturating_sub(1)
-        .min(24)
         .min(chart.len());
     if cells > 0 {
         row.ui(" ", a.style(Role::Dim));
@@ -221,54 +299,94 @@ fn measurement(row: &mut Row<'_, '_>, data: &Data, a: Appearance, stale: bool, c
     }
 }
 
+fn recent_alerts(sample: &Sample, utc_now: i64) -> Option<Vec<(&Alert, usize)>> {
+    let Some((Data::Alerts(values), _)) = &sample.good else {
+        return None;
+    };
+    let window = utc_now - 5 * DAY..=utc_now;
+    let recent = values
+        .iter()
+        .filter(|entry| window.contains(&entry.alert.issue_time));
+    let mut counts = vec![0; values.len()];
+    for entry in recent.clone() {
+        counts[entry.group] += 1;
+    }
+    // QGDXC-SWX-0006 puts the newest issue first, including within a second.
+    Some(
+        recent
+            .filter_map(|entry| {
+                let count = std::mem::take(&mut counts[entry.group]);
+                (count > 0).then_some((&entry.alert, count))
+            })
+            .collect(),
+    )
+}
+
 fn alerts(
     frame: &mut Frame<'_>,
-    mut rows: std::ops::Range<u16>,
+    area: Rect,
     m: &Model,
     now: Duration,
-    width: u16,
-    a: Appearance,
+    utc_now: i64,
+    heading: bool,
+    recent: Option<&[(&Alert, usize)]>,
 ) {
     let feed = *FEEDS.last().expect("alerts feed");
     let sample = m.weather_data.samples.last().expect("alerts sample");
+    let a = m.appearance;
     let stale = sample.stale(feed, now);
-    let role = if stale { Role::Dim } else { Role::Text };
-    let y = rows.next().expect("room for alerts heading");
-    let mut row = Row::new(frame, 2, y, width - 3);
-    let values = match &sample.good {
-        Some((Data::Alerts(values), _)) => {
-            row.ui(
-                if values.is_empty() {
-                    "Alerts none"
-                } else {
-                    "Alerts"
-                },
-                a.style(role),
-            );
-            if stale {
-                row.ui(" stale", a.style(Role::Dim));
-            }
-            values.as_slice()
-        }
-        _ => {
-            row.ui("Alerts waiting", a.style(Role::Dim));
-            &[]
-        }
+    let role = if stale || recent.is_none() {
+        Role::Dim
+    } else {
+        Role::Text
     };
+    let style = a.style(role);
+    let mut row = Row::new(frame, area.x, area.y, area.width);
+    if heading {
+        row.ui(
+            "alerts",
+            a.style(if stale { Role::Dim } else { Role::Title }),
+        );
+    }
+    let status = match recent {
+        None => Some("waiting"),
+        Some([]) => Some(NO_ALERTS),
+        Some(_) => None,
+    };
+    if let Some(text) = status {
+        if heading {
+            row.ui(" ", style);
+        }
+        row.ui(text, style);
+    }
+    if stale {
+        row.ui(
+            if heading || status.is_some() {
+                " stale"
+            } else {
+                "stale"
+            },
+            style,
+        );
+    }
     show_failure(&mut row, sample, now, a);
-    for (alert, y) in values.iter().zip(rows) {
-        let mut row = Row::new(frame, 2, y, width - 3);
-        let info = format!("{} {}", alert.product_id, stamp(alert.issue_time, false));
-        row.safe(&info, info.len(), false, a.style(role), false);
+    let start = area.y + u16::from(row.x > area.x);
+    for (&(alert, count), y) in recent.into_iter().flatten().zip(start..area.bottom()) {
+        let mut row = Row::new(frame, area.x, y, area.width);
+        row.safe(
+            &alert.product_id,
+            alert.product_id.len(),
+            false,
+            style,
+            false,
+        );
+        if count >= 2 {
+            row.ui(&format!(" ×{count}"), style);
+        }
+        row.ui(&format!(" {}", stamp(alert.issue_time, utc_now)), style);
         if let Some(headline) = &alert.headline {
-            row.ui(" ", a.style(role));
-            row.safe(
-                headline,
-                usize::from(row.end - row.x),
-                false,
-                a.style(role),
-                true,
-            );
+            row.ui(" ", style);
+            row.safe(headline, usize::from(row.end - row.x), false, style, true);
         }
     }
 }
