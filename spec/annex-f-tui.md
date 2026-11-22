@@ -202,7 +202,9 @@ the list.
 Cluster nodes broadcast the latest solar figures as WWV reports (typically every three hours)
 and WCY reports (typically hourly). The interface shows the latest one it has received, so an
 operator sees the conditions without leaving the spot list. It uses only the `wwv` and
-`wcy` events of Annex A; it makes no other connection.
+`wcy` events of Annex A; it makes no other connection. WWV reports carry NOAA's geophysical alert as
+broadcast by NIST's time station WWV in Fort Collins, Colorado; WCY reports carry the hourly geophysical
+summary of DK0WCY, run by volunteers of the Deutscher Amateur-Radio-Club (DARC). Cluster nodes relay both.
 
 | ID | Requirement | Verify |
 |---|---|---|
@@ -247,8 +249,8 @@ request until the operator asks for it.
 
 | ID | Requirement | Verify |
 |---|---|---|
-| `QGDXC-TUI-0125` | While space-weather fetching is running under `QGDXC-TUI-0111` and the library returns at least one item in force at the interface's UTC clock (`QGDXC-SWX-0011`), the interface MUST show a ribbon on every page: `▌<KIND> <headline text after its label>`, then ` · until HH:MM UTC` when the item has an end (`MM-DD HH:MM UTC` when not today), then `  +<n>` when `<n>` more items are in force. `<KIND>` is `ALERT`, `WARNING` or `WATCH` (`CONTINUED ALERT` and `EXTENDED WARNING` read `ALERT` and `WARNING`). The ribbon MUST use the bad role for alerts, the warning role for warnings and the accent role for watches, and its text MUST be escaped under `QGDXC-SEC-0005`. With nothing in force, or before fetching has started, no ribbon MUST be shown, and the ribbon MUST NOT cause any request. | Test |
-| `QGDXC-TUI-0126` | At widths of at least 100 columns the ribbon MUST occupy the bands box's first row below the band counts when the box has such a row, and otherwise the bands box's top border after its title. Below 100 columns it MUST show only `▌<KIND>` and `+<n>` on the spots box's top border after its left label. It MAY be clipped to the space it occupies under `QGDXC-TUI-0013`. | Test |
+| `QGDXC-TUI-0125` | While space-weather fetching is running under `QGDXC-TUI-0111` and the library returns at least one item in force at the interface's UTC clock (`QGDXC-SWX-0011`), the interface MUST show a ribbon on every page: `▌<KIND> <headline text after its label>`, then ` · until HH:MM UTC` when the item has an end (`MM-DD HH:MM UTC` when not today), then `  +<n>` when `<n>` more items are in force. `<KIND>` is `ALERT`, `WARNING` or `WATCH` (`CONTINUED ALERT` and `EXTENDED WARNING` read `ALERT` and `WARNING`). The ribbon MUST use the bad role for alerts, the warning role for warnings and the accent role for watches, and its text MUST be redacted under `QGDXC-SEC-0005` and escaped under `QGDXC-TUI-0013`. With nothing in force, or before fetching has started, no ribbon MUST be shown, and the ribbon MUST NOT cause any request. | Test |
+| `QGDXC-TUI-0126` | At widths of at least 100 columns the ribbon MUST occupy the bands box's first row below the band counts when the box has such a row, and otherwise the bands box's top border after its title. Below 100 columns it MUST show only `▌<KIND>` and `+<n>` on the spots box's top border after its left label, or on the history page, whose charts replace that box, on the first chart's top border after its title. It MAY be clipped to the space it occupies under `QGDXC-TUI-0013`. | Test |
 
 ## F.13 Space-weather history
 

@@ -83,12 +83,10 @@ pub(super) enum Data {
     Xrays(Vec<swx::Xray>),
     WindSpeed(swx::WindSpeed),
     WindField(swx::WindField),
-    Alerts(Vec<DisplayAlert>),
-}
-
-pub(super) struct DisplayAlert {
-    pub group: usize,
-    pub alert: swx::Alert,
+    Alerts {
+        values: Vec<swx::Alert>,
+        groups: Vec<usize>,
+    },
 }
 
 impl Data {
@@ -103,21 +101,18 @@ impl Data {
             Product::WindField => swx::wind_field(bytes).map(Self::WindField),
             Product::Alerts => {
                 // Keep the grouping identity even if two IDs redact to the same text.
-                let mut groups = std::collections::HashMap::new();
-                Ok(Self::Alerts(
-                    swx::alerts(bytes)?
-                        .into_iter()
-                        .map(|mut alert| {
-                            let next = groups.len();
-                            let group = *groups.entry(alert.product_id.clone()).or_insert(next);
-                            redact(&mut alert.product_id);
-                            if let Some(headline) = &mut alert.headline {
-                                redact(headline);
-                            }
-                            DisplayAlert { group, alert }
-                        })
-                        .collect(),
-                ))
+                let mut ids = std::collections::HashMap::new();
+                let mut values = swx::alerts(bytes)?;
+                let mut groups = Vec::with_capacity(values.len());
+                for alert in &mut values {
+                    let next = ids.len();
+                    groups.push(*ids.entry(alert.product_id.clone()).or_insert(next));
+                    redact(&mut alert.product_id);
+                    if let Some(headline) = &mut alert.headline {
+                        redact(headline);
+                    }
+                }
+                Ok(Self::Alerts { values, groups })
             }
         }
     }

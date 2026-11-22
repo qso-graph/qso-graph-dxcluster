@@ -696,6 +696,167 @@ fn install_alerts(m: &mut Model, alerts: &[(&str, &str, &str)]) {
 }
 
 #[test]
+fn ribbon_waits_for_alerts_and_expires_on_the_model_clock() {
+    // QGDXC-TUI-0125.
+    let mut m = weather_model();
+    m.spots_view = SpotsView::List;
+    for width in [80, 140] {
+        assert!(!screen_text(&screen(&m, width, 24, Duration::ZERO)).contains('▌'));
+    }
+    install_alerts(&mut m, &[]);
+    assert!(!screen_text(&screen(&m, 80, 24, Duration::ZERO)).contains('▌'));
+    install_alerts(
+        &mut m,
+        &[(
+            "QX20",
+            "2026-11-22 20:02:00",
+            "ALERT: Geomagnetic storm\nIssue Time: 2026 Nov 22 2002 UTC",
+        )],
+    );
+    assert!(!screen_text(&screen(&m, 80, 24, Duration::ZERO)).contains('▌'));
+    location(&screen(&m, 80, 24, Duration::from_secs(60)), "▌ALERT");
+    assert!(!screen_text(&screen(&m, 80, 24, Duration::from_secs(3 * 3600 + 60))).contains('▌'));
+}
+
+#[test]
+fn ribbon_displays_each_kind_with_its_role_and_utc_end() {
+    // QGDXC-TUI-0125.
+    let mut m = weather_model();
+    m.spots_view = SpotsView::List;
+    for (message, expected, role) in [
+        (
+            "ALERT: Geomagnetic storm\nIssue Time: 2026 Nov 22 1900 UTC",
+            "▌ALERT Geomagnetic storm · until 22:00 UTC",
+            Role::Bad,
+        ),
+        (
+            "CONTINUED ALERT: Geomagnetic storm\nIssue Time: 2026 Nov 22 2000 UTC",
+            "▌ALERT Geomagnetic storm · until 23:00 UTC",
+            Role::Bad,
+        ),
+        (
+            concat!(
+                "WARNING: Geomagnetic storm\nIssue Time: 2026 Nov 22 1900 UTC\n",
+                "Valid From: 2026 Nov 22 1900 UTC\nValid To: 2026 Nov 22 2200 UTC",
+            ),
+            "▌WARNING Geomagnetic storm · until 22:00 UTC",
+            Role::Warning,
+        ),
+        (
+            concat!(
+                "EXTENDED WARNING: Geomagnetic storm\nIssue Time: 2026 Nov 22 2000 UTC\n",
+                "Now Valid Until: 2026 Nov 23 0200 UTC\nExtension to Serial Number: 1",
+            ),
+            "▌WARNING Geomagnetic storm · until 11-23 02:00 UTC",
+            Role::Warning,
+        ),
+        (
+            concat!(
+                "WATCH: Geomagnetic storm\nIssue Time: 2026 Nov 22 1900 UTC\n",
+                "Highest Storm Level Predicted by Day:\nNov 23:  G1 (Minor)",
+            ),
+            "▌WATCH Geomagnetic storm · until 11-23 23:59 UTC",
+            Role::Accent,
+        ),
+    ] {
+        install_alerts(&mut m, &[("QX20", "2026-11-22 20:00:00", message)]);
+        let grid = screen(&m, 180, 24, Duration::ZERO);
+        let (x, y) = location(&grid, expected);
+        let fg = m.appearance.style(role).fg.unwrap();
+        assert!((x..x + expected.chars().count() as u16).all(|column| grid[(column, y)].fg == fg));
+    }
+}
+
+#[test]
+fn ribbon_uses_the_first_free_bands_row_or_the_top_border() {
+    // QGDXC-TUI-0126.
+    for sources in [1, 2, 3] {
+        let mut m = Model::new(
+            (1..=sources).map(|i| format!("source{i}")).collect(),
+            100,
+            100,
+        );
+        m.utc_epoch = WEATHER_EPOCH;
+        install_alerts(
+            &mut m,
+            &[(
+                "QX20",
+                "2026-11-22 20:00:00",
+                "ALERT: Geomagnetic storm\nIssue Time: 2026 Nov 22 2000 UTC",
+            )],
+        );
+        let grid = screen(&m, 100, 24, Duration::ZERO);
+        let expected = if sources == 3 { (52, 7) } else { (59, 1) };
+        assert_eq!(location(&grid, "▌ALERT Geomagnetic"), expected);
+        assert_eq!(grid[(99, 1)].symbol(), "╮");
+        assert!(row(&grid, 6).chars().skip(50).any(|ch| ch == '0'));
+    }
+}
+
+#[test]
+fn ribbon_is_compact_on_the_top_border_of_every_page() {
+    // QGDXC-TUI-0125 and QGDXC-TUI-0126.
+    let mut m = weather_model();
+    install_alerts(
+        &mut m,
+        &[
+            (
+                "QX20",
+                "2026-11-22 20:00:00",
+                "ALERT: Geomagnetic storm\nIssue Time: 2026 Nov 22 2000 UTC",
+            ),
+            (
+                "QX21",
+                "2026-11-22 19:00:00",
+                "ALERT: X-ray event\nIssue Time: 2026 Nov 22 1900 UTC",
+            ),
+        ],
+    );
+    for (page, title) in [
+        (SpotsView::List, "spots newest first"),
+        (SpotsView::Map, "map"),
+        (SpotsView::Beacons, "NCDXF/IARU beacons"),
+        (SpotsView::Weather, "space weather · NOAA SWPC"),
+        (SpotsView::History, "Solar flux (sfu) · 30 days"),
+    ] {
+        m.spots_view = page;
+        let grid = screen(&m, 80, 24, Duration::ZERO);
+        let (x, y) = location(&grid, "▌ALERT  +1");
+        let (label, label_row) = location(&grid, title);
+        assert_eq!((y, label_row), (2, 2));
+        assert!(x >= label + title.chars().count() as u16);
+        let line = row(&grid, y);
+        assert!(
+            !line.contains("Geomagnetic") && !line.contains("until"),
+            "{line}"
+        );
+
+        let grid = screen(&m, 180, 24, Duration::ZERO);
+        assert_eq!(
+            location(&grid, "▌ALERT Geomagnetic storm · until 23:00 UTC  +1").1,
+            1
+        );
+    }
+}
+
+#[test]
+fn ribbon_escapes_the_headline_before_drawing() {
+    // QGDXC-TUI-0125, QGDXC-TUI-0013.
+    let mut m = weather_model();
+    install_alerts(
+        &mut m,
+        &[(
+            "QX20",
+            "2026-11-22 20:00:00",
+            "ALERT: Geomagnetic \u{1b}[31m\nIssue Time: 2026 Nov 22 2000 UTC",
+        )],
+    );
+    let grid = screen(&m, 180, 24, Duration::ZERO);
+    location(&grid, r"▌ALERT Geomagnetic \u{001b}[31m · until 23:00 UTC");
+    assert!(!screen_text(&grid).contains('\u{1b}'));
+}
+
+#[test]
 fn view_shows_waiting_values_alerts_and_refresh_status() {
     // QGDXC-TUI-0113 and QGDXC-TUI-0114.
     let mut m = weather_model();

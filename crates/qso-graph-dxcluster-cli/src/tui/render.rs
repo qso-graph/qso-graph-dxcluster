@@ -12,6 +12,7 @@ use ratatui::text::Span;
 use ratatui::{Frame, layout::Rect, widgets::Paragraph};
 use std::time::Duration;
 
+mod ribbon;
 mod space_weather;
 mod weather_history;
 
@@ -169,6 +170,7 @@ pub fn draw(frame: &mut Frame<'_>, model: &Model, now: Duration) {
 
 const SUP: [&str; 8] = ["¹", "²", "³", "⁴", "⁵", "⁶", "⁷", "⁸"];
 const BLOCK: [char; 9] = [' ', '▁', '▂', '▃', '▄', '▅', '▆', '▇', '█'];
+const BAND_CHART_ROWS: u16 = 5;
 const BAND_ROLES: [Role; 11] = [
     Role::B160,
     Role::B80,
@@ -264,7 +266,7 @@ fn sides(frame: &mut Frame<'_>, x: u16, y: u16, width: u16, a: Appearance) {
     put(frame, x + width - 1, y, 1, "│", a.style(Role::Border));
 }
 fn panel_rows(sources: usize) -> u16 {
-    (sources as u16 * 2).max(5)
+    (sources as u16 * 2).max(BAND_CHART_ROWS)
 }
 pub fn list_rows(width: u16, height: u16, sources: usize) -> u16 {
     height.saturating_sub(if width >= 100 {
@@ -434,7 +436,9 @@ fn dashboard(frame: &mut Frame<'_>, m: &Model, now: Duration) {
     let wide = w >= 100;
     let a = m.appearance;
     // Set foreground only. Every unused cell retains the terminal background.
-    let date = utc(m.utc_epoch.saturating_add(now.as_secs()));
+    let utc_now = m.utc_epoch.saturating_add(now.as_secs());
+    let date = utc(utc_now);
+    let ribbon = ribbon::Ribbon::current(m, utc_now);
     let date_width = if wide { 21 } else { 21.min(w / 3) };
     let mut row = Row::new(frame, 0, 0, w - date_width - 1);
     row.ui(" QG DX Cluster ", a.chip(true));
@@ -486,7 +490,13 @@ fn dashboard(frame: &mut Frame<'_>, m: &Model, now: Duration) {
             .filter_map(|(i, source)| source_detail(source, now).map(|text| (i, text)))
             .collect();
         border(frame, (0, 1, lw), true, " sources ", " 1-8 toggles ", a);
-        border(frame, (lw, 1, rw), true, " bands ", " last 15 min ", a);
+        ribbon::panel_top(
+            frame,
+            (lw, 1, rw),
+            (" bands ", " last 15 min "),
+            a,
+            ribbon.as_ref().filter(|_| rows == BAND_CHART_ROWS),
+        );
         let mut counts = [0; 11];
         for b in m
             .activity
@@ -538,7 +548,7 @@ fn dashboard(frame: &mut Frame<'_>, m: &Model, now: Duration) {
                 row.ui(" ", a.style(Role::Dim));
                 row.safe(detail, (lw - 6) as usize, false, a.style(Role::Dim), false);
             }
-            if r < 5 {
+            if r < BAND_CHART_ROWS {
                 let cell = (rw - 3) / 11;
                 for i in 0..11 {
                     let text = if r < 3 {
@@ -572,6 +582,11 @@ fn dashboard(frame: &mut Frame<'_>, m: &Model, now: Duration) {
                     );
                 }
             }
+        }
+        if rows > BAND_CHART_ROWS
+            && let Some(ribbon) = &ribbon
+        {
+            ribbon.draw(frame, (lw + 2, 2 + BAND_CHART_ROWS, rw - 4), a);
         }
         border(frame, (0, rows + 2, lw), false, "", "", a);
         border(frame, (lw, rows + 2, rw), false, "", "", a);
@@ -625,17 +640,26 @@ fn dashboard(frame: &mut Frame<'_>, m: &Model, now: Duration) {
         )
     };
     let bounds = (title_y, area.height - 2);
+    let compact_ribbon = ribbon.as_ref().filter(|_| !wide);
     match m.spots_view {
-        SpotsView::Weather => space_weather::draw(frame, bounds, m, now),
-        SpotsView::History => weather_history::draw(frame, bounds, m, now),
+        SpotsView::Weather => space_weather::draw(frame, bounds, m, now, compact_ribbon),
+        SpotsView::History => weather_history::draw(frame, bounds, m, now, compact_ribbon),
         SpotsView::Beacons => beacon_view(
             frame,
             bounds,
             m,
             now,
             " SNR dB · last 15 min · all sources ",
+            compact_ribbon,
         ),
-        SpotsView::Map => spot_map(frame, bounds, m, now, &right_filters(m, &filters)),
+        SpotsView::Map => spot_map(
+            frame,
+            bounds,
+            m,
+            now,
+            &right_filters(m, &filters),
+            compact_ribbon,
+        ),
         SpotsView::List => {}
     }
     if m.spots_view != SpotsView::List {
@@ -648,7 +672,7 @@ fn dashboard(frame: &mut Frame<'_>, m: &Model, now: Duration) {
     } else {
         filters.clone()
     };
-    border(frame, (0, title_y, w), true, left, &right, a);
+    ribbon::panel_top(frame, (0, title_y, w), (left, &right), a, compact_ribbon);
     put(
         frame,
         9,
@@ -836,13 +860,14 @@ fn spot_map(
     m: &Model,
     now: Duration,
     right: &str,
+    ribbon: Option<&ribbon::Ribbon<'_>>,
 ) {
     use ratatui::symbols::Marker;
     use ratatui::widgets::canvas::{Canvas, Circle, Line, Map, MapResolution, Points};
     let a = m.appearance;
     let w = frame.area().width;
     let paths = map_paths(m, now);
-    border(frame, (0, top, w), true, " map ", right, a);
+    ribbon::panel_top(frame, (0, top, w), (" map ", right), a, ribbon);
     for y in top + 1..bottom {
         sides(frame, 0, y, w, a);
     }
@@ -935,21 +960,24 @@ fn beacon_view(
     m: &Model,
     now: Duration,
     right: &str,
+    ribbon: Option<&ribbon::Ribbon<'_>>,
 ) {
     use beacons::{BEACONS, FREQUENCIES};
     let a = m.appearance;
     let w = frame.area().width;
     let utc = m.utc_epoch.saturating_add(now.as_secs());
-    border(
+    ribbon::panel_top(
         frame,
         (0, top, w),
-        true,
-        &format!(
-            " NCDXF/IARU beacons · next in {}s ",
-            beacons::seconds_left(utc)
+        (
+            &format!(
+                " NCDXF/IARU beacons · next in {}s ",
+                beacons::seconds_left(utc)
+            ),
+            right,
         ),
-        right,
         a,
+        ribbon,
     );
     for y in top + 1..bottom {
         sides(frame, 0, y, w, a);

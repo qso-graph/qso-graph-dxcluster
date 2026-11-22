@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-use qso_graph_spaceweather::{self as swx, Error, Product, Reason};
+use qso_graph_spaceweather::{self as swx, Alert, AlertFamily, AlertKind, Error, Product, Reason};
 use serde_json::{Value, json};
 
 const FLUX: &str = "products_summary_10cm-flux.json";
@@ -69,6 +69,248 @@ fn refusal(product: Product, reason: Reason, result: Result<impl std::fmt::Debug
 
 fn body(name: &str) -> Value {
     serde_json::from_slice(&fixture(name)).unwrap()
+}
+
+fn alert_messages(messages: &[(&str, &str)]) -> Vec<Alert> {
+    let entries: Vec<_> = messages
+        .iter()
+        .map(|(id, message)| {
+            json!({"product_id": id, "issue_datetime": "2026-11-19 00:00:00", "message": message})
+        })
+        .collect();
+    swx::alerts(&serde_json::to_vec(&entries).unwrap()).unwrap()
+}
+
+fn active_serials(alerts: &[Alert], time: i64) -> Vec<u64> {
+    swx::in_force(alerts, time)
+        .iter()
+        .map(|alert| alert.serial.unwrap())
+        .collect()
+}
+
+#[test]
+fn noaa_warnings_and_alerts_are_in_force_in_severity_and_issue_order() {
+    // QGDXC-SWX-0009 and QGDXC-SWX-0011.
+    let alerts = swx::alerts(&fixture(ALERTS)).unwrap();
+    let serial = |n| alerts.iter().find(|a| a.serial == Some(n)).unwrap();
+    let original = serial(5456);
+    assert_eq!(original.kind, Some(AlertKind::Warning));
+    assert_eq!(original.message_issue_time, Some(1_795_048_860));
+    assert_eq!(original.valid_from, Some(1_795_048_800));
+    assert_eq!(original.valid_to, Some(1_795_057_200));
+    assert_eq!(serial(2276).valid_from, Some(1_795_049_700));
+    assert_eq!(serial(2698).message_issue_time, Some(1_795_049_160));
+    assert_eq!(serial(2063).message_issue_time, Some(1_795_050_480));
+    let extension = serial(5457);
+    assert_eq!(extension.kind, Some(AlertKind::ExtendedWarning));
+    assert_eq!(extension.extended_serial, Some(5456));
+    assert_eq!(extension.valid_until, Some(1_795_078_800));
+
+    for (time, expected) in [
+        (1_795_048_799, [].as_slice()),             // 00:39:59 UTC.
+        (1_795_048_800, &[5456]),                   // 00:40 UTC.
+        (1_795_051_079, &[2063, 2698, 2276, 5456]), // 01:17:59 UTC.
+        (1_795_051_080, &[2063, 2698, 5457, 2276]), // 01:18 UTC.
+        (1_795_051_800, &[2063, 2698, 5457, 2276]), // 01:30 UTC.
+        (1_795_057_200, &[2063, 2698, 5457]),       // 03:00 UTC.
+        (1_795_059_000, &[2063, 2698, 5457]),       // 03:30 UTC.
+        (1_795_059_960, &[2063, 5457]),             // 03:46 UTC.
+        (1_795_078_740, &[5457]),                   // 08:59 UTC.
+        (1_795_078_800, &[]),                       // 09:00 UTC.
+        (1_795_078_860, &[]),                       // 09:01 UTC.
+    ] {
+        assert_eq!(active_serials(&alerts, time), expected, "{time}");
+    }
+}
+
+#[test]
+fn noaa_watch_includes_the_last_second_of_its_last_storm_day() {
+    // QGDXC-SWX-0009 and QGDXC-SWX-0011.
+    let alerts = swx::alerts(&fixture(ALERTS)).unwrap();
+    let watch = alerts.iter().find(|a| a.serial == Some(1138)).unwrap();
+    assert_eq!(watch.kind, Some(AlertKind::Watch));
+    assert_eq!(watch.message_issue_time, Some(1_794_749_640));
+    let days: Vec<_> = watch
+        .watch_days
+        .as_ref()
+        .unwrap()
+        .iter()
+        .map(|day| (day.date, day.level.as_str()))
+        .collect();
+    assert_eq!(
+        days,
+        [
+            (1_794_787_200, "None"),
+            (1_794_873_600, "G1"),
+            (1_794_960_000, "G1"),
+        ]
+    );
+    assert!(active_serials(&alerts, 1_794_749_639).is_empty());
+    assert_eq!(active_serials(&alerts, 1_794_749_640), [1138]);
+    assert_eq!(active_serials(&alerts, 1_795_046_399), [1138]);
+    assert_eq!(watch.end_time(), Some(1_795_046_399));
+    assert!(active_serials(&alerts, 1_795_046_400).is_empty());
+}
+
+#[test]
+fn alert_families_exclude_noaa_electron_flux_and_type_ii_and_iv_radio() {
+    // QGDXC-SWX-0010 and QGDXC-SWX-0011.
+    let alerts = swx::alerts(&fixture(ALERTS)).unwrap();
+    for name in ["Electron", "Type II Radio", "Type IV Radio"] {
+        let alert = alerts
+            .iter()
+            .find(|alert| {
+                alert
+                    .headline
+                    .as_deref()
+                    .is_some_and(|headline| headline.contains(name))
+                    && matches!(
+                        alert.kind,
+                        Some(AlertKind::Alert | AlertKind::ContinuedAlert)
+                    )
+            })
+            .unwrap();
+        assert_eq!(alert.family(), AlertFamily::Other, "{name}");
+        assert!(
+            swx::in_force(
+                std::slice::from_ref(alert),
+                alert.message_issue_time.unwrap()
+            )
+            .is_empty()
+        );
+    }
+    for (headline, expected) in [
+        ("gEoMaGnEtIc storm", AlertFamily::Geomagnetic),
+        ("x-RAY flux", AlertFamily::RadioBlackout),
+        ("radio BLACKOUT", AlertFamily::RadioBlackout),
+        ("pROTON event", AlertFamily::SolarRadiation),
+        ("sOLar RADIATION storm", AlertFamily::SolarRadiation),
+    ] {
+        let message = format!("  ALERT: {headline}\nIssue Time: 2026 Nov 19 0130 UTC");
+        let alerts = alert_messages(&[("QX20", &message)]);
+        assert_eq!(alerts[0].family(), expected);
+        assert_eq!(swx::in_force(&alerts, 1_795_051_800).len(), 1);
+    }
+}
+
+#[test]
+fn cancellation_ends_its_warning_at_the_message_issue_time() {
+    // QGDXC-SWX-0009 and QGDXC-SWX-0011.
+    let mut alerts = swx::alerts(&fixture(ALERTS)).unwrap();
+    alerts.extend(alert_messages(&[(
+        "QX20",
+        concat!(
+            "CANCEL WARNING: Geomagnetic warning ended\n",
+            "Issue Time: 2026 Nov 19 0200 UTC\nCancel Serial Number: 2276",
+        ),
+    )]));
+    let cancel = alerts.last().unwrap();
+    assert_eq!(cancel.kind, Some(AlertKind::CancelWarning));
+    assert_eq!(cancel.cancelled_serial, Some(2276));
+    assert_eq!(
+        active_serials(&alerts, 1_795_053_599),
+        [2063, 2698, 5457, 2276]
+    );
+    assert_eq!(active_serials(&alerts, 1_795_053_600), [2063, 2698, 5457]);
+}
+
+#[test]
+fn watch_days_roll_into_january_and_ignore_trailing_none() {
+    // QGDXC-SWX-0009 and QGDXC-SWX-0011.
+    let alerts = alert_messages(&[(
+        "QX20",
+        concat!(
+            "WATCH: Geomagnetic storm\nSerial Number: 1\nIssue Time: 2026 Dec 30 1200 UTC\n",
+            "Highest Storm Level Predicted by Day:\nDec 31:  G1 (Minor)   Jan 01:  G2 (Moderate)   Jan 02:  None",
+        ),
+    )]);
+    let watch = &alerts[0];
+    let dates: Vec<_> = watch
+        .watch_days
+        .as_ref()
+        .unwrap()
+        .iter()
+        .map(|day| day.date)
+        .collect();
+    assert_eq!(dates, [1_798_675_200, 1_798_761_600, 1_798_848_000]);
+    assert_eq!(active_serials(&alerts, 1_798_847_999), [1]);
+    assert!(active_serials(&alerts, 1_798_848_000).is_empty());
+}
+
+#[test]
+fn newest_issued_watch_per_family_supersedes_the_older_watch() {
+    // QGDXC-SWX-0011.
+    let alerts = alert_messages(&[
+        (
+            "QX20",
+            concat!(
+                "WATCH: Geomagnetic storm\nSerial Number: 1\nIssue Time: 2026 Nov 19 0000 UTC\n",
+                "Highest Storm Level Predicted by Day:\nNov 21:  G1",
+            ),
+        ),
+        (
+            "QX21",
+            concat!(
+                "WATCH: Geomagnetic storm\nSerial Number: 2\nIssue Time: 2026 Nov 19 0100 UTC\n",
+                "Highest Storm Level Predicted by Day:\nNov 20:  G1",
+            ),
+        ),
+        (
+            "QX22",
+            concat!(
+                "WATCH: Solar Radiation storm\nSerial Number: 3\nIssue Time: 2026 Nov 19 0001 UTC\n",
+                "Highest Storm Level Predicted by Day:\nNov 21:  S1",
+            ),
+        ),
+        (
+            "QX23",
+            concat!(
+                "CANCEL WATCH: Geomagnetic storm\nIssue Time: 2026 Nov 19 0200 UTC\n",
+                "Cancel Serial Number: 2",
+            ),
+        ),
+    ]);
+    assert_eq!(active_serials(&alerts, 1_795_049_999), [3, 1]);
+    assert_eq!(active_serials(&alerts, 1_795_050_000), [2, 3]);
+    assert_eq!(active_serials(&alerts, 1_795_053_600), [3]);
+}
+
+#[test]
+fn malformed_optional_alert_metadata_does_not_refuse_the_product() {
+    // QGDXC-SWX-0009 and QGDXC-SWX-0011.
+    let alerts = alert_messages(&[
+        (
+            "QX20",
+            concat!(
+                "WARNING: Geomagnetic storm\nIssue Time: 2026 Nov 19 0130 UTC\n",
+                "Serial Number: +42\nValid From: 2026 Nov 19 0000 UTC\nValid To: 2026 Nov 31 0300 UTC",
+            ),
+        ),
+        (
+            "QX21",
+            "ALERT: Geomagnetic storm\nIssue Time: 2026 Nov 19 2460 UTC",
+        ),
+        (
+            "QX22",
+            "SUMMARY: Geomagnetic storm\nIssue Time: 2026 Nov 19 0130 UTC",
+        ),
+        (
+            "QX23",
+            concat!(
+                "WATCH: Geomagnetic storm\nIssue Time: 2026 Nov 19 0000 UTC\n",
+                "Highest Storm Level Predicted by Day:\nNov 31:  G1",
+            ),
+        ),
+        ("QX24", "Issue Time: 2026 Nov 19 0000 UTC"),
+    ]);
+    assert_eq!(alerts.len(), 5);
+    assert_eq!(alerts[0].serial, None);
+    assert_eq!(alerts[0].valid_from, Some(1_795_046_400));
+    assert_eq!(alerts[0].valid_to, None);
+    assert_eq!(alerts[1].message_issue_time, None);
+    assert_eq!(alerts[3].watch_days, None);
+    assert_eq!(alerts[4].kind, None);
+    assert!(swx::in_force(&alerts, 1_795_051_800).is_empty());
 }
 
 #[test]

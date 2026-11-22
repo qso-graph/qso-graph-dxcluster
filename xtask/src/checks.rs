@@ -1107,6 +1107,10 @@ const NCDXF_BEACON_CALLS: [&[&str]; 18] = [
     &["OA", "4B"],
     &["YV", "5B"],
 ];
+/// The station whose hourly geophysical summary cluster nodes relay as WCY, written in
+/// pieces so this file holds none, and the only two files that may name it (its credit).
+const WCY_STATION: [&str; 2] = ["DK", "0WCY"];
+const WCY_CREDIT_FILES: [&str; 2] = ["README.md", "spec/annex-f-tui.md"];
 const ADIF_CALL_SHAPED_MODES: &[&[&str]] = &[
     &["8", "PSK", "1000", "F"],
     &["8", "PSK", "1200", "F"],
@@ -1259,6 +1263,22 @@ pub(crate) fn public_file_sanitized(file: &Path, source: &str) -> bool {
                 .collect::<Vec<_>>()
                 .join(" ");
         }
+        // The WCY summary's source station, credited in exactly these two files (F.10).
+        if WCY_CREDIT_FILES.iter().any(|f| file == Path::new(f)) {
+            let station = WCY_STATION.concat();
+            line = line
+                .split(' ')
+                .map(|word| {
+                    let core = word.trim_end_matches([',', '.', ';', ':']);
+                    if core == station {
+                        word.replacen(&station, "STATION", 1)
+                    } else {
+                        word.to_owned()
+                    }
+                })
+                .collect::<Vec<_>>()
+                .join(" ");
+        }
         if file == Path::new(BEACON_FILE) {
             // Exactly the 18 quoted beacon calls; any other call in the file still fails.
             for parts in NCDXF_BEACON_CALLS {
@@ -1405,7 +1425,7 @@ pub fn vet() -> Result<(), String> {
     Ok(())
 }
 // QGDXC-SWX-0007: start each smoke run with the corresponding NOAA fixture.
-pub const WEATHER_FUZZ: [(&str, &str, &str); 8] = [
+pub const WEATHER_FUZZ: [(&str, &str, &str); 9] = [
     ("swx_solar_flux", "products_summary_10cm-flux.json", "4097"),
     ("swx_flux_history", "json_f107_cm_flux.json", "65537"),
     (
@@ -1426,14 +1446,19 @@ pub const WEATHER_FUZZ: [(&str, &str, &str); 8] = [
         "4097",
     ),
     ("swx_alerts", "products_alerts.json", "262145"),
+    ("swx_alert_force", "products_alerts.json", "262153"),
 ];
 pub fn seed_fuzz() -> Result<(), String> {
     for (target, fixture, _) in WEATHER_FUZZ {
         let dir = Path::new("fuzz/corpus").join(target);
         fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
         let source = Path::new("crates/qso-graph-spaceweather/tests/fixtures").join(fixture);
-        fs::copy(&source, dir.join("noaa.json"))
-            .map_err(|e| format!("{}: {e}", source.display()))?;
+        let mut bytes = fs::read(&source).map_err(|e| format!("{}: {e}", source.display()))?;
+        if target == "swx_alert_force" {
+            // 2026-11-19 01:30 UTC.
+            bytes.extend_from_slice(&1_795_051_800_i64.to_le_bytes());
+        }
+        fs::write(dir.join("noaa.json"), bytes).map_err(|e| e.to_string())?;
     }
     for target in [
         "values", "dx_de", "cc11", "other", "rbn", "framer", "telnet", "session", "sources",
@@ -2008,6 +2033,46 @@ mod privacy_complexity_tests {
         let small = cost(4096).max(std::time::Duration::from_micros(50));
         let large = cost(65536);
         assert!(large < small * 64, "4096: {small:?}, 65536: {large:?}");
+    }
+}
+#[cfg(test)]
+mod wcy_credit_exemption {
+    use super::*;
+    #[test]
+    fn exempts_only_the_wcy_station_in_its_two_credit_files() {
+        let station = WCY_STATION.concat();
+        let credit =
+            format!("are the hourly summary of {station}, run by volunteers of the DARC.\n");
+        for file in WCY_CREDIT_FILES {
+            assert!(public_file_sanitized(Path::new(file), &credit), "{file}");
+        }
+        // The same credit anywhere else still fails.
+        for file in ["docs/CONFORMANCE.md", "spec/annex-b-dxspider.md"] {
+            assert!(!public_file_sanitized(Path::new(file), &credit), "{file}");
+        }
+        let literal = format!("let credit = \"summary of {station}, run by the DARC\";\n");
+        assert!(!public_file_sanitized(
+            Path::new("crates/qso-graph-dxcluster-cli/src/tui/tests.rs"),
+            &literal
+        ));
+        // Inside a credit file, another call, or the station joined to other text, still fails.
+        let call = ["W", "1", "ABC"].concat();
+        assert!(!public_file_sanitized(
+            Path::new("README.md"),
+            &format!("spotted by {call} today\n")
+        ));
+        assert!(!public_file_sanitized(
+            Path::new("README.md"),
+            &format!("see {station}-2 also\n")
+        ));
+        // The real files pass as a whole.
+        for file in WCY_CREDIT_FILES {
+            let source = std::fs::read_to_string(
+                Path::new(env!("CARGO_MANIFEST_DIR")).join("..").join(file),
+            )
+            .unwrap();
+            assert!(public_file_sanitized(Path::new(file), &source), "{file}");
+        }
     }
 }
 #[cfg(test)]

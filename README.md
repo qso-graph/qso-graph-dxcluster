@@ -67,6 +67,8 @@ When two nodes relay the same spot, the list shows it once, and its source reads
 Press `s` to hide self-spots, where a station spots itself (`QGDXC-TUI-0045`).
 The latest solar figures from the nodes' WWV and WCY broadcasts (SFI, A, K, and
 from WCY expK and R) show under the band chart, and go dim once out of date (F.10).
+WWV figures are NOAA's geophysical alert as broadcast by NIST's station WWV; WCY figures
+are the hourly summary of DK0WCY, run by volunteers of the DARC. Cluster nodes relay both.
 Press `B` (capital) for the NCDXF/IARU beacons: which of the 18 beacons is on
 14.100, 18.110, 21.150, 24.930 and 28.200 MHz right now and which is next, worked
 out from the clock, with each beacon's recent reception reports from the Reverse
@@ -81,6 +83,7 @@ IARU and their volunteer hosts.
 Press `W` (capital) for space weather, with data from the
 [NOAA Space Weather Prediction Center](https://www.swpc.noaa.gov/).
 Fetching starts when you first open the view or use `--space-weather`.
+When an alert, warning, or watch is in force, a ribbon shows it on every dashboard page.
 Press `W` again for charts of solar flux, Kp, X-rays, and solar wind (`QGDXC-TUI-0120`).
 Solar flux, planetary K, and NOAA scales have a 15-minute minimum between
 requests. X-rays, solar wind, and alerts have a five-minute minimum

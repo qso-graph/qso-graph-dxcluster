@@ -139,3 +139,10 @@ path = "fuzz_targets/swx_alerts.rs"
 test = false
 doc = false
 bench = false
+
+[[bin]]
+name = "swx_alert_force"
+path = "fuzz_targets/swx_alert_force.rs"
+test = false
+doc = false
+bench = false

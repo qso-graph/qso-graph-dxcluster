@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! Calendar validation for QGDXC-SWX-0003.
+//! Calendar validation for QGDXC-SWX-0003 and QGDXC-SWX-0009.
 
 fn digits(bytes: &[u8]) -> Option<i64> {
     bytes.iter().try_fold(0, |n, b| match b {
@@ -21,17 +21,29 @@ pub(super) fn datetime(date: &[u8], clock: &[u8]) -> Option<i64> {
     let hour = digits(&[h1, h2])?;
     let minute = digits(&[min1, min2])?;
     let second = digits(&[s1, s2])?;
-    if !(2000..=2099).contains(&year)
-        || !(1..=12).contains(&month)
-        || hour > 23
-        || minute > 59
-        || second > 59
-    {
+    if !(2000..=2099).contains(&year) || hour > 23 || minute > 59 || second > 59 {
         return None;
     }
+    Some(midnight(year, month, day)? + hour * 3600 + minute * 60 + second)
+}
+
+pub(super) fn month(name: &str) -> Option<i64> {
+    [
+        "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+    ]
+    .iter()
+    .position(|&month| month == name)
+    .map(|index| index as i64 + 1)
+}
+
+pub(super) fn midnight(year: i64, month: i64, day: i64) -> Option<i64> {
+    if !(1..=9999).contains(&year) || !(1..=12).contains(&month) {
+        return None;
+    }
+    let leap = year % 4 == 0 && (year % 100 != 0 || year % 400 == 0);
     let months = [
         31,
-        28 + i64::from(year % 4 == 0),
+        28 + i64::from(leap),
         31,
         30,
         31,
@@ -47,11 +59,36 @@ pub(super) fn datetime(date: &[u8], clock: &[u8]) -> Option<i64> {
     if !(1..=months[month]).contains(&day) {
         return None;
     }
-    // The validated range never crosses a non-leap century.
-    let prior_years = year - 1970;
-    let prior_leaps = (year - 1969) / 4;
-    let days = prior_years * 365 + prior_leaps + months[..month].iter().sum::<i64>() + day - 1;
-    Some(days * 86_400 + hour * 3600 + minute * 60 + second)
+    let previous_year = year - 1;
+    let prior_leaps = previous_year / 4 - previous_year / 100 + previous_year / 400;
+    let days = previous_year * 365 + prior_leaps + months[..month].iter().sum::<i64>() + day - 1;
+    const UNIX_EPOCH_DAY: i64 = 719_162;
+    Some((days - UNIX_EPOCH_DAY) * 86_400)
+}
+
+pub(super) fn day(text: &str) -> Option<i64> {
+    (text.len() == 2).then(|| digits(text.as_bytes()))?
+}
+
+pub(super) fn message_time(text: &str) -> Option<(i64, i64, i64)> {
+    let mut fields = text.split_ascii_whitespace();
+    let year = fields.next()?.as_bytes();
+    if year.len() != 4 {
+        return None;
+    }
+    let year = digits(year)?;
+    let month = month(fields.next()?)?;
+    let day = day(fields.next()?)?;
+    let [h1, h2, m1, m2] = *fields.next()?.as_bytes() else {
+        return None;
+    };
+    let hour = digits(&[h1, h2])?;
+    let minute = digits(&[m1, m2])?;
+    if hour > 23 || minute > 59 || fields.next()? != "UTC" || fields.next().is_some() {
+        return None;
+    }
+    let time = midnight(year, month, day)? + hour * 3600 + minute * 60;
+    Some((time, year, month))
 }
 
 pub(super) fn iso(text: &str) -> Option<i64> {

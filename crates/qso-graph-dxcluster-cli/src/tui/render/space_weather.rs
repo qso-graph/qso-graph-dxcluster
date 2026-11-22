@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //! NOAA SWPC space-weather view (QGDXC-TUI-0114, QGDXC-TUI-0117–0119).
 
+use super::ribbon::{self, Ribbon};
 use super::{Appearance, Frame, Model, Rect, Role, Row, age, border, put, sides, spark, utc_parts};
 use crate::tui::weather::{ALERTS, Data, FEEDS, FLUX_HISTORY, Sample};
 use qso_graph_spaceweather::Alert;
@@ -9,7 +10,13 @@ use std::time::Duration;
 const DAY: i64 = 86_400;
 const NO_ALERTS: &str = "no alerts in the last 5 days";
 
-pub(super) fn draw(frame: &mut Frame<'_>, (top, bottom): (u16, u16), m: &Model, now: Duration) {
+pub(super) fn draw(
+    frame: &mut Frame<'_>,
+    (top, bottom): (u16, u16),
+    m: &Model,
+    now: Duration,
+    ribbon: Option<&Ribbon<'_>>,
+) {
     let width = frame.area().width;
     let appearance = m.appearance;
     let data = &m.weather_data;
@@ -72,17 +79,19 @@ pub(super) fn draw(frame: &mut Frame<'_>, (top, bottom): (u16, u16), m: &Model, 
     {
         status = format!(" {} failed ·{}", feed.label, status);
     }
-    border(
+    ribbon::panel_top(
         frame,
         (0, top, width),
-        true,
-        if border_headings {
-            " space weather · NOAA SWPC · conditions "
-        } else {
-            " space weather · NOAA SWPC "
-        },
-        &status,
+        (
+            if border_headings {
+                " space weather · NOAA SWPC · conditions "
+            } else {
+                " space weather · NOAA SWPC "
+            },
+            &status,
+        ),
         appearance,
+        ribbon,
     );
     border(
         frame,
@@ -192,7 +201,7 @@ fn decimal(value: f64) -> String {
     format!("{value:.1}").trim_end_matches(".0").to_owned()
 }
 
-fn stamp(time: i64, utc_now: i64) -> String {
+pub(super) fn stamp(time: i64, utc_now: i64) -> String {
     let clock = format!("{:02}:{:02} UTC", time / 3600 % 24, time / 60 % 60);
     if time / DAY == utc_now / DAY {
         clock
@@ -281,7 +290,7 @@ fn measurement(
             }
             (value.time, Vec::new())
         }
-        Data::Alerts(_) | Data::SolarFluxHistory(_) => return,
+        Data::Alerts { .. } | Data::SolarFluxHistory(_) => return,
     };
     row.ui(&format!(" {}", stamp(time, utc_now)), a.style(Role::Dim));
     if stale {
@@ -303,23 +312,24 @@ fn measurement(
 }
 
 fn recent_alerts(sample: &Sample, utc_now: i64) -> Option<Vec<(&Alert, usize)>> {
-    let Some((Data::Alerts(values), _)) = &sample.good else {
+    let Some((Data::Alerts { values, groups }, _)) = &sample.good else {
         return None;
     };
     let window = utc_now - 5 * DAY..=utc_now;
     let recent = values
         .iter()
-        .filter(|entry| window.contains(&entry.alert.issue_time));
+        .zip(groups)
+        .filter(|(alert, _)| window.contains(&alert.issue_time));
     let mut counts = vec![0; values.len()];
-    for entry in recent.clone() {
-        counts[entry.group] += 1;
+    for (_, &group) in recent.clone() {
+        counts[group] += 1;
     }
     // QGDXC-SWX-0006 puts the newest issue first, including within a second.
     Some(
         recent
-            .filter_map(|entry| {
-                let count = std::mem::take(&mut counts[entry.group]);
-                (count > 0).then_some((&entry.alert, count))
+            .filter_map(|(alert, &group)| {
+                let count = std::mem::take(&mut counts[group]);
+                (count > 0).then_some((alert, count))
             })
             .collect(),
     )

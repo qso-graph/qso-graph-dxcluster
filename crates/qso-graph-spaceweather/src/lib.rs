@@ -2,9 +2,11 @@
 #![forbid(unsafe_code)]
 //! Sans-I/O parsers for NOAA SWPC products (QGDXC-SWX-0001).
 
+mod alert;
 mod json;
 mod utc;
 
+pub use alert::{Alert, AlertFamily, AlertKind, WatchDay, in_force};
 use serde_json::Value;
 use std::{collections::BTreeMap, error, fmt};
 
@@ -142,14 +144,6 @@ pub struct WindField {
     pub time: i64,
     pub bt: f64,
     pub bz_gsm: f64,
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct Alert {
-    pub product_id: String,
-    pub issue_time: i64,
-    /// Escape this text before display.
-    pub headline: Option<String>,
 }
 
 fn parse<T>(
@@ -380,29 +374,7 @@ pub fn alerts(data: &[u8]) -> Result<Vec<Alert>, Error> {
             if message.len() > 16 * 1024 {
                 return Err(Reason::MessageLimit);
             }
-            let headline = message.lines().find(|line| {
-                let line = line.trim_start_matches(' ');
-                [
-                    "ALERT:",
-                    "WARNING:",
-                    "WATCH:",
-                    "SUMMARY:",
-                    "CANCEL WARNING:",
-                    "CANCEL WATCH:",
-                    "EXTENDED WARNING:",
-                    "CONTINUED ALERT:",
-                ]
-                .iter()
-                .any(|prefix| line.starts_with(prefix))
-            });
-            sorted.push((
-                time,
-                Alert {
-                    product_id: id.to_owned(),
-                    issue_time: time.0,
-                    headline: headline.map(str::to_owned),
-                },
-            ));
+            sorted.push((time, Alert::from_message(id, time.0, message)));
         }
         sorted.sort_by_key(|(time, _)| std::cmp::Reverse(*time));
         Ok(sorted.into_iter().map(|(_, alert)| alert).collect())

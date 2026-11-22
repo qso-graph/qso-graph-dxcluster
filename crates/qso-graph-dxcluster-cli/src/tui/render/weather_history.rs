@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //! Space-weather history (QGDXC-TUI-0121, QGDXC-TUI-0122, QGDXC-TUI-0124).
 
-use super::{Appearance, Frame, Model, Rect, Role, put, space_weather, utc_parts};
+use super::{Appearance, Frame, Model, Rect, Role, put, ribbon::Ribbon, space_weather, utc_parts};
 use crate::tui::theme::Theme;
 use crate::tui::weather::{Data, Sample};
 use qso_graph_spaceweather::Product;
@@ -20,7 +20,13 @@ use std::time::Duration;
 const DAY: i64 = 86_400;
 const HOUR: i64 = 3_600;
 
-pub(super) fn draw(frame: &mut Frame<'_>, (top, bottom): (u16, u16), model: &Model, now: Duration) {
+pub(super) fn draw(
+    frame: &mut Frame<'_>,
+    (top, bottom): (u16, u16),
+    model: &Model,
+    now: Duration,
+    ribbon: Option<&Ribbon<'_>>,
+) {
     let width = frame.area().width;
     let height = bottom - top + 1;
     let columns = if width >= 120 { 2 } else { 1 };
@@ -37,8 +43,16 @@ pub(super) fn draw(frame: &mut Frame<'_>, (top, bottom): (u16, u16), model: &Mod
             heights[2] += transfer;
         }
     }
-    let charts = [flux, kp, xrays, wind];
-    for (i, draw) in (0..columns * rows).zip(charts) {
+    let column_width = width / columns;
+    flux(
+        frame,
+        Rect::new(0, top, column_width, heights[0]),
+        model,
+        now,
+        ribbon,
+    );
+    let charts = [kp, xrays, wind];
+    for (i, draw) in (1..columns * rows).zip(charts) {
         let (column, row) = (i % columns, i / columns);
         let x = column * (width / columns);
         let y = top + heights[..usize::from(row)].iter().sum::<u16>();
@@ -70,20 +84,22 @@ pub(super) fn draw(frame: &mut Frame<'_>, (top, bottom): (u16, u16), model: &Mod
     }
 }
 
-struct Panel {
+struct Panel<'a> {
     area: Rect,
     appearance: Appearance,
     stale: bool,
     failed: bool,
+    ribbon: Option<&'a Ribbon<'a>>,
 }
 
-impl Panel {
+impl Panel<'_> {
     fn new(area: Rect, appearance: Appearance) -> Self {
         Self {
             area,
             appearance,
             stale: false,
             failed: false,
+            ribbon: None,
         }
     }
 
@@ -147,6 +163,18 @@ impl Panel {
         }
         let inner = block.inner(self.area);
         frame.render_widget(block, self.area);
+        if let Some(ribbon) = self.ribbon {
+            let start = 3 + (title.chars().count() + stale.chars().count()) as u16;
+            let room = self
+                .area
+                .width
+                .saturating_sub(start + 1 + if self.failed { 8 } else { 0 });
+            ribbon.draw(
+                frame,
+                (self.area.x + start, self.area.y, room),
+                self.appearance,
+            );
+        }
         if window.is_none() {
             frame.render_widget(
                 Paragraph::new("waiting")
@@ -205,9 +233,16 @@ fn value_axis(points: impl Iterator<Item = f64>, step: f64, floor: f64) -> Axis<
         .labels([format!("{low}"), format!("{high}")])
 }
 
-fn flux(frame: &mut Frame<'_>, area: Rect, model: &Model, now: Duration) {
-    let (panel, sample) =
+fn flux(
+    frame: &mut Frame<'_>,
+    area: Rect,
+    model: &Model,
+    now: Duration,
+    ribbon: Option<&Ribbon<'_>>,
+) {
+    let (mut panel, sample) =
         Panel::new(area, model.appearance).product(model, Product::SolarFluxHistory, now);
+    panel.ribbon = ribbon;
     let title = "Solar flux (sfu) · 30 days";
     let Some((Data::SolarFluxHistory(values), _)) = &sample.good else {
         panel.open(frame, title, None);
