@@ -1,6 +1,22 @@
 <!-- SPDX-License-Identifier: GPL-3.0-or-later -->
 # Changelog
 
+## [0.5.0]
+
+### Features
+
+- lib: carry the NCDXF/IARU beacon schedule in the library
+- tui: NCDXF/IARU beacon view with B
+- tui: show the latest WWV/WCY solar figures
+
+### Bug Fixes
+
+- tui: beacon view header says what the view uses
+
+### Documentation
+
+- readme: install with brew, apt or dnf, and drop the old status line
+
 ## [0.4.0]
 
 ### Features
