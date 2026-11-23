@@ -1,0 +1,338 @@
+[
+ {
+  "place": "Denver",
+  "latitude": 39.7392,
+  "longitude": -104.9903,
+  "day": "2026-01-15",
+  "rise": "2026-01-15T14:19:08Z",
+  "set": "2026-01-16T00:00:04Z"
+ },
+ {
+  "place": "Denver",
+  "latitude": 39.7392,
+  "longitude": -104.9903,
+  "day": "2026-03-01",
+  "rise": "2026-03-01T13:32:48Z",
+  "set": "2026-03-02T00:52:10Z"
+ },
+ {
+  "place": "Denver",
+  "latitude": 39.7392,
+  "longitude": -104.9903,
+  "day": "2026-03-20",
+  "rise": "2026-03-20T13:03:09Z",
+  "set": "2026-03-21T01:12:08Z"
+ },
+ {
+  "place": "Denver",
+  "latitude": 39.7392,
+  "longitude": -104.9903,
+  "day": "2026-06-21",
+  "rise": "2026-06-21T11:32:13Z",
+  "set": "2026-06-22T02:31:27Z"
+ },
+ {
+  "place": "Denver",
+  "latitude": 39.7392,
+  "longitude": -104.9903,
+  "day": "2026-08-26",
+  "rise": "2026-08-26T12:22:36Z",
+  "set": "2026-08-27T01:40:07Z"
+ },
+ {
+  "place": "Denver",
+  "latitude": 39.7392,
+  "longitude": -104.9903,
+  "day": "2026-09-23",
+  "rise": "2026-09-23T12:48:41Z",
+  "set": "2026-09-24T00:55:07Z"
+ },
+ {
+  "place": "Denver",
+  "latitude": 39.7392,
+  "longitude": -104.9903,
+  "day": "2026-12-21",
+  "rise": "2026-12-21T14:17:31Z",
+  "set": "2026-12-21T23:38:49Z"
+ },
+ {
+  "place": "Greenwich",
+  "latitude": 51.4769,
+  "longitude": 0.0,
+  "day": "2026-01-15",
+  "rise": "2026-01-15T07:58:46Z",
+  "set": "2026-01-15T16:20:25Z"
+ },
+ {
+  "place": "Greenwich",
+  "latitude": 51.4769,
+  "longitude": 0.0,
+  "day": "2026-03-01",
+  "rise": "2026-03-01T06:45:14Z",
+  "set": "2026-03-01T17:40:13Z"
+ },
+ {
+  "place": "Greenwich",
+  "latitude": 51.4769,
+  "longitude": 0.0,
+  "day": "2026-03-20",
+  "rise": "2026-03-20T06:02:53Z",
+  "set": "2026-03-20T18:12:59Z"
+ },
+ {
+  "place": "Greenwich",
+  "latitude": 51.4769,
+  "longitude": 0.0,
+  "day": "2026-06-21",
+  "rise": "2026-06-21T03:42:47Z",
+  "set": "2026-06-21T20:20:50Z"
+ },
+ {
+  "place": "Greenwich",
+  "latitude": 51.4769,
+  "longitude": 0.0,
+  "day": "2026-08-26",
+  "rise": "2026-08-26T05:03:00Z",
+  "set": "2026-08-26T18:59:33Z"
+ },
+ {
+  "place": "Greenwich",
+  "latitude": 51.4769,
+  "longitude": 0.0,
+  "day": "2026-09-23",
+  "rise": "2026-09-23T05:47:35Z",
+  "set": "2026-09-23T17:56:09Z"
+ },
+ {
+  "place": "Greenwich",
+  "latitude": 51.4769,
+  "longitude": 0.0,
+  "day": "2026-12-21",
+  "rise": "2026-12-21T08:03:02Z",
+  "set": "2026-12-21T15:53:04Z"
+ },
+ {
+  "place": "Sydney",
+  "latitude": -33.8688,
+  "longitude": 151.2093,
+  "day": "2026-01-15",
+  "rise": "2026-01-14T18:59:28Z",
+  "set": "2026-01-15T09:09:00Z"
+ },
+ {
+  "place": "Sydney",
+  "latitude": -33.8688,
+  "longitude": 151.2093,
+  "day": "2026-03-01",
+  "rise": "2026-02-28T19:42:35Z",
+  "set": "2026-03-01T08:31:54Z"
+ },
+ {
+  "place": "Sydney",
+  "latitude": -33.8688,
+  "longitude": 151.2093,
+  "day": "2026-03-20",
+  "rise": "2026-03-19T19:57:57Z",
+  "set": "2026-03-20T08:06:56Z"
+ },
+ {
+  "place": "Sydney",
+  "latitude": -33.8688,
+  "longitude": 151.2093,
+  "day": "2026-06-21",
+  "rise": "2026-06-20T20:59:58Z",
+  "set": "2026-06-21T06:53:47Z"
+ },
+ {
+  "place": "Sydney",
+  "latitude": -33.8688,
+  "longitude": 151.2093,
+  "day": "2026-08-26",
+  "rise": "2026-08-25T20:21:45Z",
+  "set": "2026-08-26T07:32:54Z"
+ },
+ {
+  "place": "Sydney",
+  "latitude": -33.8688,
+  "longitude": 151.2093,
+  "day": "2026-09-23",
+  "rise": "2026-09-22T19:43:57Z",
+  "set": "2026-09-23T07:51:55Z"
+ },
+ {
+  "place": "Sydney",
+  "latitude": -33.8688,
+  "longitude": 151.2093,
+  "day": "2026-12-21",
+  "rise": "2026-12-20T18:40:37Z",
+  "set": "2026-12-21T09:05:25Z"
+ },
+ {
+  "place": "Quito",
+  "latitude": -0.1807,
+  "longitude": -78.4678,
+  "day": "2026-01-15",
+  "rise": "2026-01-15T11:19:23Z",
+  "set": "2026-01-15T23:27:17Z"
+ },
+ {
+  "place": "Quito",
+  "latitude": -0.1807,
+  "longitude": -78.4678,
+  "day": "2026-03-01",
+  "rise": "2026-03-01T11:22:42Z",
+  "set": "2026-03-01T23:29:31Z"
+ },
+ {
+  "place": "Quito",
+  "latitude": -0.1807,
+  "longitude": -78.4678,
+  "day": "2026-03-20",
+  "rise": "2026-03-20T11:17:59Z",
+  "set": "2026-03-20T23:24:29Z"
+ },
+ {
+  "place": "Quito",
+  "latitude": -0.1807,
+  "longitude": -78.4678,
+  "day": "2026-06-21",
+  "rise": "2026-06-21T11:12:23Z",
+  "set": "2026-06-21T23:19:04Z"
+ },
+ {
+  "place": "Quito",
+  "latitude": -0.1807,
+  "longitude": -78.4678,
+  "day": "2026-08-26",
+  "rise": "2026-08-26T11:12:28Z",
+  "set": "2026-08-26T23:18:47Z"
+ },
+ {
+  "place": "Quito",
+  "latitude": -0.1807,
+  "longitude": -78.4678,
+  "day": "2026-09-23",
+  "rise": "2026-09-23T11:02:56Z",
+  "set": "2026-09-23T23:09:24Z"
+ },
+ {
+  "place": "Quito",
+  "latitude": -0.1807,
+  "longitude": -78.4678,
+  "day": "2026-12-21",
+  "rise": "2026-12-21T11:07:57Z",
+  "set": "2026-12-21T23:16:07Z"
+ },
+ {
+  "place": "Tromso",
+  "latitude": 69.6492,
+  "longitude": 18.9553,
+  "day": "2026-01-15",
+  "rise": "2026-01-15T10:29:05Z",
+  "set": "2026-01-15T11:18:45Z"
+ },
+ {
+  "place": "Tromso",
+  "latitude": 69.6492,
+  "longitude": 18.9553,
+  "day": "2026-03-01",
+  "rise": "2026-03-01T06:10:12Z",
+  "set": "2026-03-01T15:44:30Z"
+ },
+ {
+  "place": "Tromso",
+  "latitude": 69.6492,
+  "longitude": 18.9553,
+  "day": "2026-03-20",
+  "rise": "2026-03-20T04:43:54Z",
+  "set": "2026-03-20T17:01:31Z"
+ },
+ {
+  "place": "Tromso",
+  "latitude": 69.6492,
+  "longitude": 18.9553,
+  "day": "2026-06-21",
+  "rise": null,
+  "set": null
+ },
+ {
+  "place": "Tromso",
+  "latitude": 69.6492,
+  "longitude": 18.9553,
+  "day": "2026-08-26",
+  "rise": "2026-08-26T02:35:40Z",
+  "set": "2026-08-26T18:53:14Z"
+ },
+ {
+  "place": "Tromso",
+  "latitude": 69.6492,
+  "longitude": 18.9553,
+  "day": "2026-09-23",
+  "rise": "2026-09-23T04:27:52Z",
+  "set": "2026-09-23T16:43:07Z"
+ },
+ {
+  "place": "Tromso",
+  "latitude": 69.6492,
+  "longitude": 18.9553,
+  "day": "2026-12-21",
+  "rise": null,
+  "set": null
+ },
+ {
+  "place": "Longyearbyen",
+  "latitude": 78.2232,
+  "longitude": 15.6267,
+  "day": "2026-01-15",
+  "rise": null,
+  "set": null
+ },
+ {
+  "place": "Longyearbyen",
+  "latitude": 78.2232,
+  "longitude": 15.6267,
+  "day": "2026-03-01",
+  "rise": "2026-03-01T07:27:03Z",
+  "set": "2026-03-01T14:55:18Z"
+ },
+ {
+  "place": "Longyearbyen",
+  "latitude": 78.2232,
+  "longitude": 15.6267,
+  "day": "2026-03-20",
+  "rise": "2026-03-20T04:51:50Z",
+  "set": "2026-03-20T17:22:00Z"
+ },
+ {
+  "place": "Longyearbyen",
+  "latitude": 78.2232,
+  "longitude": 15.6267,
+  "day": "2026-06-21",
+  "rise": null,
+  "set": null
+ },
+ {
+  "place": "Longyearbyen",
+  "latitude": 78.2232,
+  "longitude": 15.6267,
+  "day": "2026-08-26",
+  "rise": "2026-08-26T00:05:30Z",
+  "set": "2026-08-26T21:34:02Z"
+ },
+ {
+  "place": "Longyearbyen",
+  "latitude": 78.2232,
+  "longitude": 15.6267,
+  "day": "2026-09-23",
+  "rise": "2026-09-23T04:35:06Z",
+  "set": "2026-09-23T17:00:47Z"
+ },
+ {
+  "place": "Longyearbyen",
+  "latitude": 78.2232,
+  "longitude": 15.6267,
+  "day": "2026-12-21",
+  "rise": null,
+  "set": null
+ }
+]

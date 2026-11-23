@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
+mod astro;
 mod beacons;
 mod config;
 mod geo;
@@ -239,18 +240,18 @@ pub fn run(args: &[String]) -> Result<u8, String> {
             options.keep_skimmer,
         );
         model.appearance = appearance;
+        model.astro = astro::Cache::new(options.grid);
         if options.space_weather {
             model.spots_view = SpotsView::Weather;
         }
         model.utc_epoch = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_secs();
+            .unwrap_or_default();
         let mut interface = Interface {
             _screen: screen,
             workers: Workers::new(stop.clone()),
         };
-        interface.workers.start(options, &mut model, origin);
+        interface.workers.start(options.sources, &mut model, origin);
         let mut weather = weather::Worker::default();
         let mut redraw = Redraw::default();
         while !model.quit && !stop.load(Ordering::Relaxed) {

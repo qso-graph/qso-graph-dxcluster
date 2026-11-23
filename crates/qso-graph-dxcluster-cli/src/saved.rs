@@ -2,6 +2,7 @@
 //! The operator's own sources file for `qg-dxc tui` (QGDXC-TUI-0006, QGDXC-TUI-0007,
 //! QGDXC-TUI-0009). Nothing here writes a file; the project ships no sources file.
 use qso_graph_dxcluster::{Config, Profile, values};
+use qso_graph_grid::{Locator, Position, Precision};
 use serde_core::de::{self, Deserialize, Deserializer, MapAccess, SeqAccess, Visitor};
 use std::{
     collections::BTreeSet,
@@ -87,11 +88,22 @@ pub fn profile(name: &str) -> Option<Profile> {
 }
 
 /// A validated sources file.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct Saved {
     /// The file's default callsign for cluster nodes.
     pub call: Option<String>,
     pub entries: Vec<Entry>,
+    pub grid: Option<Position>,
+}
+
+impl fmt::Debug for Saved {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        // QGDXC-TUI-0141: the operator's place is for display only.
+        f.debug_struct("Saved")
+            .field("call", &self.call)
+            .field("entries", &self.entries)
+            .finish_non_exhaustive()
+    }
 }
 
 /// One saved source, validated and ready to run.
@@ -149,12 +161,21 @@ pub fn parse(bytes: &[u8]) -> Result<Saved, String> {
         return Err(format!("larger than {MAX_BYTES} bytes"));
     }
     let json: Json = serde_json::from_slice(bytes).map_err(|e| format!("invalid JSON: {e}"))?;
-    let top = members(&json, "the file", &["version", "sources"], &["call"])?;
+    let top = members(
+        &json,
+        "the file",
+        &["version", "sources"],
+        &["call", "grid"],
+    )?;
     match top[0] {
         Json::Number(Some(1)) => {}
         _ => return Err("version: must be 1".into()),
     }
     let call = optional_call(top[2], "call")?;
+    let grid = match top[3] {
+        Json::Missing => None,
+        value => Some(grid_position(string(value, "grid")?, "grid")?),
+    };
     let Json::Array(list) = top[1] else {
         return Err("sources: must be an array".into());
     };
@@ -237,7 +258,17 @@ pub fn parse(bytes: &[u8]) -> Result<Saved, String> {
     Ok(Saved {
         call: call.map(str::to_owned),
         entries,
+        grid,
     })
+}
+
+/// Validate an operator locator under QGDXC-TUI-0140 without echoing it.
+pub fn grid_position(value: &str, at: &str) -> Result<Position, String> {
+    Locator::parse(value)
+        .ok()
+        .filter(|grid| grid.precision() != Precision::Field)
+        .map(Locator::centre)
+        .ok_or_else(|| format!("{at}: expected a 4, 6 or 8 character Maidenhead locator"))
 }
 
 /// An optional callsign member, valid under QGDXC-IO-0003 when present.

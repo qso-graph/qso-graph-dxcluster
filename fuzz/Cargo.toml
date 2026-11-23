@@ -12,6 +12,7 @@ cargo-fuzz = true
 qso-graph-http = { path = "../crates/qso-graph-http", version = "=0.6.0" }
 qso-graph-spaceweather = { path = "../crates/qso-graph-spaceweather", version = "=0.6.0" }
 qso-graph-pota = { path = "../crates/qso-graph-pota", version = "=0.6.0" }
+qso-graph-grid = { path = "../crates/qso-graph-grid", version = "=0.6.0" }
 libfuzzer-sys = "=0.4.10"
 qso-graph-dxcluster = { path = "../crates/qso-graph-dxcluster", version = "=0.6.0" }
 qso-graph-dxcluster-cli = { path = "../crates/qso-graph-dxcluster-cli", version = "=0.6.0" }
@@ -159,6 +160,13 @@ bench = false
 [[bin]]
 name = "pota_spots"
 path = "fuzz_targets/pota_spots.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "grid_locator"
+path = "fuzz_targets/grid_locator.rs"
 test = false
 doc = false
 bench = false

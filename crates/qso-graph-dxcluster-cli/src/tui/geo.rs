@@ -2,24 +2,18 @@
 //! Map geometry for the spot map (QGDXC-TUI-0082, QGDXC-TUI-0084): grid centers and
 //! great-circle paths on an equirectangular map.
 use qso_graph_dxcluster_cli::prefixes::Place;
+use qso_graph_grid::{Locator, Precision};
 
 /// The center of a four-character Maidenhead locator, such as `FN42`.
 pub fn grid_center(grid: &str) -> Option<Place> {
-    let b = grid.as_bytes();
-    if b.len() != 4 {
+    let locator = Locator::parse(grid).ok()?;
+    if locator.precision() != Precision::Square {
         return None;
     }
-    let (f1, f2) = (b[0].to_ascii_uppercase(), b[1].to_ascii_uppercase());
-    if !(b'A'..=b'R').contains(&f1)
-        || !(b'A'..=b'R').contains(&f2)
-        || !b[2].is_ascii_digit()
-        || !b[3].is_ascii_digit()
-    {
-        return None;
-    }
+    let centre = locator.centre();
     Some(Place {
-        lon: f64::from(f1 - b'A') * 20.0 - 180.0 + f64::from(b[2] - b'0') * 2.0 + 1.0,
-        lat: f64::from(f2 - b'A') * 10.0 - 90.0 + f64::from(b[3] - b'0') + 0.5,
+        lon: centre.longitude(),
+        lat: centre.latitude(),
     })
 }
 
@@ -74,7 +68,7 @@ mod tests {
 
     #[test]
     fn grid_centers_follow_maidenhead() {
-        // QGDXC-TUI-0082
+        // QGDXC-TUI-0082 QGDXC-TUI-0145
         assert_eq!(
             grid_center("FN42"),
             Some(Place {
@@ -103,7 +97,9 @@ mod tests {
                 lon: 179.0
             })
         );
-        for bad in ["", "FN", "FN4%", "FN42..", "SN42", "F#42", "FNA2", "ＦN42"] {
+        for bad in [
+            "", "FN", "FN4%", "FN42..", "QN42aa", "QN42aa12", "SN42", "F#42", "FNA2", "ＦN42",
+        ] {
             assert_eq!(grid_center(bad), None, "{bad}");
         }
     }
