@@ -9,6 +9,7 @@ publish = false
 cargo-fuzz = true
 [workspace]
 [dependencies]
+qso-graph-http = { path = "../crates/qso-graph-http", version = "=0.6.0" }
 qso-graph-spaceweather = { path = "../crates/qso-graph-spaceweather", version = "=0.6.0" }
 libfuzzer-sys = "=0.4.10"
 qso-graph-dxcluster = { path = "../crates/qso-graph-dxcluster", version = "=0.6.0" }
@@ -143,6 +144,13 @@ bench = false
 [[bin]]
 name = "swx_alert_force"
 path = "fuzz_targets/swx_alert_force.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "http_retry_after"
+path = "fuzz_targets/http_retry_after.rs"
 test = false
 doc = false
 bench = false

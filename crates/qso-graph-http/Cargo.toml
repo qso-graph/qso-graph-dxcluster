@@ -1,0 +1,23 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+[package]
+name = "qso-graph-http"
+description = "Synchronous HTTPS and request scheduling for QSO Graph applications"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+readme = "README.md"
+keywords = ["http", "https", "rate-limiting"]
+categories = ["network-programming"]
+include = ["src/**/*.rs", "README.md", "LICENSE"]
+
+[dependencies]
+# QGDXC-HTTP-0013
+ureq = { version = "=3.5.1", default-features = false, features = ["rustls-no-provider", "rustls-webpki-roots"] }
+rustls = { version = "=0.23.46", default-features = false, features = ["std", "tls12", "aws_lc_rs"] }
+aws-lc-rs = { version = "=1.18.1", default-features = false }
+aws-lc-sys = { version = "=0.45.0", default-features = false }
+
+[lints]
+workspace = true

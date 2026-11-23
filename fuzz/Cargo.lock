@@ -676,18 +676,15 @@ version = "0.6.0"
 name = "qso-graph-dxcluster-cli"
 version = "0.6.0"
 dependencies = [
- "aws-lc-rs",
- "aws-lc-sys",
  "crossterm",
  "ctrlc",
  "getrandom 0.4.3",
  "qso-graph-dxcluster",
+ "qso-graph-http",
  "qso-graph-spaceweather",
  "ratatui",
- "rustls",
  "serde_core",
  "serde_json",
- "ureq",
 ]
 
 [[package]]
@@ -697,7 +694,18 @@ dependencies = [
  "libfuzzer-sys",
  "qso-graph-dxcluster",
  "qso-graph-dxcluster-cli",
+ "qso-graph-http",
  "qso-graph-spaceweather",
+]
+
+[[package]]
+name = "qso-graph-http"
+version = "0.6.0"
+dependencies = [
+ "aws-lc-rs",
+ "aws-lc-sys",
+ "rustls",
+ "ureq",
 ]
 
 [[package]]

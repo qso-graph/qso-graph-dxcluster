@@ -40,8 +40,8 @@ permissions:
   contents: read
 
 env:
-  # Publish both libraries before the command line that depends on them.
-  CRATES: qso-graph-dxcluster qso-graph-spaceweather qso-graph-dxcluster-cli
+  # Publish the libraries before the command line that depends on them.
+  CRATES: qso-graph-dxcluster qso-graph-spaceweather qso-graph-http qso-graph-dxcluster-cli
 
 concurrency:
   group: release
@@ -85,10 +85,10 @@ jobs:
           python3 -I scripts/release_check.py source "$REF" "$EVENT" "$(git rev-parse HEAD)" "$WORKFLOW_SHA" "$WORKFLOW_REF" "$ACTOR" "$TRIGGERING_ACTOR" "$VERSION"
           python3 -I scripts/release_check.py version "$VERSION"
           python3 -I scripts/release_check.py notes "$VERSION" >/dev/null
-          said=$(cargo metadata --no-deps --format-version 1 --locked | jq -r '.packages[] | select(.name == "qso-graph-dxcluster" or .name == "qso-graph-spaceweather" or .name == "qso-graph-dxcluster-cli") | .version' | sort -u)
+          said=$(cargo metadata --no-deps --format-version 1 --locked | jq -r '.packages[] | select(.name == "qso-graph-dxcluster" or .name == "qso-graph-spaceweather" or .name == "qso-graph-http" or .name == "qso-graph-dxcluster-cli") | .version' | sort -u)
           [ "$said" = "$VERSION" ] || fail "main says ${said}, not ${VERSION}."
           python3 -I scripts/package-files.py --check
-          cargo package --locked -p qso-graph-dxcluster -p qso-graph-spaceweather -p qso-graph-dxcluster-cli
+          cargo package --locked -p qso-graph-dxcluster -p qso-graph-spaceweather -p qso-graph-http -p qso-graph-dxcluster-cli
           sha=$(git rev-parse HEAD)
           # A tag already there must be on this commit: a release half done is finished, never moved.
           python3 -I scripts/release_check.py tag "$REPO" "$VERSION" "$sha" >/dev/null
@@ -172,7 +172,7 @@ jobs:
         continue-on-error: ${{ env.FIRST_PUBLISH == 'true' }}
         uses: rust-lang/crates-io-auth-action@3268eb413133e2960fa4ae0e963ca76380c54cd9 # v1.0.6
       - name: Package the libraries and the command line
-        run: cargo package --locked -p qso-graph-dxcluster -p qso-graph-spaceweather -p qso-graph-dxcluster-cli
+        run: cargo package --locked -p qso-graph-dxcluster -p qso-graph-spaceweather -p qso-graph-http -p qso-graph-dxcluster-cli
       # GitHub's signed statement, through Sigstore, that these exact .crate files were built by this
       # workflow from this commit. crates.io serves the same bytes, so anyone can check a download:
       #   gh attestation verify qso-graph-dxcluster-<version>.crate -R qso-graph/qso-graph-dxcluster

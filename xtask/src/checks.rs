@@ -262,12 +262,20 @@ pub fn source_violation(s: &str, library: bool) -> bool {
                 .contains(w)
             })
 }
-const LIBRARIES: [&str; 2] = ["qso-graph-dxcluster", "qso-graph-spaceweather"];
-const HTTPS_DEPS: [&str; 7] = [
-    "ureq",
-    "rustls",
-    "aws-lc-rs",
-    "aws-lc-sys",
+const PARSING_CRATES: [&str; 2] = ["qso-graph-dxcluster", "qso-graph-spaceweather"];
+const HTTP_CRATE: &str = "qso-graph-http";
+const TLS_PINS: [(&str, &str); 4] = [
+    ("ureq", "=3.5.1"),
+    ("rustls", "=0.23.46"),
+    ("aws-lc-rs", "=1.18.1"),
+    ("aws-lc-sys", "=0.45.0"),
+];
+const HTTPS_DEPS: [&str; 8] = [
+    HTTP_CRATE,
+    TLS_PINS[0].0,
+    TLS_PINS[1].0,
+    TLS_PINS[2].0,
+    TLS_PINS[3].0,
     "cc",
     "cmake",
     "pkg-config",
@@ -368,7 +376,7 @@ fn library_transport_dependencies(metadata: &Value) -> Result<(), String> {
         .iter()
         .filter_map(|node| Some((node["id"].as_str()?, node["dependencies"].as_array()?)))
         .collect();
-    for library in LIBRARIES {
+    for library in PARSING_CRATES {
         let root = packages
             .iter()
             .find(|package| package["name"] == library && package["source"].is_null())
@@ -383,7 +391,7 @@ fn library_transport_dependencies(metadata: &Value) -> Result<(), String> {
             let name = package_names.get(id).ok_or("missing resolved package")?;
             if HTTPS_DEPS.contains(name) {
                 return Err(format!(
-                    "QGDXC-TUI-0115: {library} reaches prohibited dependency: {name}"
+                    "QGDXC-HTTP-0013 / QGDXC-TUI-0115: {library} reaches prohibited dependency: {name}"
                 ));
             }
             pending.extend(
@@ -398,12 +406,42 @@ fn library_transport_dependencies(metadata: &Value) -> Result<(), String> {
     Ok(())
 }
 
+fn workspace_http_dependencies(metadata: &Value) -> Result<(), String> {
+    let packages = metadata["packages"].as_array().ok_or("metadata packages")?;
+    let mut pinned = BTreeSet::new();
+    for package in packages {
+        let name = package["name"].as_str().ok_or("package name")?;
+        for dependency in package["dependencies"]
+            .as_array()
+            .ok_or("metadata dependencies")?
+        {
+            let target = dependency["name"].as_str().ok_or("dependency name")?;
+            if target == HTTP_CRATE && name != "qso-graph-dxcluster-cli" {
+                return Err(format!("QGDXC-HTTP-0013: {name} declares {target}"));
+            }
+            if let Some(&(tls, pin)) = TLS_PINS.iter().find(|(tls, _)| *tls == target) {
+                if name != HTTP_CRATE || dependency["req"] != pin {
+                    return Err(format!(
+                        "QGDXC-HTTP-0013: {name} declares {tls} outside its crate or exact pin"
+                    ));
+                }
+                pinned.insert(tls);
+            }
+        }
+    }
+    if pinned.len() != TLS_PINS.len() {
+        return Err("QGDXC-HTTP-0013: missing HTTPS dependency pin".into());
+    }
+    Ok(())
+}
+
 fn dependency_policy(root: &Path) -> Result<(), String> {
     // Declarations include inactive optional, renamed, and target-specific dependencies.
     let declarations = cargo_metadata(root, "--no-deps")?;
-    for library in LIBRARIES {
+    for library in PARSING_CRATES {
         library_dependencies(&declarations, library)?;
     }
+    workspace_http_dependencies(&declarations)?;
     // The resolved graph catches prohibited packages introduced through an allowed dependency.
     library_transport_dependencies(&cargo_metadata(root, "--all-features")?)
 }
@@ -527,7 +565,7 @@ fn compiled_library_sources(root: &Path, library: &str) -> Result<BTreeSet<PathB
 pub fn policy() -> Result<(), String> {
     dependency_policy(Path::new("."))?;
     let mut sources = BTreeSet::new();
-    for library in LIBRARIES {
+    for library in PARSING_CRATES {
         sources.extend(compiled_library_sources(Path::new("."), library)?);
     }
     for source in &sources {
@@ -562,12 +600,13 @@ pub fn policy() -> Result<(), String> {
             return Err("policy planted-case detector failed".into());
         }
     }
-    for (root, library) in [
-        ("crates/qso-graph-dxcluster", true),
-        ("crates/qso-graph-spaceweather", true),
-        ("crates/qso-graph-dxcluster-cli", false),
-    ] {
-        for file in files(Path::new(root))? {
+    for (krate, library) in PARSING_CRATES
+        .into_iter()
+        .map(|name| (name, true))
+        .chain([(HTTP_CRATE, false), ("qso-graph-dxcluster-cli", false)])
+    {
+        let root = Path::new("crates").join(krate);
+        for file in files(&root)? {
             if file.file_name().is_some_and(|n| n == "build.rs")
                 || file
                     .extension()
@@ -580,8 +619,8 @@ pub fn policy() -> Result<(), String> {
                 // Space-weather integration tests compile as separate executables
                 // and read the NOAA fixtures under QGDXC-SWX-0007. The library
                 // check includes every file compiled into the library above.
-                let weather_integration = root == "crates/qso-graph-spaceweather"
-                    && file.starts_with(Path::new(root).join("tests"));
+                let weather_integration =
+                    krate == "qso-graph-spaceweather" && file.starts_with(root.join("tests"));
                 if source_violation(&s, library && !weather_integration) || s.contains("#[path") {
                     return Err(format!("source policy: {}", file.display()));
                 }
@@ -797,25 +836,37 @@ fn vector_sanitized(v: &Value) -> bool {
     visit(v, v["id"].as_str().unwrap_or(""), "")
 }
 fn public_paths() -> Result<Vec<PathBuf>, String> {
-    let output = crate::input::output(std::process::Command::new("git").args([
+    fn git_paths(args: &[&str]) -> Result<Vec<PathBuf>, String> {
+        let output = crate::input::output(std::process::Command::new("git").args(args))
+            .map_err(|e| e.to_string())?;
+        if !output.status.success() {
+            return Err("cannot enumerate public files".into());
+        }
+        String::from_utf8(output.stdout)
+            .map_err(|e| e.to_string())
+            .map(|s| {
+                s.split('\0')
+                    .filter(|s| !s.is_empty())
+                    .map(PathBuf::from)
+                    .collect()
+            })
+    }
+
+    // Scan the working tree, including new files. The index still names
+    // unstaged deletions, whose contents are absent from the working tree.
+    let deleted: BTreeSet<_> = git_paths(&["ls-files", "--deleted", "-z"])?
+        .into_iter()
+        .collect();
+    Ok(git_paths(&[
         "ls-files",
         "--cached",
         "--others",
         "--exclude-standard",
         "-z",
-    ]))
-    .map_err(|e| e.to_string())?;
-    if !output.status.success() {
-        return Err("cannot enumerate public files".into());
-    }
-    String::from_utf8(output.stdout)
-        .map_err(|e| e.to_string())
-        .map(|s| {
-            s.split('\0')
-                .filter(|s| !s.is_empty())
-                .map(PathBuf::from)
-                .collect()
-        })
+    ])?
+    .into_iter()
+    .filter(|path| !deleted.contains(path))
+    .collect())
 }
 fn unescape_source(s: &str) -> String {
     let mut out = String::new();
@@ -1461,13 +1512,23 @@ pub fn seed_fuzz() -> Result<(), String> {
         fs::write(dir.join("noaa.json"), bytes).map_err(|e| e.to_string())?;
     }
     for target in [
-        "values", "dx_de", "cc11", "other", "rbn", "framer", "telnet", "session", "sources",
+        "values",
+        "dx_de",
+        "cc11",
+        "other",
+        "rbn",
+        "framer",
+        "telnet",
+        "session",
+        "sources",
         "prefixes",
+        "http_retry_after",
     ] {
         let dir = Path::new("fuzz/corpus").join(target);
         fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
         let seed = match target {
             "values" => b"14025.123".as_slice(),
+            "http_retry_after" => b"Sun, 22 Nov 2026 19:43:00 GMT".as_slice(),
             "cc11" => b"CC11^1^Q2ABC^1-Nov-2026^1832^^Q1ABC^^^^^^^^^^^^^^^^^^".as_slice(),
             "other" => b"To ALL de Q1ABC: Hello\r\n".as_slice(),
             "telnet" => b"\xff\xfa\x01\xff\xff\xff\xf0\r\n".as_slice(),
@@ -1532,7 +1593,7 @@ mod tests {
         let library = "// SPDX-License-Identifier: GPL-3.0-or-later\n#![forbid(unsafe_code)]\nmod inside;\npub struct Session;\nimpl Session { pub fn new() -> Self { inside::probe(); Self } }\n";
         fs::write(source.join("inside.rs"), inside).unwrap();
         fs::write(source.join("lib.rs"), library).unwrap();
-        let baseline = compiled_library_sources(&root, LIBRARIES[0]).unwrap();
+        let baseline = compiled_library_sources(&root, PARSING_CRATES[0]).unwrap();
         assert_eq!(baseline.len(), 2);
         assert!(baseline.contains(&source.join("inside.rs").canonicalize().unwrap()));
         fs::write(root.join("shared.rs"), "// SPDX-License-Identifier: GPL-3.0-or-later\npub fn probe() { let _ = std::fs::metadata(\"Cargo.toml\"); }\n").unwrap();
@@ -1545,7 +1606,7 @@ mod tests {
         );
         fs::write(source.join("lib.rs"), &redirected).unwrap();
         assert!(source_violation(&redirected, true));
-        let error = compiled_library_sources(&root, LIBRARIES[0]).unwrap_err();
+        let error = compiled_library_sources(&root, PARSING_CRATES[0]).unwrap_err();
         assert!(
             error.contains("compiled library source outside src:"),
             "{error}"
@@ -1553,7 +1614,7 @@ mod tests {
         assert!(error.contains("shared.rs"), "{error}");
         fs::write(source.join("lib.rs"), library).unwrap();
         assert_eq!(
-            compiled_library_sources(&root, LIBRARIES[0]).unwrap(),
+            compiled_library_sources(&root, PARSING_CRATES[0]).unwrap(),
             baseline
         );
         // A conventional module name can also escape through a symlink, with
@@ -1566,7 +1627,7 @@ mod tests {
                 source.join("inside.rs"),
             )
             .unwrap();
-            let error = compiled_library_sources(&root, LIBRARIES[0]).unwrap_err();
+            let error = compiled_library_sources(&root, PARSING_CRATES[0]).unwrap_err();
             assert!(
                 error.contains("compiled library source outside src:"),
                 "{error}"
@@ -1574,7 +1635,7 @@ mod tests {
             fs::remove_file(source.join("inside.rs")).unwrap();
             fs::write(source.join("inside.rs"), inside).unwrap();
             assert_eq!(
-                compiled_library_sources(&root, LIBRARIES[0]).unwrap(),
+                compiled_library_sources(&root, PARSING_CRATES[0]).unwrap(),
                 baseline
             );
         }
@@ -1638,7 +1699,7 @@ mod tests {
         ] {
             fs::write(root.join("Cargo.toml"), format!("{base}{declaration}")).unwrap();
             let result = cargo_metadata(&root, "--no-deps")
-                .and_then(|metadata| library_dependencies(&metadata, LIBRARIES[0]));
+                .and_then(|metadata| library_dependencies(&metadata, PARSING_CRATES[0]));
             if declaration.is_empty() {
                 result.unwrap();
             } else {
@@ -1654,15 +1715,15 @@ mod tests {
     }
     #[test]
     fn policy_rejects_transport_dependencies_in_either_library() {
-        // QGDXC-TUI-0115: model a resolved Cargo graph with the transport
-        // first confined to the CLI, then reachable through a JSON dependency.
+        // QGDXC-HTTP-0013 and QGDXC-TUI-0115: plant direct and transitive
+        // transport dependencies in a resolved Cargo graph.
         let mut graph = serde_json::json!({
             "packages": [
-                {"id": "cluster", "name": LIBRARIES[0]},
-                {"id": "weather", "name": LIBRARIES[1]},
+                {"id": "cluster", "name": PARSING_CRATES[0]},
+                {"id": "weather", "name": PARSING_CRATES[1]},
                 {"id": "cli", "name": "qso-graph-dxcluster-cli"},
                 {"id": "json", "name": "serde_json", "source": "registry"},
-                {"id": "transport", "name": "ureq", "source": "registry"},
+                {"id": "transport", "name": HTTP_CRATE, "source": null},
             ],
             "resolve": {"nodes": [
                 {"id": "cluster", "dependencies": []},
@@ -1678,19 +1739,45 @@ mod tests {
             graph["resolve"]["nodes"][3]["dependencies"] = serde_json::json!(["transport"]);
             let error = library_transport_dependencies(&graph).unwrap_err();
             assert!(
-                error.contains(LIBRARIES[1]) && error.ends_with(prohibited),
+                error.contains(PARSING_CRATES[1]) && error.ends_with(prohibited),
                 "{error}"
             );
             graph["resolve"]["nodes"][3]["dependencies"] = serde_json::json!([]);
             graph["resolve"]["nodes"][0]["dependencies"] = serde_json::json!(["transport"]);
             let error = library_transport_dependencies(&graph).unwrap_err();
             assert!(
-                error.contains(LIBRARIES[0]) && error.ends_with(prohibited),
+                error.contains(PARSING_CRATES[0]) && error.ends_with(prohibited),
                 "{error}"
             );
             graph["resolve"]["nodes"][0]["dependencies"] = serde_json::json!([]);
         }
     }
+    #[test]
+    fn only_http_declares_exact_tls_pins_and_only_cli_declares_http() {
+        let mut metadata = serde_json::json!({
+            "packages": [
+                {"name": HTTP_CRATE, "dependencies": TLS_PINS.map(|(name, req)| serde_json::json!({"name": name, "req": req}))},
+                {"name": "qso-graph-dxcluster-cli", "dependencies": [{"name": HTTP_CRATE}]},
+                {"name": "xtask", "dependencies": []},
+            ],
+        });
+        workspace_http_dependencies(&metadata).unwrap();
+
+        metadata["packages"][2]["dependencies"] = serde_json::json!([{"name": HTTP_CRATE}]);
+        assert!(
+            workspace_http_dependencies(&metadata)
+                .unwrap_err()
+                .contains("xtask declares")
+        );
+        metadata["packages"][2]["dependencies"] = serde_json::json!([]);
+        metadata["packages"][0]["dependencies"][0]["req"] = serde_json::json!("^3.5.1");
+        assert!(
+            workspace_http_dependencies(&metadata)
+                .unwrap_err()
+                .contains("exact pin")
+        );
+    }
+
     #[test]
     fn sanitization_rejects_digit_initial_calls_and_identity_field_mutations() {
         // QGDXC-SEC-0006

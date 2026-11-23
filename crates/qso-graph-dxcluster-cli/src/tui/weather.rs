@@ -1,13 +1,16 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //! SWPC transport and refresh scheduling (QGDXC-TUI-0111–0113, QGDXC-TUI-0116).
 
+use qso_graph_http::{
+    Client, Clock, Error as HttpError, Gate, Ledger, Outcome as RequestOutcome, Policy,
+    ResponseHead, RetryAfter, RetryAfterStatuses, Roots, Timeouts, WaitScope,
+};
 use qso_graph_spaceweather::{self as swx, Product};
 use std::{
-    io::{self, Read},
-    sync::{Arc, mpsc},
+    io,
+    sync::mpsc,
     time::{Duration, Instant, SystemTime},
 };
-use ureq::tls::{RootCerts, TlsConfig, TlsProvider};
 
 #[derive(Clone, Copy)]
 pub(super) struct Feed {
@@ -20,6 +23,7 @@ pub(super) struct Feed {
 const FIFTEEN_MINUTES: Duration = Duration::from_secs(900);
 const FIVE_MINUTES: Duration = Duration::from_secs(300);
 const FAILURE_NOTICE: Duration = Duration::from_secs(15);
+const NOAA_HOST: &str = "services.swpc.noaa.gov";
 const USER_AGENT: &str = concat!("qg-dxc/", env!("CARGO_PKG_VERSION"));
 
 pub(super) const FEEDS: [Feed; 8] = [
@@ -137,61 +141,39 @@ pub(super) enum Outcome {
     Error(&'static str),
 }
 
-fn https() -> ureq::Agent {
-    let tls = TlsConfig::builder()
-        .provider(TlsProvider::Rustls)
-        .root_certs(RootCerts::WebPki)
-        .unversioned_rustls_crypto_provider(Arc::new(rustls::crypto::aws_lc_rs::default_provider()))
-        .build();
-    ureq::Agent::config_builder()
-        .tls_config(tls)
-        .https_only(true)
-        .proxy(None)
-        .max_redirects(0)
-        .http_status_as_error(false)
-        .timeout_connect(Some(Duration::from_secs(10)))
-        .timeout_global(Some(Duration::from_secs(30)))
-        .user_agent(USER_AGENT)
-        .build()
-        .new_agent()
+fn https() -> Client {
+    Client::new(&[NOAA_HOST], Roots::WebPki, USER_AGENT, Timeouts::default())
+        .expect("valid space-weather client settings")
 }
 
-fn bounded_body(reader: impl Read, limit: usize) -> io::Result<Vec<u8>> {
-    let mut bytes = Vec::new();
-    reader.take(limit as u64 + 1).read_to_end(&mut bytes)?;
-    Ok(bytes)
+fn status(head: ResponseHead) -> Outcome {
+    let retry_after = head
+        .retry_after
+        .map(|value| String::from_utf8(value).unwrap_or_default());
+    Outcome::Status(head.status, retry_after)
 }
 
-impl Fetch for ureq::Agent {
+impl Fetch for Client {
     fn get(&mut self, url: &'static str, limit: usize) -> Outcome {
-        // Only the fixed feed table can supply a request URI.
+        // QGDXC-TUI-0112: only the fixed feed table can supply a request URI.
         assert!(FEEDS.iter().any(|feed| feed.url == url));
-        let mut response = match ureq::Agent::get(self, url).call() {
-            Ok(response) => response,
-            Err(_) => return Outcome::Error("request failed"),
-        };
-        if !response.status().is_success() {
-            let retry_after = response
-                .headers()
-                .get(ureq::http::header::RETRY_AFTER)
-                .map(|value| value.to_str().unwrap_or_default().to_owned());
-            return Outcome::Status(response.status().as_u16(), retry_after);
-        }
-        match bounded_body(response.body_mut().as_reader(), limit) {
-            Ok(bytes) => Outcome::Bytes(bytes),
-            Err(_) => Outcome::Error("response body failed"),
+        match self.get_success_body(url, limit) {
+            Ok(response) if (200..300).contains(&response.head.status) => {
+                Outcome::Bytes(response.body)
+            }
+            Ok(response) => status(response.head),
+            Err(HttpError::BodyReadFailed(_)) => Outcome::Error("response body failed"),
+            Err(HttpError::BodyTooLarge(_)) => Outcome::Error("byte limit exceeded"),
+            Err(_) => Outcome::Error("request failed"),
         }
     }
 }
 
-pub(super) trait Clock {
-    fn elapsed(&self) -> Duration;
-    fn unix_time(&self) -> Duration;
-}
+struct WeatherClock(Instant);
 
-impl Clock for Instant {
+impl Clock for WeatherClock {
     fn elapsed(&self) -> Duration {
-        Instant::elapsed(self)
+        self.0.elapsed()
     }
 
     fn unix_time(&self) -> Duration {
@@ -201,13 +183,36 @@ impl Clock for Instant {
     }
 }
 
-mod retry_after;
+// QGDXC-TUI-0111, QGDXC-TUI-0113, QGDXC-TUI-0123.
+fn noaa_policy() -> Policy {
+    Policy {
+        floors: FEEDS
+            .iter()
+            .map(|feed| (feed.url.into(), feed.floor))
+            .collect(),
+        wait_scope: WaitScope::Provider,
+        retry_after: RetryAfter {
+            minimum: Duration::from_secs(60),
+            maximum: Duration::from_secs(3_600),
+            default: Some(Duration::from_secs(60)),
+            server_errors: RetryAfterStatuses::ServiceUnavailable,
+        },
+        backoff: None,
+    }
+}
 
-#[derive(Default)]
 pub(super) struct Scheduler {
-    due: [Duration; FEEDS.len()],
-    pause: Duration,
-    history_active: bool,
+    ledger: Ledger,
+    history_activated_at: Option<Duration>,
+}
+
+impl Default for Scheduler {
+    fn default() -> Self {
+        Self {
+            ledger: Ledger::new(noaa_policy()),
+            history_activated_at: None,
+        }
+    }
 }
 
 pub(super) struct Update {
@@ -231,52 +236,63 @@ impl Update {
 impl Scheduler {
     // QGDXC-TUI-0123: activation is a one-way transition for this session.
     fn activate_history(&mut self, now: Duration) {
-        if !self.history_active {
-            self.history_active = true;
-            self.due[FLUX_HISTORY] = now;
-        }
+        self.history_activated_at.get_or_insert(now);
     }
 
     fn earliest(&self) -> (usize, Duration) {
-        let (index, due) = self
-            .due
+        let (index, due) = FEEDS
             .iter()
-            .copied()
             .enumerate()
-            .filter(|&(index, _)| index != FLUX_HISTORY || self.history_active)
+            .filter_map(|(index, feed)| {
+                let active_since = if index == FLUX_HISTORY {
+                    self.history_activated_at?
+                } else {
+                    Duration::ZERO
+                };
+                let due = self.ledger.refresh_due(feed.url).expect("feed has a floor");
+                Some((index, due.max(active_since)))
+            })
             .min_by_key(|&(_, due)| due)
             .expect("feed table is nonempty");
-        (index, due.max(self.pause))
+        (
+            index,
+            due.max(self.ledger.provider_wait().unwrap_or_default()),
+        )
     }
 
     pub(super) fn step(&mut self, fetcher: &mut impl Fetch, clock: &impl Clock) -> Option<Update> {
         let (index, next) = self.earliest();
-        let start = clock.elapsed();
-        if start < next {
+        if clock.elapsed() < next {
             return None;
         }
         let feed = FEEDS[index];
-        self.due[index] = start + feed.floor;
+        if let Gate::Resting(_) = self.ledger.gate(feed.url, clock).expect("feed has a floor") {
+            return None;
+        }
         let outcome = fetcher.get(feed.url, feed.product.limit());
         let complete = clock.elapsed();
+        let request_outcome = match &outcome {
+            Outcome::Status(code @ (429 | 500..=599), retry_after) => RequestOutcome::Busy {
+                status: *code,
+                retry_after: retry_after.as_deref().map(str::as_bytes),
+            },
+            Outcome::Error(_) => RequestOutcome::Unreachable,
+            _ => RequestOutcome::Answered,
+        };
+        self.ledger.record(feed.url, request_outcome, clock);
+
         let result = match outcome {
             Outcome::Bytes(bytes) => {
                 Data::parse(feed.product, &bytes).map_err(|e| e.reason.to_string())
             }
-            Outcome::Status(code, retry_after) => {
-                if code == 429 || code == 503 && retry_after.is_some() {
-                    let wait = retry_after::delay(retry_after.as_deref(), clock.unix_time());
-                    self.pause = complete + wait;
-                }
-                Err(format!("HTTP {code}"))
-            }
+            Outcome::Status(code, _) => Err(format!("HTTP {code}")),
             Outcome::Error(why) => Err(why.to_owned()),
         };
         Some(Update {
             index,
             complete,
             next: self.earliest().1,
-            pause: self.pause,
+            pause: self.ledger.provider_wait().unwrap_or_default(),
             result,
         })
     }
@@ -370,6 +386,7 @@ pub(super) fn start(origin: Instant) -> io::Result<Running> {
     std::thread::Builder::new()
         .name("space-weather".into())
         .spawn(move || {
+            let clock = WeatherClock(origin);
             let mut fetcher = https();
             let mut scheduler = Scheduler::default();
             // Dropping Running wakes an idle worker. An in-flight request can finish
@@ -381,7 +398,7 @@ pub(super) fn start(origin: Instant) -> io::Result<Running> {
                     Ok(()) => scheduler.activate_history(origin.elapsed()),
                     Err(mpsc::RecvTimeoutError::Disconnected) => break,
                 }
-                if let Some(update) = scheduler.step(&mut fetcher, &origin)
+                if let Some(update) = scheduler.step(&mut fetcher, &clock)
                     && send.send(update).is_err()
                 {
                     break;

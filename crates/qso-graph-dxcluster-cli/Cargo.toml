@@ -18,6 +18,7 @@ path = "src/main.rs"
 [dependencies]
 qso-graph-dxcluster = { path = "../qso-graph-dxcluster", version = "=0.6.0" }
 qso-graph-spaceweather = { path = "../qso-graph-spaceweather", version = "=0.6.0" }
+qso-graph-http = { path = "../qso-graph-http", version = "=0.6.0" }
 serde_json = "=1.0.145"
 # Already in the graph through serde_json; used without derive to refuse duplicate JSON members.
 serde_core = { version = "=1.0.229", default-features = false, features = ["std"] }
@@ -25,10 +26,5 @@ ctrlc = "=3.5.1"
 getrandom = "=0.4.3"
 ratatui = { version = "=0.30.2", default-features = false, features = ["crossterm"] }
 crossterm = { version = "=0.29.0", default-features = false, features = ["events"] }
-# QGDXC-TUI-0115 (D4): pin the HTTPS client and its AWS-LC provider here.
-ureq = { version = "=3.5.1", default-features = false, features = ["rustls-no-provider", "rustls-webpki-roots"] }
-rustls = { version = "=0.23.46", default-features = false, features = ["std", "tls12", "aws_lc_rs"] }
-aws-lc-rs = { version = "=1.18.1", default-features = false }
-aws-lc-sys = { version = "=0.45.0", default-features = false }
 [lints]
 workspace = true

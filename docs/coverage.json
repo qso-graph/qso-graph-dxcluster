@@ -456,6 +456,209 @@
       "tests": [],
       "vectors": []
     },
+    "QGDXC-HTTP-0001": {
+      "tests": [
+        {
+          "file": "crates/qso-graph-http/src/ledger/tests.rs",
+          "name": "idle_types_are_send_and_sync"
+        },
+        {
+          "file": "crates/qso-graph-http/src/ledger/tests.rs",
+          "name": "noaa_waits_are_bounded_and_apply_across_keys"
+        }
+      ],
+      "vectors": []
+    },
+    "QGDXC-HTTP-0002": {
+      "tests": [
+        {
+          "file": "crates/qso-graph-http/src/ledger/tests.rs",
+          "name": "a_429s_retry_after_is_honoured_and_capped_at_a_day"
+        },
+        {
+          "file": "crates/qso-graph-http/src/ledger/tests.rs",
+          "name": "failures_back_off_from_a_minute_doubling_to_an_hour"
+        },
+        {
+          "file": "crates/qso-graph-http/src/ledger/tests.rs",
+          "name": "noaa_waits_are_bounded_and_apply_across_keys"
+        },
+        {
+          "file": "crates/qso-graph-http/src/ledger/tests.rs",
+          "name": "noaa_retries_other_failures_at_the_request_floor"
+        }
+      ],
+      "vectors": []
+    },
+    "QGDXC-HTTP-0003": {
+      "tests": [
+        {
+          "file": "crates/qso-graph-http/src/ledger/tests.rs",
+          "name": "inside_its_floor_a_source_is_not_asked"
+        },
+        {
+          "file": "crates/qso-graph-http/src/ledger/tests.rs",
+          "name": "noaa_retries_other_failures_at_the_request_floor"
+        }
+      ],
+      "vectors": []
+    },
+    "QGDXC-HTTP-0004": {
+      "tests": [
+        {
+          "file": "crates/qso-graph-http/src/ledger/tests.rs",
+          "name": "a_later_answer_never_shortens_a_wait_in_force"
+        },
+        {
+          "file": "crates/qso-graph-http/src/ledger/tests.rs",
+          "name": "failures_back_off_from_a_minute_doubling_to_an_hour"
+        },
+        {
+          "file": "crates/qso-graph-http/src/ledger/tests.rs",
+          "name": "noaa_waits_are_bounded_and_apply_across_keys"
+        }
+      ],
+      "vectors": []
+    },
+    "QGDXC-HTTP-0005": {
+      "tests": [
+        {
+          "file": "crates/qso-graph-http/src/retry_after/tests.rs",
+          "name": "reads_only_ascii_delay_seconds_and_saturates"
+        },
+        {
+          "file": "crates/qso-graph-http/src/retry_after/tests.rs",
+          "name": "reads_all_three_http_date_forms_in_utc"
+        },
+        {
+          "file": "crates/qso-graph-http/src/retry_after/tests.rs",
+          "name": "rfc850_uses_the_full_date_for_the_fifty_year_boundary"
+        },
+        {
+          "file": "crates/qso-graph-http/src/retry_after/tests.rs",
+          "name": "malformed_dates_are_absent"
+        }
+      ],
+      "vectors": []
+    },
+    "QGDXC-HTTP-0006": {
+      "tests": [
+        {
+          "file": "crates/qso-graph-http/src/ledger/tests.rs",
+          "name": "inside_its_floor_a_source_is_not_asked"
+        },
+        {
+          "file": "crates/qso-graph-http/src/ledger/tests.rs",
+          "name": "a_429s_retry_after_is_honoured_and_capped_at_a_day"
+        },
+        {
+          "file": "crates/qso-graph-http/src/ledger/tests.rs",
+          "name": "failures_back_off_from_a_minute_doubling_to_an_hour"
+        },
+        {
+          "file": "crates/qso-graph-http/src/ledger/tests.rs",
+          "name": "a_later_answer_never_shortens_a_wait_in_force"
+        },
+        {
+          "file": "crates/qso-graph-http/src/ledger/tests.rs",
+          "name": "noaa_waits_are_bounded_and_apply_across_keys"
+        },
+        {
+          "file": "crates/qso-graph-http/src/ledger/tests.rs",
+          "name": "noaa_retries_other_failures_at_the_request_floor"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/tui/weather/tests.rs",
+          "name": "noaa_policy_matches_the_annex_i_fixture"
+        }
+      ],
+      "vectors": []
+    },
+    "QGDXC-HTTP-0010": {
+      "tests": [
+        {
+          "file": "crates/qso-graph-http/src/client/tests.rs",
+          "name": "https_agent_uses_verified_tls_and_requested_settings"
+        },
+        {
+          "file": "crates/qso-graph-http/src/client/tests.rs",
+          "name": "refuses_unlisted_hosts_and_non_https_before_transport"
+        }
+      ],
+      "vectors": []
+    },
+    "QGDXC-HTTP-0011": {
+      "tests": [
+        {
+          "file": "crates/qso-graph-http/src/client/tests.rs",
+          "name": "https_agent_uses_verified_tls_and_requested_settings"
+        },
+        {
+          "file": "crates/qso-graph-http/src/client/tests.rs",
+          "name": "response_keeps_status_raw_header_and_body"
+        },
+        {
+          "file": "crates/qso-graph-http/src/client/tests.rs",
+          "name": "body_limit_stops_at_one_extra_byte"
+        },
+        {
+          "file": "crates/qso-graph-http/src/client/tests.rs",
+          "name": "body_errors_keep_the_status_and_keep_response_text_out_of_diagnostics"
+        },
+        {
+          "file": "crates/qso-graph-http/src/client/tests.rs",
+          "name": "retry_after_can_be_returned_without_reading_an_error_body"
+        }
+      ],
+      "vectors": []
+    },
+    "QGDXC-HTTP-0012": {
+      "tests": [
+        {
+          "file": "crates/qso-graph-http/src/client/tests.rs",
+          "name": "https_agent_uses_verified_tls_and_requested_settings"
+        },
+        {
+          "file": "crates/qso-graph-http/src/client/tests.rs",
+          "name": "refuses_user_agent_containing_at_sign"
+        }
+      ],
+      "vectors": []
+    },
+    "QGDXC-HTTP-0013": {
+      "tests": [
+        {
+          "file": "xtask/src/checks.rs",
+          "name": "policy_rejects_transport_dependencies_in_either_library"
+        },
+        {
+          "file": "xtask/src/checks.rs",
+          "name": "only_http_declares_exact_tls_pins_and_only_cli_declares_http"
+        }
+      ],
+      "vectors": []
+    },
+    "QGDXC-HTTP-0014": {
+      "tests": [
+        {
+          "file": "crates/qso-graph-http/src/ledger/tests.rs",
+          "name": "noaa_waits_are_bounded_and_apply_across_keys"
+        },
+        {
+          "file": "crates/qso-graph-http/src/client/tests.rs",
+          "name": "https_agent_uses_verified_tls_and_requested_settings"
+        },
+        {
+          "file": "crates/qso-graph-http/src/client/tests.rs",
+          "name": "response_keeps_status_raw_header_and_body"
+        },
+        {
+          "file": "crates/qso-graph-http/src/client/tests.rs",
+          "name": "body_limit_stops_at_one_extra_byte"
+        }
+      ],
+      "vectors": []
+    },
     "QGDXC-IO-0001": {
       "tests": [
         {
@@ -2066,7 +2269,15 @@
       "tests": [
         {
           "file": "crates/qso-graph-dxcluster-cli/src/tui/weather/tests.rs",
-          "name": "https_configuration_and_read_cap"
+          "name": "https_uses_only_the_fixed_feed_host"
+        },
+        {
+          "file": "crates/qso-graph-http/src/client/tests.rs",
+          "name": "https_agent_uses_verified_tls_and_requested_settings"
+        },
+        {
+          "file": "crates/qso-graph-http/src/client/tests.rs",
+          "name": "body_limit_stops_at_one_extra_byte"
         }
       ],
       "vectors": []
@@ -2084,6 +2295,14 @@
         {
           "file": "crates/qso-graph-dxcluster-cli/src/tui/weather/tests.rs",
           "name": "view_shows_waiting_values_alerts_and_refresh_status"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/tui/weather/tests.rs",
+          "name": "noaa_policy_matches_the_annex_i_fixture"
+        },
+        {
+          "file": "crates/qso-graph-http/src/client/tests.rs",
+          "name": "retry_after_can_be_returned_without_reading_an_error_body"
         }
       ],
       "vectors": []
@@ -2106,6 +2325,10 @@
         {
           "file": "xtask/src/checks.rs",
           "name": "policy_rejects_transport_dependencies_in_either_library"
+        },
+        {
+          "file": "xtask/src/checks.rs",
+          "name": "only_http_declares_exact_tls_pins_and_only_cli_declares_http"
         }
       ],
       "vectors": []
