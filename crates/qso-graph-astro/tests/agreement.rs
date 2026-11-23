@@ -113,19 +113,33 @@ fn desktop_angles_distance_and_phase() {
         let moon = moon_at(at);
         let phase = moon_phase(at);
         let sublunar = sublunar_point(at);
-        for (name, actual) in [
-            ("sun_declination", sun.declination),
-            ("equation_of_time", sun.equation_of_time),
-            ("sun_apparent_longitude", sun.apparent_longitude),
-            ("moon_longitude", moon.longitude),
-            ("moon_latitude", moon.latitude),
-            ("moon_right_ascension", moon.right_ascension),
-            ("moon_declination", moon.declination),
-            ("moon_elongation", phase.elongation),
-            ("sublunar_latitude", sublunar.latitude()),
-            ("sublunar_longitude", sublunar.longitude()),
-        ] {
-            close(&format!("{at:?} {name}"), actual, number(case, name), 1e-6);
+        // Names and values are separate lists so a label never carries a value.
+        const NAMES: [&str; 10] = [
+            "sun_declination",
+            "equation_of_time",
+            "sun_apparent_longitude",
+            "moon_longitude",
+            "moon_latitude",
+            "moon_right_ascension",
+            "moon_declination",
+            "moon_elongation",
+            "sublunar_latitude",
+            "sublunar_longitude",
+        ];
+        let values = [
+            sun.declination,
+            sun.equation_of_time,
+            sun.apparent_longitude,
+            moon.longitude,
+            moon.latitude,
+            moon.right_ascension,
+            moon.declination,
+            phase.elongation,
+            sublunar.latitude(),
+            sublunar.longitude(),
+        ];
+        for (index, name) in NAMES.iter().enumerate() {
+            close(name, values[index], number(case, name), 1e-6);
         }
         for (place, expected) in places.iter().zip(case["sun_altitudes"].as_array().unwrap()) {
             close(
