@@ -164,12 +164,15 @@ class Published(unittest.TestCase):
 
 class FirstToken(unittest.TestCase):
     def test_while_a_crate_is_new(self):
-        self.assertTrue(rc.first_token_allowed({
-            "qso-graph-dxcluster": True,
-            "qso-graph-spaceweather": True,
-            "qso-graph-http": False,
-            "qso-graph-dxcluster-cli": True,
-        }))
+        for new in ("qso-graph-http", "qso-graph-pota"):
+            with self.subTest(new=new):
+                self.assertTrue(rc.first_token_allowed({
+                    "qso-graph-dxcluster": True,
+                    "qso-graph-spaceweather": True,
+                    "qso-graph-http": new != "qso-graph-http",
+                    "qso-graph-pota": new != "qso-graph-pota",
+                    "qso-graph-dxcluster-cli": True,
+                }))
         self.assertTrue(rc.first_token_allowed({"a": False}))
 
     def test_refused_once_every_crate_exists(self):
@@ -177,6 +180,7 @@ class FirstToken(unittest.TestCase):
             "qso-graph-dxcluster": True,
             "qso-graph-spaceweather": True,
             "qso-graph-http": True,
+            "qso-graph-pota": True,
             "qso-graph-dxcluster-cli": True,
         }))
 

@@ -120,3 +120,9 @@ vectors, recognition context is defined in core §7.2.
 
 Evidence-byte fidelity and third-party privacy are reconciled only in
 `QGDXC-SEC-0005`; this annex does not create a second raw-data retention rule.
+
+**Events an application makes.** An application MAY create `spot` events from a source that is not a
+cluster session, so they share the interface's list, filters and collapse. `qg-dxc` does this for
+Parks On the Air (F.14), marking them with the server type `pota`. No session accepts that type; the
+library carries the name only so such events can say where they came from, and knows nothing else
+about POTA.

@@ -32,10 +32,10 @@ impl Picker {
                 .entries
                 .iter()
                 .map(|e| {
-                    let profile = if e.profile == Profile::Auto {
-                        "auto"
-                    } else {
-                        e.profile.name()
+                    let profile = match e.config.as_ref().map(|config| config.profile) {
+                        None => "",
+                        Some(Profile::Auto) => "auto",
+                        Some(profile) => profile.name(),
                     };
                     (e.name.clone(), e.node.clone(), profile.to_owned())
                 })

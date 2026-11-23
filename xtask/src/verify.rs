@@ -70,6 +70,8 @@ pub fn verify() -> Result<(), String> {
                 "-p",
                 "qso-graph-http",
                 "-p",
+                "qso-graph-pota",
+                "-p",
                 "qso-graph-dxcluster-cli",
                 "--config",
                 "patch.crates-io.qso-graph-dxcluster.path=\"crates/qso-graph-dxcluster\"",
@@ -77,6 +79,8 @@ pub fn verify() -> Result<(), String> {
                 "patch.crates-io.qso-graph-spaceweather.path=\"crates/qso-graph-spaceweather\"",
                 "--config",
                 "patch.crates-io.qso-graph-http.path=\"crates/qso-graph-http\"",
+                "--config",
+                "patch.crates-io.qso-graph-pota.path=\"crates/qso-graph-pota\"",
             ],
         ),
     ];
@@ -250,7 +254,7 @@ pub fn verify() -> Result<(), String> {
         .into_iter()
         .map(|target| (target, "70000"))
         .chain(crate::checks::WEATHER_FUZZ.map(|(target, _, limit)| (target, limit)))
-        .chain([("http_retry_after", "4096")])
+        .chain([("http_retry_after", "4096"), ("pota_spots", "1048577")])
         {
             let name = format!("fuzz {target}");
             let path = format!("target/verify/fuzz-{target}.log");

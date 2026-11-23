@@ -29,6 +29,10 @@ themes. Use `--theme color|daylight|phosphor|amber|mono` at startup. Layout,
 modes, callsigns, and human or skimmer spots. The `connect` command emits events;
 `replay` reads a local recording. Recording is opt-in.
 
+Add `--node pota` for Parks on the Air activator spots, or select a source with
+`"node": "pota"` from your sources file. The feed has a one-minute floor between
+requests ([Annex F.14](https://github.com/qso-graph/qso-graph-dxcluster/blob/main/spec/annex-f-tui.md#f14-pota-spots)).
+
 See the [project documentation](https://github.com/qso-graph/qso-graph-dxcluster)
 for the specification and privacy behavior.
 

@@ -2066,6 +2066,7 @@ fn sources_option_rules_and_chosen_sources_run_as_nodes() {
                 c.retain_third_party_data,
             ),
             Source::Replay(_) => panic!("replay"),
+            Source::Pota => panic!("POTA"),
         })
         .collect();
     assert_eq!(

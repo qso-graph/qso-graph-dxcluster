@@ -1,15 +1,16 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //! SWPC transport and refresh scheduling (QGDXC-TUI-0111–0113, QGDXC-TUI-0116).
 
+use super::web::{Fetch, Https, Outcome, SystemClock};
 use qso_graph_http::{
-    Client, Clock, Error as HttpError, Gate, Ledger, Outcome as RequestOutcome, Policy,
-    ResponseHead, RetryAfter, RetryAfterStatuses, Roots, Timeouts, WaitScope,
+    Clock, Gate, Ledger, Outcome as RequestOutcome, Policy, RetryAfter, RetryAfterStatuses,
+    WaitScope,
 };
 use qso_graph_spaceweather::{self as swx, Product};
 use std::{
     io,
     sync::mpsc,
-    time::{Duration, Instant, SystemTime},
+    time::{Duration, Instant},
 };
 
 #[derive(Clone, Copy)]
@@ -24,7 +25,6 @@ const FIFTEEN_MINUTES: Duration = Duration::from_secs(900);
 const FIVE_MINUTES: Duration = Duration::from_secs(300);
 const FAILURE_NOTICE: Duration = Duration::from_secs(15);
 const NOAA_HOST: &str = "services.swpc.noaa.gov";
-const USER_AGENT: &str = concat!("qg-dxc/", env!("CARGO_PKG_VERSION"));
 
 pub(super) const FEEDS: [Feed; 8] = [
     Feed {
@@ -128,58 +128,6 @@ fn redact(text: &mut String) {
     let (bytes, changed) = qso_graph_dxcluster::privacy::redact(text.as_bytes());
     if changed {
         *text = String::from_utf8(bytes).expect("redaction preserves UTF-8");
-    }
-}
-
-pub(super) trait Fetch {
-    fn get(&mut self, url: &'static str, limit: usize) -> Outcome;
-}
-
-pub(super) enum Outcome {
-    Bytes(Vec<u8>),
-    Status(u16, Option<String>),
-    Error(&'static str),
-}
-
-fn https() -> Client {
-    Client::new(&[NOAA_HOST], Roots::WebPki, USER_AGENT, Timeouts::default())
-        .expect("valid space-weather client settings")
-}
-
-fn status(head: ResponseHead) -> Outcome {
-    let retry_after = head
-        .retry_after
-        .map(|value| String::from_utf8(value).unwrap_or_default());
-    Outcome::Status(head.status, retry_after)
-}
-
-impl Fetch for Client {
-    fn get(&mut self, url: &'static str, limit: usize) -> Outcome {
-        // QGDXC-TUI-0112: only the fixed feed table can supply a request URI.
-        assert!(FEEDS.iter().any(|feed| feed.url == url));
-        match self.get_success_body(url, limit) {
-            Ok(response) if (200..300).contains(&response.head.status) => {
-                Outcome::Bytes(response.body)
-            }
-            Ok(response) => status(response.head),
-            Err(HttpError::BodyReadFailed(_)) => Outcome::Error("response body failed"),
-            Err(HttpError::BodyTooLarge(_)) => Outcome::Error("byte limit exceeded"),
-            Err(_) => Outcome::Error("request failed"),
-        }
-    }
-}
-
-struct WeatherClock(Instant);
-
-impl Clock for WeatherClock {
-    fn elapsed(&self) -> Duration {
-        self.0.elapsed()
-    }
-
-    fn unix_time(&self) -> Duration {
-        SystemTime::now()
-            .duration_since(SystemTime::UNIX_EPOCH)
-            .unwrap_or_default()
     }
 }
 
@@ -386,8 +334,8 @@ pub(super) fn start(origin: Instant) -> io::Result<Running> {
     std::thread::Builder::new()
         .name("space-weather".into())
         .spawn(move || {
-            let clock = WeatherClock(origin);
-            let mut fetcher = https();
+            let clock = SystemClock(origin);
+            let mut fetcher = Https::new(NOAA_HOST, FEEDS.map(|feed| feed.url));
             let mut scheduler = Scheduler::default();
             // Dropping Running wakes an idle worker. An in-flight request can finish
             // on its own deadline without delaying terminal restoration on exit.

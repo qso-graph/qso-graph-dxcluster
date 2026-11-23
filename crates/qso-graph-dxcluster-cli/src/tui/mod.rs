@@ -4,12 +4,14 @@ mod config;
 mod geo;
 mod model;
 mod picker;
+mod pota;
 mod render;
 pub(crate) mod sources;
 #[cfg(test)]
 mod tests;
 mod theme;
 mod weather;
+mod web;
 use config::Options;
 use crossterm::{
     cursor::{Hide, RestorePosition, SavePosition, Show},
@@ -248,7 +250,7 @@ pub fn run(args: &[String]) -> Result<u8, String> {
             _screen: screen,
             workers: Workers::new(stop.clone()),
         };
-        interface.workers.start(options, origin);
+        interface.workers.start(options, &mut model, origin);
         let mut weather = weather::Worker::default();
         let mut redraw = Redraw::default();
         while !model.quit && !stop.load(Ordering::Relaxed) {

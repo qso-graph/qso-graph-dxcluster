@@ -1,5 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 use super::*;
+use crate::tui::web::{
+    USER_AGENT,
+    test_fetch::{FakeClock, Script},
+};
 use crate::tui::{
     config::Options,
     model::{Input, Model, SpotsView},
@@ -7,7 +11,6 @@ use crate::tui::{
     theme::Role,
 };
 use ratatui::{Terminal, backend::TestBackend, buffer::Buffer};
-use std::{cell::Cell, collections::VecDeque};
 
 const FIXTURES: [&str; FLUX_HISTORY] = [
     "products_summary_10cm-flux.json",
@@ -26,38 +29,6 @@ fn fixture(name: &str) -> Vec<u8> {
         "/../qso-graph-spaceweather/tests/fixtures",
     );
     std::fs::read(std::path::Path::new(directory).join(name)).unwrap()
-}
-
-#[derive(Default)]
-struct FakeClock(Cell<Duration>);
-
-impl FakeClock {
-    fn at(&self, seconds: u64) {
-        self.0.set(Duration::from_secs(seconds));
-    }
-}
-
-impl Clock for FakeClock {
-    fn elapsed(&self) -> Duration {
-        self.0.get()
-    }
-
-    fn unix_time(&self) -> Duration {
-        Duration::from_secs(1_795_376_460) + self.elapsed()
-    }
-}
-
-#[derive(Default)]
-struct Script {
-    responses: VecDeque<Outcome>,
-    calls: Vec<(&'static str, usize)>,
-}
-
-impl Fetch for Script {
-    fn get(&mut self, url: &'static str, limit: usize) -> Outcome {
-        self.calls.push((url, limit));
-        self.responses.pop_front().expect("unexpected request")
-    }
 }
 
 fn fixture_script() -> Script {
@@ -259,7 +230,7 @@ fn history_request_obeys_the_shared_retry_after() {
 #[test]
 fn https_uses_only_the_fixed_feed_host() {
     // QGDXC-TUI-0112. The shared crate tests the client and body reader.
-    let client = https();
+    let client = Https::new(NOAA_HOST, FEEDS.map(|feed| feed.url));
     assert!(client.allows_host("services.swpc.noaa.gov"));
     assert!(!client.allows_host("example.invalid"));
     assert!(

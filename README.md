@@ -90,6 +90,10 @@ Solar flux, planetary K, and NOAA scales have a 15-minute minimum between
 requests. X-rays, solar wind, and alerts have a five-minute minimum
 (`QGDXC-TUI-0111`).
 
+Add `--node pota` to include activator spots from Parks on the Air, or set
+`"node": "pota"` in your sources file and select it at startup. The feed has a
+one-minute floor between requests. See [Annex F.14](spec/annex-f-tui.md#f14-pota-spots).
+
 Press `?` for keys;
 Scrolling down holds your place while reception continues, and Home returns to the newest spots; `p` pauses and resumes too, and `t` cycles the five themes.
 Use `--theme color|daylight|phosphor|amber|mono` to choose a theme at startup.

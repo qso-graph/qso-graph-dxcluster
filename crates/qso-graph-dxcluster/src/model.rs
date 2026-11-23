@@ -63,6 +63,8 @@ pub enum Profile {
     ArCluster,
     CcCluster,
     Rbn,
+    /// A synthetic POTA event source (QGDXC-TUI-0130), outside cluster sessions.
+    Pota,
 }
 impl Profile {
     pub fn name(self) -> &'static str {
@@ -72,6 +74,7 @@ impl Profile {
             Self::ArCluster => "arcluster",
             Self::CcCluster => "cccluster",
             Self::Rbn => "rbn",
+            Self::Pota => "pota",
         }
     }
     pub fn parse(s: &str) -> Option<Self> {

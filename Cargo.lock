@@ -665,6 +665,7 @@ dependencies = [
  "getrandom 0.4.3",
  "qso-graph-dxcluster",
  "qso-graph-http",
+ "qso-graph-pota",
  "qso-graph-spaceweather",
  "ratatui",
  "serde_core",
@@ -679,6 +680,14 @@ dependencies = [
  "aws-lc-sys",
  "rustls",
  "ureq",
+]
+
+[[package]]
+name = "qso-graph-pota"
+version = "0.6.0"
+dependencies = [
+ "serde_core",
+ "serde_json",
 ]
 
 [[package]]

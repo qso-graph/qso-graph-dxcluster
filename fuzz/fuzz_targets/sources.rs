@@ -12,8 +12,16 @@ fuzz_target!(|data: &[u8]| {
         for entry in &saved.entries {
             assert!((1..=MAX_NAME).contains(&entry.name.len()));
             assert!(entry.name.bytes().all(|b| (0x20..=0x7e).contains(&b)));
-            assert!(!entry.config.retain_third_party_data);
-            assert!(entry.config.validate().is_ok());
+            if entry.node == "pota" {
+                assert!(entry.config.is_none());
+            } else {
+                let config = entry
+                    .config
+                    .as_ref()
+                    .expect("cluster source has a configuration");
+                assert!(!config.retain_third_party_data);
+                assert!(config.validate().is_ok());
+            }
         }
     }
 });

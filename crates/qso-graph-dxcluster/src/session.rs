@@ -43,6 +43,9 @@ impl Config {
         }
     }
     pub fn validate(&self) -> Result<(), &'static str> {
+        if self.profile == Profile::Pota {
+            return Err("unsupported session profile");
+        }
         if self.host.is_empty()
             || self.host.len() > 253
             || self.host.chars().any(char::is_control)
