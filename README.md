@@ -2,9 +2,15 @@
 # QG DX Cluster
 
 An old-school DX cluster terminal built in modern Rust, for radio operators who
-want several cluster nodes and the Reverse Beacon Network in one live,
-filterable spot list. `qg-dxc` brings the feeds together in your terminal. It is
-receive-only and never sends a password.
+want several cluster nodes, the Reverse Beacon Network and Parks on the Air spots
+in one live, filterable spot list. Alongside the spots, `qg-dxc` shows:
+
+- a world map with each spot's path and the grey line
+- the NCDXF/IARU beacons on the air now
+- NOAA space weather and a band outlook
+- your sunrise, sunset and the moon, worked out on your own computer
+
+It is receive-only and never sends a password.
 
 Install it with your package manager:
 
