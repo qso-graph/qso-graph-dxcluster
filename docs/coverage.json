@@ -629,7 +629,7 @@
       "tests": [
         {
           "file": "xtask/src/checks.rs",
-          "name": "policy_rejects_transport_dependencies_in_either_library"
+          "name": "policy_rejects_transport_dependencies_in_parsing_libraries"
         },
         {
           "file": "xtask/src/checks.rs",
@@ -2324,7 +2324,7 @@
       "tests": [
         {
           "file": "xtask/src/checks.rs",
-          "name": "policy_rejects_transport_dependencies_in_either_library"
+          "name": "policy_rejects_transport_dependencies_in_parsing_libraries"
         },
         {
           "file": "xtask/src/checks.rs",
@@ -2580,6 +2580,181 @@
         {
           "file": "crates/qso-graph-dxcluster-cli/src/tui/weather/tests.rs",
           "name": "ribbon_is_compact_on_the_top_border_of_every_page"
+        }
+      ],
+      "vectors": []
+    },
+    "QGDXC-POTA-0001": {
+      "tests": [
+        {
+          "file": "crates/qso-graph-dxcluster-cli/tests/pota_snapshot.rs",
+          "name": "activator_fixture_maps_to_typed_spots"
+        },
+        {
+          "file": "xtask/src/checks.rs",
+          "name": "policy_rejects_transport_dependencies_in_parsing_libraries"
+        }
+      ],
+      "vectors": []
+    },
+    "QGDXC-POTA-0002": {
+      "tests": [
+        {
+          "file": "crates/qso-graph-pota/tests/spots.rs",
+          "name": "limits_refuse_only_the_whole_snapshot"
+        },
+        {
+          "file": "crates/qso-graph-pota/tests/spots.rs",
+          "name": "handles_json_numbers_without_rounding_into_valid_spots"
+        }
+      ],
+      "vectors": []
+    },
+    "QGDXC-POTA-0003": {
+      "tests": [
+        {
+          "file": "crates/qso-graph-dxcluster-cli/tests/pota_snapshot.rs",
+          "name": "activator_fixture_maps_to_typed_spots"
+        },
+        {
+          "file": "crates/qso-graph-pota/tests/spots.rs",
+          "name": "skips_entries_missing_any_required_member"
+        },
+        {
+          "file": "crates/qso-graph-pota/tests/spots.rs",
+          "name": "skips_invalid_required_members"
+        },
+        {
+          "file": "crates/qso-graph-pota/tests/spots.rs",
+          "name": "keeps_valid_bounds_and_omits_invalid_optional_members"
+        },
+        {
+          "file": "crates/qso-graph-pota/tests/spots.rs",
+          "name": "handles_json_numbers_without_rounding_into_valid_spots"
+        },
+        {
+          "file": "crates/qso-graph-pota/tests/spots.rs",
+          "name": "utc_seconds_use_reported_time_and_discard_fraction"
+        }
+      ],
+      "vectors": []
+    },
+    "QGDXC-POTA-0004": {
+      "tests": [
+        {
+          "file": "crates/qso-graph-dxcluster-cli/tests/pota_snapshot.rs",
+          "name": "activator_fixture_maps_to_typed_spots"
+        },
+        {
+          "file": "crates/qso-graph-pota/tests/spots.rs",
+          "name": "keeps_valid_bounds_and_omits_invalid_optional_members"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/tui/pota/tests.rs",
+          "name": "pota_rbn_spots_are_hidden_by_the_human_filter"
+        }
+      ],
+      "vectors": []
+    },
+    "QGDXC-POTA-0005": {
+      "tests": [
+        {
+          "file": "crates/qso-graph-dxcluster-cli/tests/pota_snapshot.rs",
+          "name": "activator_fixture_maps_to_typed_spots"
+        },
+        {
+          "file": "crates/qso-graph-pota/tests/spots.rs",
+          "name": "limits_refuse_only_the_whole_snapshot"
+        },
+        {
+          "file": "crates/qso-graph-pota/tests/spots.rs",
+          "name": "skips_entries_missing_any_required_member"
+        },
+        {
+          "file": "crates/qso-graph-pota/tests/spots.rs",
+          "name": "skips_invalid_required_members"
+        }
+      ],
+      "vectors": []
+    },
+    "QGDXC-TUI-0130": {
+      "tests": [
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/tui/pota/tests.rs",
+          "name": "pota_configuration_selects_one_source_and_uses_its_normal_toggle"
+        }
+      ],
+      "vectors": []
+    },
+    "QGDXC-TUI-0131": {
+      "tests": [
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/tui/pota/tests.rs",
+          "name": "pota_policy_matches_the_annex_f_fixture"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/tui/pota/tests.rs",
+          "name": "pota_default_retry_after_and_backoff_are_bounded"
+        }
+      ],
+      "vectors": []
+    },
+    "QGDXC-TUI-0132": {
+      "tests": [
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/tui/pota/tests.rs",
+          "name": "pota_poll_adds_only_unseen_ids_to_the_source_queue"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/tui/pota/tests.rs",
+          "name": "pota_mapping_sets_event_values_and_starts_the_comment_with_the_park"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/tui/pota/tests.rs",
+          "name": "pota_rbn_spots_are_hidden_by_the_human_filter"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/tui/pota/tests.rs",
+          "name": "pota_seen_ids_are_evicted_in_arrival_order"
+        }
+      ],
+      "vectors": []
+    },
+    "QGDXC-TUI-0133": {
+      "tests": [
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/tui/pota/tests.rs",
+          "name": "pota_configuration_selects_one_source_and_uses_its_normal_toggle"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/tui/pota/tests.rs",
+          "name": "pota_waits_without_requests_and_keeps_rows_on_failure"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/tui/pota/tests.rs",
+          "name": "pota_mapping_sets_event_values_and_starts_the_comment_with_the_park"
+        }
+      ],
+      "vectors": []
+    },
+    "QGDXC-TUI-0134": {
+      "tests": [
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/tui/pota/tests.rs",
+          "name": "pota_is_refused_with_replay_and_has_no_recording_option"
+        }
+      ],
+      "vectors": []
+    },
+    "QGDXC-TUI-0135": {
+      "tests": [
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/tui/pota/tests.rs",
+          "name": "pota_poll_adds_only_unseen_ids_to_the_source_queue"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/tui/pota/tests.rs",
+          "name": "pota_waits_without_requests_and_keeps_rows_on_failure"
         }
       ],
       "vectors": []

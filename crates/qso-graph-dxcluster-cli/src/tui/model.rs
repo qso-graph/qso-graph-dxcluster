@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //! Pure display state. No clock, terminal, transport, or file access.
 use super::{
+    pota,
     theme::Appearance,
     weather::{Cache, Data, Update},
 };
@@ -513,13 +514,44 @@ pub struct Status {
     pub hidden: bool,
     pub complete: bool,
     pub diagnostic: String,
+    pub pota_skipped: Option<usize>,
 }
 impl Status {
+    pub(super) fn start_pota(&mut self) {
+        self.server = "pota".into();
+        self.state = "connecting".into();
+    }
+
+    pub(super) fn apply_pota(&mut self, status: pota::Status) {
+        match status {
+            pota::Status::Ready { skipped } => {
+                self.state = "ready".into();
+                self.retry_at = None;
+                self.reason.clear();
+                self.pota_skipped = Some(skipped);
+            }
+            pota::Status::Failed { reason, wait } => {
+                self.state = "failed".into();
+                self.retry_at = wait;
+                self.reason = reason;
+            }
+        }
+    }
+
+    pub(super) fn retry_deadline(&self, now: Duration) -> Option<Duration> {
+        self.retry_at
+            .filter(|&at| self.server != "pota" || at > now)
+    }
+
     pub fn line(&self, now: Duration) -> String {
+        let wait = (self.server == "pota")
+            .then(|| self.retry_deadline(now))
+            .flatten()
+            .map(|at| format!("retry {}s", (at - now).as_millis().div_ceil(1_000)));
         format!(
-            "{} {} {} {} spots:{}{}{}{} {}",
+            "{} {} {} {} spots:{}{}{}{} {}{}",
             self.label,
-            self.state,
+            wait.as_deref().unwrap_or(&self.state),
             self.reason,
             self.server,
             self.count,
@@ -528,7 +560,10 @@ impl Status {
                 .unwrap_or_default(),
             if self.complete { " COMPLETE" } else { "" },
             if self.hidden { " HIDDEN" } else { "" },
-            self.diagnostic
+            self.diagnostic,
+            self.pota_skipped
+                .map(|n| format!(" skipped: {n}"))
+                .unwrap_or_default(),
         )
     }
 }
@@ -678,6 +713,7 @@ impl Model {
                     hidden: false,
                     complete: false,
                     diagnostic: String::new(),
+                    pota_skipped: None,
                 })
                 .collect(),
             total: 0,

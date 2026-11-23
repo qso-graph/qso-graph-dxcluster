@@ -8,6 +8,7 @@ use std::{collections::BTreeSet, path::Path};
 #[derive(Debug, Clone)]
 pub enum Source {
     Node(Config),
+    Pota,
     Replay(String),
 }
 pub struct Options {
@@ -85,17 +86,34 @@ impl Options {
         let mut bases = vec![];
         let mut endpoints = BTreeSet::new();
         if !nodes.is_empty() {
-            let call = call.ok_or("configuration: --call is required with --node")?;
+            let mut pota = false;
+            if nodes.iter().all(|arg| arg == "pota")
+                && call
+                    .as_deref()
+                    .is_some_and(|call| !qso_graph_dxcluster::values::login(call))
+            {
+                return Err("configuration: --call is not a valid callsign".into());
+            }
             for arg in nodes {
                 let error = |why: &str| format!("configuration: --node {arg}: {why}");
+                if arg == "pota" {
+                    if std::mem::replace(&mut pota, true) {
+                        return Err(error("duplicate endpoint"));
+                    }
+                    bases.push(arg);
+                    sources.push(Source::Pota);
+                    continue;
+                }
+                let call = call
+                    .as_deref()
+                    .ok_or("configuration: --call is required with --node")?;
                 let (endpoint, profile) = arg.split_once('/').unwrap_or((&arg, "auto"));
                 let profile =
                     saved::profile(profile).ok_or_else(|| error("unsupported profile"))?;
-                let (config, host) =
-                    saved::node(endpoint, profile, &call).map_err(|e| match e {
-                        NodeError::Endpoint(why) => error(why),
-                        NodeError::Config(why) => format!("{}; --call {call}", error(&why)),
-                    })?;
+                let (config, host) = saved::node(endpoint, profile, call).map_err(|e| match e {
+                    NodeError::Endpoint(why) => error(why),
+                    NodeError::Config(why) => format!("{}; --call {call}", error(&why)),
+                })?;
                 if !endpoints.insert((host.to_ascii_lowercase(), config.port)) {
                     return Err(error("duplicate endpoint"));
                 }
@@ -125,6 +143,7 @@ impl Options {
                 sources.push(Source::Replay(path));
             }
         }
+        let labels = source_labels(&bases, &sources);
         Ok(Self {
             space_weather,
             keep_human: keep_human.unwrap_or(DEFAULT_KEEP),
@@ -136,7 +155,7 @@ impl Options {
                     .as_deref(),
             ),
             sources,
-            labels: labels(&bases),
+            labels,
             saved,
         })
     }
@@ -152,9 +171,12 @@ impl Options {
             .collect();
         self.sources = entries
             .iter()
-            .map(|e| Source::Node(e.config.clone()))
+            .map(|e| e.config.clone().map_or(Source::Pota, Source::Node))
             .collect();
-        self.labels = labels(&entries.iter().map(|e| e.name.clone()).collect::<Vec<_>>());
+        self.labels = source_labels(
+            &entries.iter().map(|e| e.name.clone()).collect::<Vec<_>>(),
+            &self.sources,
+        );
     }
 }
 /// The error for a missing default sources file; the path follows, escaped.
@@ -187,11 +209,30 @@ fn keep(value: &str, flag: &str) -> Result<usize, String> {
             format!("configuration: {flag} must be an integer in {MIN_KEEP}..={MAX_KEEP}")
         })
 }
+#[cfg(test)]
 pub fn labels(bases: &[String]) -> Vec<String> {
+    labels_with_pota(bases, None)
+}
+
+fn source_labels(bases: &[String], sources: &[Source]) -> Vec<String> {
+    labels_with_pota(
+        bases,
+        sources.iter().position(|s| matches!(s, Source::Pota)),
+    )
+}
+
+fn labels_with_pota(bases: &[String], pota: Option<usize>) -> Vec<String> {
     let mut used = BTreeSet::new();
+    if pota.is_some() {
+        used.insert("pota".into());
+    }
     bases
         .iter()
-        .map(|base| {
+        .enumerate()
+        .map(|(i, base)| {
+            if pota == Some(i) {
+                return "pota".into();
+            }
             let base = sanitize(base);
             let mut label = clip(&base, 16, false);
             let mut suffix = 2;

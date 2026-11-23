@@ -89,7 +89,7 @@ pub fn profile(name: &str) -> Option<Profile> {
 /// A validated sources file.
 #[derive(Debug, Clone)]
 pub struct Saved {
-    /// The file's default callsign; each entry's configuration holds the call it uses.
+    /// The file's default callsign for cluster nodes.
     pub call: Option<String>,
     pub entries: Vec<Entry>,
 }
@@ -99,9 +99,9 @@ pub struct Saved {
 pub struct Entry {
     pub name: String,
     pub node: String,
-    pub profile: Profile,
     pub selected: bool,
-    pub config: Config,
+    /// The cluster connection settings, absent for a POTA source.
+    pub config: Option<Config>,
 }
 
 /// The default sources file path (QGDXC-TUI-0006). `var` reads the environment.
@@ -164,6 +164,7 @@ pub fn parse(bytes: &[u8]) -> Result<Saved, String> {
     let mut names = BTreeSet::new();
     let mut endpoints = BTreeSet::new();
     let mut entries = Vec::with_capacity(list.len());
+    let mut pota = false;
     for (i, item) in list.iter().enumerate() {
         let at = |member: &str| format!("sources[{i}].{member}");
         let fields = members(
@@ -194,31 +195,41 @@ pub fn parse(bytes: &[u8]) -> Result<Saved, String> {
                 at("node")
             ));
         }
-        let chosen = match fields[2] {
-            Json::Missing => Profile::Auto,
-            value => profile(string(value, &at("profile"))?)
-                .ok_or_else(|| format!("{}: unsupported profile", at("profile")))?,
-        };
         let selected = match fields[3] {
             Json::Missing => false,
             Json::Bool(b) => *b,
             _ => return Err(format!("{}: must be true or false", at("selected"))),
         };
         let own = optional_call(fields[4], &at("call"))?;
-        let call = own.or(call).ok_or_else(|| {
-            format!("sources[{i}]: missing \"call\", and the file has no top-level \"call\"")
-        })?;
-        let (config, host) = node(endpoint, chosen, call).map_err(|e| match e {
-            NodeError::Endpoint(why) => format!("{}: {why}", at("node")),
-            NodeError::Config(why) => format!("{}: {why}", at("node")),
-        })?;
-        if !endpoints.insert((host.to_ascii_lowercase(), config.port)) {
-            return Err(format!("{}: duplicate endpoint", at("node")));
-        }
+        let config = if endpoint == "pota" {
+            if !matches!(fields[2], Json::Missing) {
+                return Err(format!("{}: POTA has no profile", at("profile")));
+            }
+            if std::mem::replace(&mut pota, true) {
+                return Err(format!("{}: duplicate endpoint", at("node")));
+            }
+            None
+        } else {
+            let profile = match fields[2] {
+                Json::Missing => Profile::Auto,
+                value => profile(string(value, &at("profile"))?)
+                    .ok_or_else(|| format!("{}: unsupported profile", at("profile")))?,
+            };
+            let call = own.or(call).ok_or_else(|| {
+                format!("sources[{i}]: missing \"call\", and the file has no top-level \"call\"")
+            })?;
+            let (config, host) = node(endpoint, profile, call).map_err(|e| match e {
+                NodeError::Endpoint(why) => format!("{}: {why}", at("node")),
+                NodeError::Config(why) => format!("{}: {why}", at("node")),
+            })?;
+            if !endpoints.insert((host.to_ascii_lowercase(), config.port)) {
+                return Err(format!("{}: duplicate endpoint", at("node")));
+            }
+            Some(config)
+        };
         entries.push(Entry {
             name: name.to_owned(),
             node: endpoint.to_owned(),
-            profile: chosen,
             selected,
             config,
         });
@@ -370,24 +381,37 @@ mod tests {
         let names: Vec<_> = saved.entries.iter().map(|e| e.name.as_str()).collect();
         assert_eq!(names, ["Home node", "RBN CW"]);
         let first = &saved.entries[0];
-        assert_eq!((first.profile, first.selected), (Profile::Auto, true));
         assert_eq!(
-            (first.config.host.as_str(), first.config.port),
+            (first.config.as_ref().unwrap().profile, first.selected),
+            (Profile::Auto, true)
+        );
+        assert_eq!(
+            (
+                first.config.as_ref().unwrap().host.as_str(),
+                first.config.as_ref().unwrap().port
+            ),
             ("dx.example.net", 7300)
         );
         assert_eq!(
-            (saved.entries[1].profile, saved.entries[1].selected),
+            (
+                saved.entries[1].config.as_ref().unwrap().profile,
+                saved.entries[1].selected
+            ),
             (Profile::Rbn, false)
         );
         assert!(
             saved
                 .entries
                 .iter()
-                .all(|e| !e.config.retain_third_party_data)
+                .all(|e| !e.config.as_ref().unwrap().retain_third_party_data)
         );
         let ipv6 = with_sources(r#"{"name":"v6","node":"[2001:db8::1]:7300"}"#);
         assert_eq!(
-            parse(ipv6.as_bytes()).unwrap().entries[0].config.host,
+            parse(ipv6.as_bytes()).unwrap().entries[0]
+                .config
+                .as_ref()
+                .unwrap()
+                .host,
             "2001:db8::1"
         );
     }
@@ -569,14 +593,17 @@ mod tests {
         let calls: Vec<_> = saved
             .entries
             .iter()
-            .map(|e| e.config.call.as_str())
+            .map(|e| e.config.as_ref().unwrap().call.as_str())
             .collect();
         assert_eq!(calls, ["Q1ABC", "Q1ABC-2"]);
         let text =
             r#"{"version":1,"sources":[{"name":"A","node":"dx.example.net:1","call":"Q9XYZ"}]}"#;
         let saved = parse(text.as_bytes()).unwrap();
         assert_eq!(
-            (saved.call, saved.entries[0].config.call.as_str()),
+            (
+                saved.call,
+                saved.entries[0].config.as_ref().unwrap().call.as_str()
+            ),
             (None, "Q9XYZ")
         );
     }

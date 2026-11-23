@@ -262,7 +262,11 @@ pub fn source_violation(s: &str, library: bool) -> bool {
                 .contains(w)
             })
 }
-const PARSING_CRATES: [&str; 2] = ["qso-graph-dxcluster", "qso-graph-spaceweather"];
+const PARSING_CRATES: [&str; 3] = [
+    "qso-graph-dxcluster",
+    "qso-graph-spaceweather",
+    "qso-graph-pota",
+];
 const HTTP_CRATE: &str = "qso-graph-http";
 const TLS_PINS: [(&str, &str); 4] = [
     ("ureq", "=3.5.1"),
@@ -305,14 +309,18 @@ fn library_dependencies(metadata: &Value, library_name: &str) -> Result<(), Stri
                 rejected.push(format!("unapproved dev dependency: {description}"));
             }
         } else {
-            // QGDXC-SWX-0001: both JSON dependencies are exact, normal pins
-            // using the same features as the CLI, without derive.
-            let allowed = library_name == "qso-graph-spaceweather"
+            // QGDXC-SWX-0001 and QGDXC-POTA-0001: exact JSON pins without derive.
+            let allowed = matches!(library_name, "qso-graph-spaceweather" | "qso-graph-pota")
                 && dependency["kind"].is_null()
                 && match name {
                     "serde_json" => {
                         dependency["req"] == "=1.0.145"
-                            && dependency["features"] == serde_json::json!([])
+                            && dependency["features"]
+                                == if library_name == "qso-graph-pota" {
+                                    serde_json::json!(["raw_value"])
+                                } else {
+                                    serde_json::json!([])
+                                }
                     }
                     "serde_core" => {
                         dependency["req"] == "=1.0.229"
@@ -1500,6 +1508,20 @@ pub const WEATHER_FUZZ: [(&str, &str, &str); 9] = [
     ("swx_alert_force", "products_alerts.json", "262153"),
 ];
 pub fn seed_fuzz() -> Result<(), String> {
+    let pota = Path::new("fuzz/corpus/pota_spots");
+    fs::create_dir_all(pota).map_err(|e| e.to_string())?;
+    fs::copy(
+        "crates/qso-graph-pota/tests/fixtures/spot-activator.json",
+        pota.join("spot-activator.json"),
+    )
+    .map_err(|e| e.to_string())?;
+    let sources = Path::new("fuzz/corpus/sources");
+    fs::create_dir_all(sources).map_err(|e| e.to_string())?;
+    fs::write(
+        sources.join("pota.json"),
+        br#"{"version":1,"sources":[{"name":"Parks on the Air","node":"pota"}]}"#,
+    )
+    .map_err(|e| e.to_string())?;
     for (target, fixture, _) in WEATHER_FUZZ {
         let dir = Path::new("fuzz/corpus").join(target);
         fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
@@ -1714,13 +1736,14 @@ mod tests {
         fs::remove_dir_all(root).unwrap();
     }
     #[test]
-    fn policy_rejects_transport_dependencies_in_either_library() {
+    fn policy_rejects_transport_dependencies_in_parsing_libraries() {
         // QGDXC-HTTP-0013 and QGDXC-TUI-0115: plant direct and transitive
         // transport dependencies in a resolved Cargo graph.
         let mut graph = serde_json::json!({
             "packages": [
                 {"id": "cluster", "name": PARSING_CRATES[0]},
                 {"id": "weather", "name": PARSING_CRATES[1]},
+                {"id": "pota", "name": PARSING_CRATES[2]},
                 {"id": "cli", "name": "qso-graph-dxcluster-cli"},
                 {"id": "json", "name": "serde_json", "source": "registry"},
                 {"id": "transport", "name": HTTP_CRATE, "source": null},
@@ -1728,28 +1751,25 @@ mod tests {
             "resolve": {"nodes": [
                 {"id": "cluster", "dependencies": []},
                 {"id": "weather", "dependencies": ["json"]},
-                {"id": "cli", "dependencies": ["cluster", "weather", "transport"]},
+                {"id": "pota", "dependencies": ["weather"]},
+                {"id": "cli", "dependencies": ["cluster", "weather", "pota", "transport"]},
                 {"id": "json", "dependencies": []},
                 {"id": "transport", "dependencies": []},
             ]},
         });
         library_transport_dependencies(&graph).unwrap();
         for prohibited in HTTPS_DEPS {
-            graph["packages"][4]["name"] = serde_json::json!(prohibited);
-            graph["resolve"]["nodes"][3]["dependencies"] = serde_json::json!(["transport"]);
-            let error = library_transport_dependencies(&graph).unwrap_err();
-            assert!(
-                error.contains(PARSING_CRATES[1]) && error.ends_with(prohibited),
-                "{error}"
-            );
-            graph["resolve"]["nodes"][3]["dependencies"] = serde_json::json!([]);
-            graph["resolve"]["nodes"][0]["dependencies"] = serde_json::json!(["transport"]);
-            let error = library_transport_dependencies(&graph).unwrap_err();
-            assert!(
-                error.contains(PARSING_CRATES[0]) && error.ends_with(prohibited),
-                "{error}"
-            );
-            graph["resolve"]["nodes"][0]["dependencies"] = serde_json::json!([]);
+            graph["packages"][5]["name"] = serde_json::json!(prohibited);
+            for (library, via) in [(0, 0), (1, 4), (2, 2)] {
+                let dependencies = &mut graph["resolve"]["nodes"][via]["dependencies"];
+                let original = std::mem::replace(dependencies, serde_json::json!(["transport"]));
+                let error = library_transport_dependencies(&graph).unwrap_err();
+                assert!(
+                    error.contains(PARSING_CRATES[library]) && error.ends_with(prohibited),
+                    "{error}"
+                );
+                graph["resolve"]["nodes"][via]["dependencies"] = original;
+            }
         }
     }
     #[test]

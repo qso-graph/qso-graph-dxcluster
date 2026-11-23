@@ -30,7 +30,8 @@ Replace them with your own callsign and the nodes you use:
   "sources": [
     { "name": "Home node", "node": "dx.example.invalid:7300", "selected": true },
     { "name": "Club node", "node": "club.example.invalid:23", "profile": "arcluster" },
-    { "name": "RBN CW", "node": "rbn.example.invalid:7000", "profile": "rbn", "call": "Q1ABC-2" }
+    { "name": "RBN CW", "node": "rbn.example.invalid:7000", "profile": "rbn", "call": "Q1ABC-2" },
+    { "name": "Parks on the Air", "node": "pota" }
   ]
 }
 ```
@@ -39,15 +40,17 @@ Replace them with your own callsign and the nodes you use:
 |---|---|---|
 | `version` | Yes | Always `1`. |
 | `call` | See note | The callsign to log in with. |
-| `sources` | Yes | Between 1 and 64 nodes. |
+| `sources` | Yes | Between 1 and 64 sources. |
 | `name` | Yes | What the TUI calls the node: up to 32 letters, digits, spaces, or punctuation, unique in the file. |
-| `node` | Yes | `host:port`, or `[address]:port` for an IPv6 address. |
+| `node` | Yes | `host:port`, `[address]:port` for an IPv6 address, or `pota`. |
 | `profile` | No | `auto` (the default), `dxspider`, `arcluster`, `cccluster`, or `rbn`. |
 | `selected` | No | `true` to have the node already chosen when the TUI starts. |
 | `call` in a source | No | A different callsign for that node, such as another SSID. |
 
-Note: Every node needs a callsign, either its own `call` or the `call` at the top
-of the file.
+Every cluster node uses its own `call` or the `call` at the top of the file.
+For Parks on the Air, use `pota` as the node and omit the profile and callsign.
+The picker shows the entry's name, and the spot list labels the feed `pota`
+([QGDXC-TUI-0130](../../spec/annex-f-tui.md#f14-pota-spots)).
 
 ## Choose and start
 

@@ -3,6 +3,7 @@
 use super::{
     config::{Options, Source},
     model::Model,
+    pota,
 };
 use crate::{Delivery, recording::ReplayStream, run_live};
 use qso_graph_dxcluster::Event;
@@ -12,7 +13,7 @@ use std::{
     sync::{
         Arc,
         atomic::{AtomicBool, Ordering},
-        mpsc::{self, Receiver},
+        mpsc::{self, Receiver, SyncSender},
     },
     thread::{self, JoinHandle},
     time::{Duration, Instant},
@@ -21,6 +22,7 @@ use std::{
 pub const CAPACITY: usize = 1024;
 pub enum Message {
     Event(Event),
+    PotaStatus(pota::Status),
     Complete,
     Error(String),
 }
@@ -67,18 +69,19 @@ impl Workers {
             cursor: 0,
         }
     }
-    pub fn start(&mut self, options: Options, origin: Instant) {
+    pub(super) fn add_queue(&mut self) -> SyncSender<Envelope> {
+        let (tx, rx) = mpsc::sync_channel(CAPACITY);
+        self.queues.push(SourceQueue {
+            rx: Some(rx),
+            head: None,
+        });
+        tx
+    }
+
+    pub fn start(&mut self, options: Options, model: &mut Model, origin: Instant) {
         let replay = matches!(options.sources[0], Source::Replay(_));
         self.replay = replay;
-        let mut senders = vec![];
-        for _ in &options.sources {
-            let (tx, rx) = mpsc::sync_channel(CAPACITY);
-            senders.push(tx);
-            self.queues.push(SourceQueue {
-                rx: Some(rx),
-                head: None,
-            });
-        }
+        let senders: Vec<_> = options.sources.iter().map(|_| self.add_queue()).collect();
         let workers = self;
         if replay {
             let stop = workers.stop.clone();
@@ -118,11 +121,19 @@ impl Workers {
                 schedule.cancel();
             }));
         } else {
-            for (source, tx) in options.sources.into_iter().zip(senders) {
-                let Source::Node(config) = source else {
-                    unreachable!()
-                };
+            for (index, (source, tx)) in options.sources.into_iter().zip(senders).enumerate() {
                 let stop = workers.stop.clone();
+                let config = match source {
+                    Source::Node(config) => config,
+                    Source::Pota => {
+                        model.sources[index].start_pota();
+                        workers
+                            .threads
+                            .push(Worker::spawn(move || pota::run(origin, &stop, &tx)));
+                        continue;
+                    }
+                    Source::Replay(_) => unreachable!(),
+                };
                 workers.threads.push(Worker::spawn(move || {
                     // Delivery uses the same bounded source queue directly. No
                     // forwarding queue can hide an unbounded event backlog.
@@ -170,6 +181,7 @@ impl Workers {
             }
             match message {
                 Message::Event(event) => model.receive(source, event, origin.elapsed()),
+                Message::PotaStatus(update) => model.sources[source].apply_pota(update),
                 Message::Error(error) => {
                     model.sources[source].diagnostic = format!("ERROR {error}")
                 }
@@ -188,6 +200,9 @@ impl Drop for Workers {
             q.head.take();
         }
         // One deadline covers all sources, including non-cancellable DNS/dials.
+        for worker in &self.threads {
+            worker.thread.thread().unpark();
+        }
         for worker in self.threads.drain(..) {
             match worker
                 .done

@@ -340,7 +340,7 @@ fn state(source: &super::model::Status, now: Duration) -> (char, Role, String) {
     if !source.diagnostic.is_empty() {
         return ('○', Role::Bad, "error".into());
     }
-    if let Some(at) = source.retry_at {
+    if let Some(at) = source.retry_deadline(now) {
         return (
             '◐',
             Role::Warning,
@@ -364,14 +364,16 @@ fn source_detail(source: &super::model::Status, now: Duration) -> Option<String>
     if source.complete {
         return Some("replay finished".into());
     }
-    let message = if let Some(at) = source.retry_at {
+    let skipped = source.pota_skipped.filter(|&n| n != 0);
+    let message = if let Some(at) = source.retry_deadline(now) {
         format!(
             "retrying in {}s",
             at.saturating_sub(now).as_millis().div_ceil(1000)
         )
     } else {
         match source.state.as_str() {
-            "ready" => return None,
+            "ready" => return skipped.map(|n| format!("skipped: {n}")),
+            "failed" if source.server == "pota" => "request failed",
             "" | "connecting" => "connecting",
             "await_login" => "waiting for login",
             "await_identity" => "waiting for identification",
@@ -391,11 +393,15 @@ fn source_detail(source: &super::model::Status, now: Duration) -> Option<String>
         "retry_exhausted" => "retries exhausted".into(),
         other => other.replace('_', " "),
     };
-    Some(if reason.is_empty() {
+    let mut detail = if reason.is_empty() || message == reason {
         message
     } else {
         format!("{message}: {reason}")
-    })
+    };
+    if let Some(n) = skipped {
+        detail.push_str(&format!(", skipped: {n}"));
+    }
+    Some(detail)
 }
 fn comma(value: u64) -> String {
     let text = value.to_string();
@@ -1224,8 +1230,16 @@ fn spot_row(
         row.ui("  ", a.style(Role::Text));
     }
     let remaining = row.end.saturating_sub(row.x) as usize;
+    let comment = display_comment(spot, wide);
+    let pota_comment;
+    let comment = if let Some(reference) = spot.event.get("pota_reference") {
+        pota_comment = format!("{reference} {comment}");
+        &pota_comment
+    } else {
+        comment
+    };
     row.safe(
-        display_comment(spot, wide),
+        comment,
         remaining,
         false,
         a.style(if human { Role::Text } else { Role::Dim }),
