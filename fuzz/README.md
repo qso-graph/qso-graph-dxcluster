@@ -4,7 +4,7 @@
 Targets cover value validation, live spots, enhanced spots, non-spot layouts,
 RBN comments, incremental framing, passive Telnet handling, and session control
 under QGDXC-SEC-0001, the `qg-dxc tui` sources file under QGDXC-TUI-0009, and the country-file reader
-under QGDXC-TUI-0083.
+under QGDXC-TUI-0083, and the Retry-After parser under QGDXC-HTTP-0005.
 Targets use arbitrary bytes, bounded admission, fragmentation,
 EOF, and state resets. They do not open sockets or read private captures.
 

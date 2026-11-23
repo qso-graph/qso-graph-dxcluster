@@ -7,8 +7,8 @@ declarations for every target (QGDXC-IO-0001). It rejects normal and build
 dependencies, lists development dependencies, and checks them against the
 explicit, currently empty `LIBRARY_DEV_ALLOWLIST` in `xtask/src/checks.rs`.
 The space-weather library uses the CLI's JSON pins without derive (QGDXC-SWX-0001).
-The gate also checks the resolved dependency graph for prohibited transport
-packages reachable from either library (QGDXC-TUI-0115).
+The gate checks the HTTPS dependency declarations and the resolved paths
+from the parsing libraries (QGDXC-HTTP-0013 and QGDXC-TUI-0115).
 Planted manifest tests cover individual dependency tables, optional aliases,
 and target-specific normal, build, and development declarations. CLI argument handling,
 base64, event serialization, framing, and protocol parsing use first-party Rust.
@@ -29,8 +29,8 @@ enable bracketed paste (QGDXC-TUI-0041). Other additions are transitive terminal
 Every registry package below is an explicit decision. Versions are locked in
 Cargo.lock; exact-version cargo-vet exemptions mean **not audited yet**, not an
 audit. The store follows the sibling project's four imported audit sources.
-The CLI builds AWS-LC for verified HTTPS to NOAA SWPC (QGDXC-TUI-0112 and
-QGDXC-TUI-0115). Its locked dependencies follow QG Trust's audit imports,
+The CLI uses `qso-graph-http` with AWS-LC for HTTPS to NOAA SWPC
+(QGDXC-HTTP-0010 and QGDXC-TUI-0112). Its locked dependencies follow QG Trust's audit imports,
 publisher trust, and exact-version exemptions in `supply-chain/`. OS bindings
 call platform system libraries.
 

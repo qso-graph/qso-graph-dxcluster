@@ -164,11 +164,21 @@ class Published(unittest.TestCase):
 
 class FirstToken(unittest.TestCase):
     def test_while_a_crate_is_new(self):
-        self.assertTrue(rc.first_token_allowed({"a": True, "b": True, "cli": False}))
+        self.assertTrue(rc.first_token_allowed({
+            "qso-graph-dxcluster": True,
+            "qso-graph-spaceweather": True,
+            "qso-graph-http": False,
+            "qso-graph-dxcluster-cli": True,
+        }))
         self.assertTrue(rc.first_token_allowed({"a": False}))
 
     def test_refused_once_every_crate_exists(self):
-        self.assertFalse(rc.first_token_allowed({"a": True, "b": True, "cli": True}))
+        self.assertFalse(rc.first_token_allowed({
+            "qso-graph-dxcluster": True,
+            "qso-graph-spaceweather": True,
+            "qso-graph-http": True,
+            "qso-graph-dxcluster-cli": True,
+        }))
 
 
 class Tag(unittest.TestCase):

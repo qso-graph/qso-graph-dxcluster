@@ -257,35 +257,39 @@ fn history_request_obeys_the_shared_retry_after() {
 }
 
 #[test]
-fn https_configuration_and_read_cap() {
-    // QGDXC-TUI-0112. Build the agent without sending a request.
-    let agent = https();
-    let config = agent.config();
-    assert!(config.https_only());
-    assert_eq!(config.max_redirects(), 0);
-    assert!(!config.http_status_as_error());
-    assert_eq!(config.timeouts().connect, Some(Duration::from_secs(10)));
-    assert_eq!(config.timeouts().global, Some(Duration::from_secs(30)));
-    assert!(
-        matches!(config.user_agent(), ureq::config::AutoHeaderValue::Provided(value) if value.as_str() == USER_AGENT)
-    );
-    assert_eq!(config.tls_config().provider(), TlsProvider::Rustls);
-    assert!(matches!(
-        config.tls_config().root_certs(),
-        RootCerts::WebPki
-    ));
-    assert!(!config.tls_config().disable_verification());
+fn https_uses_only_the_fixed_feed_host() {
+    // QGDXC-TUI-0112. The shared crate tests the client and body reader.
+    let client = https();
+    assert!(client.allows_host("services.swpc.noaa.gov"));
+    assert!(!client.allows_host("example.invalid"));
     assert!(
         FEEDS
             .iter()
             .all(|feed| feed.url.starts_with("https://services.swpc.noaa.gov/"))
     );
-    for feed in FEEDS {
-        let limit = feed.product.limit();
-        let mut source = io::Cursor::new(vec![b' '; limit + 42]);
-        assert_eq!(bounded_body(&mut source, limit).unwrap().len(), limit + 1);
-        assert_eq!(source.position() as usize, limit + 1);
-    }
+    assert_eq!(USER_AGENT, format!("qg-dxc/{}", env!("CARGO_PKG_VERSION")));
+}
+
+#[test]
+fn noaa_policy_matches_the_annex_i_fixture() {
+    assert_eq!(
+        noaa_policy(),
+        Policy {
+            floors: FEEDS
+                .iter()
+                .zip([900, 900, 900, 300, 300, 300, 300, 3_600])
+                .map(|(feed, seconds)| (feed.url.to_owned(), Duration::from_secs(seconds)))
+                .collect(),
+            wait_scope: WaitScope::Provider,
+            retry_after: RetryAfter {
+                minimum: Duration::from_secs(60),
+                maximum: Duration::from_secs(3_600),
+                default: Some(Duration::from_secs(60)),
+                server_errors: RetryAfterStatuses::ServiceUnavailable,
+            },
+            backoff: None,
+        },
+    );
 }
 
 #[test]

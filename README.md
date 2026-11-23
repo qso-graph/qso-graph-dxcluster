@@ -117,6 +117,7 @@ line per event; `--json` produces Annex A NDJSON events.
 
 For library integration, start with [the API documentation](crates/qso-graph-dxcluster/src/lib.rs)
 and [conformance and caller responsibilities](docs/CONFORMANCE.md).
+The [`qso-graph-http` crate](crates/qso-graph-http/README.md) provides synchronous HTTPS and request scheduling for QSO Graph applications.
 Run the complete offline check suite with `cargo xtask verify`. See
 [CONTRIBUTING.md](CONTRIBUTING.md) for dependencies and vector regeneration.
 
