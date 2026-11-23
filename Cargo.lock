@@ -654,7 +654,7 @@ dependencies = [
 
 [[package]]
 name = "qso-graph-astro"
-version = "0.6.0"
+version = "0.7.0"
 dependencies = [
  "qso-graph-grid",
  "serde_json",
@@ -662,11 +662,11 @@ dependencies = [
 
 [[package]]
 name = "qso-graph-dxcluster"
-version = "0.6.0"
+version = "0.7.0"
 
 [[package]]
 name = "qso-graph-dxcluster-cli"
-version = "0.6.0"
+version = "0.7.0"
 dependencies = [
  "crossterm",
  "ctrlc",
@@ -684,14 +684,14 @@ dependencies = [
 
 [[package]]
 name = "qso-graph-grid"
-version = "0.6.0"
+version = "0.7.0"
 dependencies = [
  "serde_json",
 ]
 
 [[package]]
 name = "qso-graph-http"
-version = "0.6.0"
+version = "0.7.0"
 dependencies = [
  "aws-lc-rs",
  "aws-lc-sys",
@@ -701,7 +701,7 @@ dependencies = [
 
 [[package]]
 name = "qso-graph-pota"
-version = "0.6.0"
+version = "0.7.0"
 dependencies = [
  "serde_core",
  "serde_json",
@@ -709,7 +709,7 @@ dependencies = [
 
 [[package]]
 name = "qso-graph-spaceweather"
-version = "0.6.0"
+version = "0.7.0"
 dependencies = [
  "serde_core",
  "serde_json",
@@ -1285,7 +1285,7 @@ checksum = "589f6da84c646204747d1270a2a5661ea66ed1cced2631d546fdfb155959f9ec"
 
 [[package]]
 name = "xtask"
-version = "0.6.0"
+version = "0.7.0"
 dependencies = [
  "qso-graph-dxcluster",
  "qso-graph-dxcluster-cli",
