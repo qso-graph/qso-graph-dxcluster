@@ -9,13 +9,13 @@ publish = false
 cargo-fuzz = true
 [workspace]
 [dependencies]
-qso-graph-http = { path = "../crates/qso-graph-http", version = "=0.6.0" }
-qso-graph-spaceweather = { path = "../crates/qso-graph-spaceweather", version = "=0.6.0" }
-qso-graph-pota = { path = "../crates/qso-graph-pota", version = "=0.6.0" }
-qso-graph-grid = { path = "../crates/qso-graph-grid", version = "=0.6.0" }
+qso-graph-http = { path = "../crates/qso-graph-http", version = "=0.7.0" }
+qso-graph-spaceweather = { path = "../crates/qso-graph-spaceweather", version = "=0.7.0" }
+qso-graph-pota = { path = "../crates/qso-graph-pota", version = "=0.7.0" }
+qso-graph-grid = { path = "../crates/qso-graph-grid", version = "=0.7.0" }
 libfuzzer-sys = "=0.4.10"
-qso-graph-dxcluster = { path = "../crates/qso-graph-dxcluster", version = "=0.6.0" }
-qso-graph-dxcluster-cli = { path = "../crates/qso-graph-dxcluster-cli", version = "=0.6.0" }
+qso-graph-dxcluster = { path = "../crates/qso-graph-dxcluster", version = "=0.7.0" }
+qso-graph-dxcluster-cli = { path = "../crates/qso-graph-dxcluster-cli", version = "=0.7.0" }
 
 [[bin]]
 name = "values"

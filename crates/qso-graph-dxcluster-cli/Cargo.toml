@@ -16,12 +16,12 @@ include = ["src/**/*.rs", "README.md", "LICENSE", "NOTICE.md"]
 name = "qg-dxc"
 path = "src/main.rs"
 [dependencies]
-qso-graph-dxcluster = { path = "../qso-graph-dxcluster", version = "=0.6.0" }
-qso-graph-spaceweather = { path = "../qso-graph-spaceweather", version = "=0.6.0" }
-qso-graph-http = { path = "../qso-graph-http", version = "=0.6.0" }
-qso-graph-pota = { path = "../qso-graph-pota", version = "=0.6.0" }
-qso-graph-grid = { path = "../qso-graph-grid", version = "=0.6.0" }
-qso-graph-astro = { path = "../qso-graph-astro", version = "=0.6.0" }
+qso-graph-dxcluster = { path = "../qso-graph-dxcluster", version = "=0.7.0" }
+qso-graph-spaceweather = { path = "../qso-graph-spaceweather", version = "=0.7.0" }
+qso-graph-http = { path = "../qso-graph-http", version = "=0.7.0" }
+qso-graph-pota = { path = "../qso-graph-pota", version = "=0.7.0" }
+qso-graph-grid = { path = "../qso-graph-grid", version = "=0.7.0" }
+qso-graph-astro = { path = "../qso-graph-astro", version = "=0.7.0" }
 serde_json = "=1.0.145"
 # Already in the graph through serde_json; used without derive to refuse duplicate JSON members.
 serde_core = { version = "=1.0.229", default-features = false, features = ["std"] }

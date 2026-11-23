@@ -1,6 +1,25 @@
 <!-- SPDX-License-Identifier: GPL-3.0-or-later -->
 # Changelog
 
+## [0.7.0]
+
+### Features
+
+- band outlook from SFI and Kp
+- sun, moon and grey line, and --grid
+- Parks On the Air spots as a source, on qso-graph-http
+- qso-graph-http, one crate for polite HTTPS calls
+
+### Bug Fixes
+
+- test: keep value names apart from values in astro agreement
+- test: keep positions out of assertion messages
+
+### Documentation
+
+- spec: Annex J and F.14, POTA spots as a source
+- spec: Annex I, qso-graph-http for polite HTTPS
+
 ## [0.6.0]
 
 ### Features
