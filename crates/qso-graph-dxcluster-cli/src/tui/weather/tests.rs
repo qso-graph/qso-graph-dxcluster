@@ -168,7 +168,7 @@ fn flux_chart_activates_history_once_with_its_own_floor() {
         clock.at(second);
         if [399, 400, 401, 3_999].contains(&second)
             && present(
-                &mut Terminal::new(TestBackend::new(80, if second == 399 { 25 } else { 26 }))
+                &mut Terminal::new(TestBackend::new(80, if second == 399 { 28 } else { 29 }))
                     .unwrap(),
                 &m,
                 clock.elapsed(),
@@ -322,10 +322,10 @@ fn worker_requests_flux_history_only_when_the_chart_is_drawn() {
         updates,
     });
     for (height, key, expected_draw, expected_request) in [
-        (25, None, false, false),
-        (26, Some(Input::Char('?')), false, false),
-        (26, Some(Input::Escape), true, true),
-        (26, None, true, false),
+        (28, None, false, false),
+        (29, Some(Input::Char('?')), false, false),
+        (29, Some(Input::Escape), true, true),
+        (29, None, true, false),
     ] {
         if let Some(key) = key {
             m.key(key);
@@ -512,14 +512,19 @@ fn assert_outlook_rows(
     );
     let (figure_x, figure_y) = location(&grid, "Bt ");
     assert!(
-        x == figure_x && top == figure_y + 1,
+        x == figure_x && top == figure_y + 2,
         "outlook must follow the figures in their column"
     );
-    let (_, chart_y) = location(&grid, HISTORY_TITLES[0]);
+    let last_band = top + OUTLOOK_BANDS.len() as u16;
+    // QGDXC-TUI-0127.
     assert!(
-        chart_y > top + OUTLOOK_BANDS.len() as u16,
-        "charts must follow the outlook"
+        [figure_y + 1, last_band + 1]
+            .into_iter()
+            .all(|y| (1..width - 1).all(|x| grid[(x, y)].symbol() == " ")),
+        "the rows before and after the outlook must be blank inside the panel"
     );
+    let (_, chart_y) = location(&grid, HISTORY_TITLES[0]);
+    assert!(chart_y > last_band + 1, "charts must follow the outlook");
     for (index, band) in OUTLOOK_BANDS.into_iter().enumerate() {
         let expected = expected["bands"][band].as_str().unwrap();
         let (status, comment) = expected.split_once(" — ").unwrap();
@@ -630,7 +635,7 @@ fn weather_charts_fill_the_rows_below_figures_and_alerts() {
     // QGDXC-TUI-0120 and QGDXC-TUI-0121.
     let mut m = history_model();
     let now = Duration::from_secs(600);
-    for (width, height, alerts) in [(120, 40, 2), (160, 50, 8), (100, 51, 2)] {
+    for (width, height, alerts) in [(120, 42, 2), (160, 52, 8), (100, 54, 2)] {
         install_layout_alerts(&mut m, alerts);
         let grid = screen(&m, width, height, now);
         let [(fx, fy), (kx, ky), (xx, xy), (wx, wy)] =
@@ -640,18 +645,18 @@ fn weather_charts_fill_the_rows_below_figures_and_alerts() {
         let alert_y = location(&grid, &format!("QX{alerts:02}")).1;
         assert!(outlook_y > figure_y, "outlook must follow the figures");
         assert!(
-            fy == outlook_y.max(alert_y) + 1,
+            fy == outlook_y.max(alert_y) + 2,
             "charts must fill the remaining rows"
         );
-        assert_eq!((fx, xx), (3, 3));
+        assert!(fx == 3 && xx == 3, "left charts must align");
         let bottom = height - 2;
         if width >= 120 {
-            assert_eq!((kx, wx), (width / 2 + 2, width / 2 + 2));
-            assert_eq!(fy, ky);
-            assert_eq!(xy, wy);
+            assert!(kx == width / 2 + 2 && wx == kx, "right charts must align");
+            assert!(fy == ky, "flux and Kp charts must start together");
+            assert!(xy == wy, "X-ray and wind charts must start together");
             assert!(xy - fy >= 4 && bottom - xy >= 4);
         } else {
-            assert_eq!((kx, wx), (3, 3));
+            assert!(kx == 3 && wx == 3, "stacked charts must align");
             assert!(ky - fy >= 4 && xy - ky >= 4 && wy - xy >= 4);
             assert!(bottom - wy >= 4);
         }
@@ -691,7 +696,7 @@ fn weather_charts_fill_the_rows_below_figures_and_alerts() {
 fn weather_charts_show_only_what_fits_on_short_screens() {
     // QGDXC-TUI-0121.
     let mut m = history_model();
-    for (width, height, alerts, chart_count) in [(80, 35, 2, 2), (80, 35, 9, 0), (120, 33, 8, 2)] {
+    for (width, height, alerts, chart_count) in [(80, 38, 2, 2), (80, 38, 9, 0), (120, 35, 8, 2)] {
         install_layout_alerts(&mut m, alerts);
         let grid = screen(&m, width, height, Duration::ZERO);
         let text = screen_text(&grid);
@@ -708,13 +713,13 @@ fn weather_charts_show_only_what_fits_on_short_screens() {
             let (_, flux_y) = location(&grid, HISTORY_TITLES[0]);
             let (_, kp_y) = location(&grid, HISTORY_TITLES[1]);
             assert!(
-                flux_y == outlook_y.max(alert_y) + 1,
+                flux_y == outlook_y.max(alert_y) + 2,
                 "charts must fill the remaining rows"
             );
             if width < 120 {
                 assert!(kp_y - flux_y >= 4);
             } else {
-                assert_eq!(kp_y, flux_y);
+                assert!(kp_y == flux_y, "Kp and flux charts must start together");
             }
             assert!(height - 2 - kp_y >= 4);
         }
@@ -726,7 +731,7 @@ fn weather_kp_scale_labels_are_left_of_the_bars() {
     // QGDXC-TUI-0122. Check the full scale and minimum-height fallback.
     let mut m = history_model();
     install_layout_alerts(&mut m, 8);
-    for (width, height, label_order) in [(120, 40, "9530"), (120, 33, "950")] {
+    for (width, height, label_order) in [(120, 42, "9530"), (120, 35, "950")] {
         let grid = screen(&m, width, height, Duration::ZERO);
         let (x, top) = location(&grid, HISTORY_TITLES[1]);
         let (_, bottom) = location(&grid, "11-15");
@@ -766,7 +771,7 @@ fn history_kp_bars_use_noaa_storm_colours() {
             a_running: 0.0,
         })
         .collect();
-    let grid = screen(&m, 120, 40, Duration::ZERO);
+    let grid = screen(&m, 120, 42, Duration::ZERO);
     let (_, title_y) = location(&grid, HISTORY_TITLES[1]);
     let (_, utc_y) = location(&grid, "11-15");
     let bars: Vec<_> = (60..120)
@@ -848,7 +853,7 @@ fn history_xray_axis_labels_are_at_each_logarithmic_decade() {
     // QGDXC-TUI-0122. Labels on the y-axis read X through A from top to bottom.
     let mut m = history_model();
     install_layout_alerts(&mut m, 2);
-    for (width, height) in [(120, 51), (100, 51)] {
+    for (width, height) in [(120, 53), (100, 54)] {
         let grid = screen(&m, width, height, Duration::ZERO);
         let (_, title) = location(&grid, HISTORY_TITLES[2]);
         let bottom = if width == 120 {
@@ -863,7 +868,7 @@ fn history_xray_axis_labels_are_at_each_logarithmic_decade() {
     }
     install_alerts(&mut m, &[]);
     location(
-        &screen(&m, 80, 35, Duration::ZERO),
+        &screen(&m, 80, 38, Duration::ZERO),
         "X-rays (W/m²) · 6 hours · A B C M X",
     );
 }
@@ -954,7 +959,7 @@ fn wind_history_retains_the_latest_288_successes_of_each_series() {
         assert_eq!(series.back(), Some(&(WEATHER_EPOCH + 299 * 300, value)));
     }
     m.spots_view = SpotsView::Weather;
-    let grid = screen(&m, 120, 27, Duration::from_secs(300 * 300));
+    let grid = screen(&m, 120, 29, Duration::from_secs(300 * 300));
     let (x, y) = location(&grid, HISTORY_TITLES[3]);
     for (label, y) in [("Speed", y + 1), ("Bz", y + 2)] {
         let series: String = row(&grid, y).chars().skip(usize::from(x - 1)).collect();
@@ -965,7 +970,7 @@ fn wind_history_retains_the_latest_288_successes_of_each_series() {
                 .any(|ch| ('\u{2801}'..='\u{28ff}').contains(&ch))
         );
     }
-    let axis = row(&grid, 24);
+    let axis = row(&grid, 26);
     assert!(axis.chars().skip(60).collect::<String>().contains("11-22"));
     assert!(axis.contains("11-23 ┘"));
 }
