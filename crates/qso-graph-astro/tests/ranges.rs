@@ -89,7 +89,7 @@ fn terminator_closes_splits_and_stays_at_its_solar_altitude() {
                         let elevation = sun_position(at, place).elevation;
                         assert!(
                             (elevation - altitude).abs() <= 0.01,
-                            "{at:?} {place:?}: {elevation} vs {altitude}"
+                            "terminator point off its altitude"
                         );
                     }
                 }

@@ -3273,7 +3273,7 @@ fn sun_moon_border_and_map_marks_use_the_fixed_utc_minute() {
                 assert_eq!(
                     screen[(x, y)].symbol(),
                     symbol,
-                    "{locator}, {width}, {x},{y}"
+                    "{symbol} mark at width {width}"
                 );
                 assert_eq!(screen[(x, y)].fg, model.appearance.color(role));
             }

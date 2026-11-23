@@ -39,7 +39,8 @@ fn station_day(day: &Value, place: Position) -> Moment {
 fn close(label: &str, actual: f64, expected: f64, tolerance: f64) {
     assert!(
         (actual - expected).abs() <= tolerance,
-        "{label}: {actual} vs {expected} (tolerance {tolerance})"
+        // Positions stay out of failure messages: the label says which value failed.
+        "{label}: outside tolerance {tolerance}"
     );
 }
 

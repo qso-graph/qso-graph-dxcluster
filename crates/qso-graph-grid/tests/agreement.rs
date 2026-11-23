@@ -116,7 +116,7 @@ fn desktop_grid_agreement() {
             assert_eq!(
                 Locator::holding(position, precision).to_string(),
                 expected.as_str().unwrap(),
-                "{position:?}"
+                "{precision:?}"
             );
         }
     }
