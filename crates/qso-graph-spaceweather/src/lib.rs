@@ -1,12 +1,14 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #![forbid(unsafe_code)]
-//! Sans-I/O parsers for NOAA SWPC products (QGDXC-SWX-0001).
+//! Sans-I/O parsers for NOAA SWPC products and a band outlook (Annex H).
 
 mod alert;
 mod json;
+mod outlook;
 mod utc;
 
 pub use alert::{Alert, AlertFamily, AlertKind, WatchDay, in_force};
+pub use outlook::{BandOutlook, BandStatus, OutlookError, band_outlook};
 use serde_json::Value;
 use std::{collections::BTreeMap, error, fmt};
 

@@ -151,6 +151,13 @@ doc = false
 bench = false
 
 [[bin]]
+name = "swx_outlook"
+path = "fuzz_targets/swx_outlook.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
 name = "http_retry_after"
 path = "fuzz_targets/http_retry_after.rs"
 test = false

@@ -263,6 +263,7 @@ pub fn verify() -> Result<(), String> {
         .map(|target| (target, "70000"))
         .chain(crate::checks::WEATHER_FUZZ.map(|(target, _, limit)| (target, limit)))
         .chain([
+            ("swx_outlook", "16"),
             ("http_retry_after", "4096"),
             ("pota_spots", "1048577"),
             ("grid_locator", "32"),

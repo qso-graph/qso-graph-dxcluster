@@ -1,0 +1,16 @@
+{
+ "sfi": 168,
+ "kp": 5.67,
+ "bands": {
+  "160m": "Poor — storm absorption",
+  "80m": "Poor — D-layer absorption and noise",
+  "40m": "Fair — reduced DX",
+  "30m": "Good — transition band, usually open",
+  "20m": "Excellent — degraded by geomagnetic storm",
+  "17m": "Good — degraded by geomagnetic storm",
+  "15m": "Excellent — degraded by geomagnetic storm",
+  "12m": "Good — degraded by geomagnetic storm",
+  "10m": "Excellent — degraded by geomagnetic storm",
+  "6m": "Sporadic — watch for Es openings"
+ }
+}
