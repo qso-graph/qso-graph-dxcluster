@@ -59,9 +59,11 @@ pub(super) fn draw(
         .min(usize::from(max_columns));
     let compact = columns > 1;
     let figures_end = (first + measurement_feeds.len().div_ceil(columns) as u16).min(bottom);
+    // QGDXC-TUI-0127: a blank row between the figures and the outlook.
+    let outlook_top = (figures_end + 1).min(bottom);
     let outlook_end = outlook(
         frame,
-        Rect::new(2, figures_end, left, bottom - figures_end),
+        Rect::new(2, outlook_top, left, bottom - outlook_top),
         m,
         now,
     );
@@ -222,7 +224,7 @@ fn outlook(frame: &mut Frame<'_>, area: Rect, m: &Model, now: Duration) -> u16 {
     };
     let Some((sfi, kp, bands)) = values else {
         heading.ui(&format!("Band outlook · waiting{suffix}"), style(Role::Dim));
-        return area.y + 1;
+        return (area.y + 2).min(area.bottom());
     };
     heading.ui(
         &format!("Band outlook · SFI {sfi} · Kp {kp:.2} · rule of thumb{suffix}"),
@@ -243,7 +245,8 @@ fn outlook(frame: &mut Frame<'_>, area: Rect, m: &Model, now: Duration) -> u16 {
         row.ui(band.comment, style(Role::Text));
         next = y + 1;
     }
-    next
+    // And a blank row between the outlook and what follows it.
+    (next + 1).min(area.bottom())
 }
 
 fn countdown(wait: Duration) -> String {
@@ -475,7 +478,8 @@ fn alerts(
         }
         next = y + 1;
     }
-    next
+    // And a blank row between the outlook and what follows it.
+    (next + 1).min(area.bottom())
 }
 
 fn show_failure(row: &mut Row<'_, '_>, sample: &Sample, now: Duration, a: Appearance) {
