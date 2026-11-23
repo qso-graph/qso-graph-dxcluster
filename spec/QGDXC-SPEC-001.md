@@ -426,6 +426,7 @@ its later `cancel_timer`.
 - [Annex G: NCDXF/IARU beacons](annex-g-beacons.md)
 - [Annex H: space weather](annex-h-space-weather.md)
 - [Annex I: polite HTTPS](annex-i-http.md)
+- [Annex J: Parks On the Air spots](annex-j-pota.md)
 
 Capture citations refer to the supplied 2026-11-16 evidence set by basename and
 physical record number, including notes. A frame split across records cites all
