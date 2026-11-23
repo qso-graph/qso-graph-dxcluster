@@ -1604,6 +1604,23 @@ pub fn seed_fuzz() -> Result<(), String> {
         }
         fs::write(dir.join("noaa.json"), bytes).map_err(|e| e.to_string())?;
     }
+    let outlook = Path::new("fuzz/corpus/swx_outlook");
+    fs::create_dir_all(outlook).map_err(|e| e.to_string())?;
+    for set in ["quiet", "storm"] {
+        let source = format!(
+            "crates/qso-graph-spaceweather/tests/fixtures/outlook/{set}/expected-bands.json"
+        );
+        let expected: Value =
+            serde_json::from_str(&crate::input::text(source).map_err(|e| e.to_string())?)
+                .map_err(|e| e.to_string())?;
+        let sfi = expected["sfi"].as_f64().ok_or("outlook seed lacks SFI")?;
+        let kp = expected["kp"].as_f64().ok_or("outlook seed lacks Kp")?;
+        fs::write(
+            outlook.join(set),
+            [sfi.to_le_bytes(), kp.to_le_bytes()].concat(),
+        )
+        .map_err(|e| e.to_string())?;
+    }
     for target in [
         "values",
         "dx_de",

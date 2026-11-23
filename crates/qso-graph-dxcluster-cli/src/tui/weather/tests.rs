@@ -168,7 +168,7 @@ fn flux_chart_activates_history_once_with_its_own_floor() {
         clock.at(second);
         if [399, 400, 401, 3_999].contains(&second)
             && present(
-                &mut Terminal::new(TestBackend::new(80, if second == 399 { 24 } else { 25 }))
+                &mut Terminal::new(TestBackend::new(80, if second == 399 { 25 } else { 26 }))
                     .unwrap(),
                 &m,
                 clock.elapsed(),
@@ -322,10 +322,10 @@ fn worker_requests_flux_history_only_when_the_chart_is_drawn() {
         updates,
     });
     for (height, key, expected_draw, expected_request) in [
-        (24, None, false, false),
-        (25, Some(Input::Char('?')), false, false),
-        (25, Some(Input::Escape), true, true),
-        (25, None, true, false),
+        (25, None, false, false),
+        (26, Some(Input::Char('?')), false, false),
+        (26, Some(Input::Escape), true, true),
+        (26, None, true, false),
     ] {
         if let Some(key) = key {
             m.key(key);
@@ -473,19 +473,176 @@ fn history_model() -> Model {
     m
 }
 
+const OUTLOOK_WIDTHS: [u16; 3] = [100, 120, 150];
+const OUTLOOK_HEIGHT: u16 = 48;
+const OUTLOOK_BANDS: [&str; 10] = [
+    "160m", "80m", "40m", "30m", "20m", "17m", "15m", "12m", "10m", "6m",
+];
+
+fn outlook_script(set: &str) -> Script {
+    let mut fetch = fixture_script();
+    fetch.responses[0] = Outcome::Bytes(fixture(&format!("outlook/{set}/10cm-flux.json")));
+    fetch.responses[1] = Outcome::Bytes(fixture(&format!(
+        "outlook/{set}/noaa-planetary-k-index.json"
+    )));
+    fetch
+}
+
+fn assert_outlook_rows(
+    m: &Model,
+    width: u16,
+    now: Duration,
+    expected: &serde_json::Value,
+    stale: bool,
+) {
+    let grid = screen(m, width, OUTLOOK_HEIGHT, now);
+    let sfi = expected["sfi"].as_u64().unwrap();
+    let kp = expected["kp"].as_f64().unwrap();
+    let suffix = if stale { " · stale" } else { "" };
+    let heading = format!("Band outlook · SFI {sfi} · Kp {kp:.2} · rule of thumb{suffix}");
+    let (x, top) = location(&grid, "Band outlook");
+    assert!(
+        row(&grid, top).contains(&heading),
+        "outlook heading differs"
+    );
+    let color = |role| m.appearance.color(if stale { Role::Dim } else { role });
+    assert!(
+        (x..x + heading.chars().count() as u16).all(|x| grid[(x, top)].fg == color(Role::Title)),
+        "outlook heading role differs"
+    );
+    let (figure_x, figure_y) = location(&grid, "Bt ");
+    assert!(
+        x == figure_x && top == figure_y + 1,
+        "outlook must follow the figures in their column"
+    );
+    let (_, chart_y) = location(&grid, HISTORY_TITLES[0]);
+    assert!(
+        chart_y > top + OUTLOOK_BANDS.len() as u16,
+        "charts must follow the outlook"
+    );
+    for (index, band) in OUTLOOK_BANDS.into_iter().enumerate() {
+        let expected = expected["bands"][band].as_str().unwrap();
+        let (status, comment) = expected.split_once(" — ").unwrap();
+        let mut comment = comment.to_owned();
+        comment[..1].make_ascii_uppercase();
+        let band_label = format!("{band:<4}  ");
+        let text = format!("{band_label}{status} — {comment}");
+        let y = top + 1 + index as u16;
+        let displayed: String = row(&grid, y)
+            .chars()
+            .skip(usize::from(x))
+            .take(text.chars().count())
+            .collect();
+        assert_eq!(displayed, text, "band outlook row differs");
+        let role = match status {
+            "Excellent" | "Good" => Role::Good,
+            "Fair" => Role::Warning,
+            "Poor" => Role::Bad,
+            "Sporadic" => Role::Dim,
+            _ => panic!("unexpected recorded band status"),
+        };
+        let status_cells = band_label.len()..band_label.len() + status.len();
+        assert!(
+            text.chars().enumerate().all(|(offset, _)| {
+                let role = if status_cells.contains(&offset) {
+                    role
+                } else {
+                    Role::Text
+                };
+                grid[(x + offset as u16, y)].fg == color(role)
+            }),
+            "outlook row role differs for {band}"
+        );
+    }
+}
+
+#[test]
+fn weather_band_outlook_renders_recorded_rows_and_roles() {
+    for set in ["quiet", "storm"] {
+        let expected =
+            serde_json::from_slice(&fixture(&format!("outlook/{set}/expected-bands.json")))
+                .unwrap();
+        let mut m = weather_model();
+        let mut scheduler = Scheduler::default();
+        let clock = FakeClock::default();
+        let mut fetch = outlook_script(set);
+        for _ in FIXTURES {
+            m.apply_weather(scheduler.step(&mut fetch, &clock).unwrap());
+        }
+        for width in OUTLOOK_WIDTHS {
+            assert_outlook_rows(&m, width, clock.elapsed(), &expected, false);
+        }
+        assert!(scheduler.step(&mut fetch, &clock).is_none());
+        assert_eq!(fetch.calls.len(), FIXTURES.len());
+    }
+}
+
+#[test]
+fn weather_band_outlook_waits_for_both_products() {
+    let check_waiting = |m: &Model| {
+        for width in OUTLOOK_WIDTHS {
+            let grid = screen(m, width, OUTLOOK_HEIGHT, Duration::ZERO);
+            let (x, y) = location(&grid, "Band outlook · waiting");
+            assert_eq!(grid[(x, y)].fg, m.appearance.color(Role::Dim));
+            assert!(!screen_text(&grid).contains("Watch for Es openings"));
+        }
+    };
+    check_waiting(&weather_model());
+    for missing in [0, 1] {
+        let mut m = weather_model();
+        let mut scheduler = Scheduler::default();
+        let clock = FakeClock::default();
+        let mut fetch = outlook_script("quiet");
+        fetch.responses[missing] = Outcome::Error("request failed");
+        for _ in 0..2 {
+            m.apply_weather(scheduler.step(&mut fetch, &clock).unwrap());
+        }
+        check_waiting(&m);
+    }
+}
+
+#[test]
+fn weather_band_outlook_dims_every_cell_when_either_product_is_stale() {
+    let mut m = weather_model();
+    let mut scheduler = Scheduler::default();
+    let clock = FakeClock::default();
+    let mut fetch = outlook_script("storm");
+    for _ in FIXTURES {
+        m.apply_weather(scheduler.step(&mut fetch, &clock).unwrap());
+    }
+    let expected = serde_json::from_slice(&fixture("outlook/storm/expected-bands.json")).unwrap();
+    for width in OUTLOOK_WIDTHS {
+        assert_outlook_rows(&m, width, FIFTEEN_MINUTES * 3, &expected, false);
+    }
+    let elapsed = Duration::from_secs(1);
+    // Stagger the recorded successes to exercise each stale input on its own.
+    for fresh in [0, 1] {
+        m.weather_data.samples[fresh].good.as_mut().unwrap().1 = elapsed;
+        for width in OUTLOOK_WIDTHS {
+            assert_outlook_rows(&m, width, FIFTEEN_MINUTES * 3 + elapsed, &expected, true);
+        }
+        m.weather_data.samples[fresh].good.as_mut().unwrap().1 = Duration::ZERO;
+    }
+}
+
 #[test]
 fn weather_charts_fill_the_rows_below_figures_and_alerts() {
     // QGDXC-TUI-0120 and QGDXC-TUI-0121.
     let mut m = history_model();
     let now = Duration::from_secs(600);
-    for (width, height, alerts) in [(120, 40, 2), (160, 50, 8), (100, 40, 2)] {
+    for (width, height, alerts) in [(120, 40, 2), (160, 50, 8), (100, 51, 2)] {
         install_layout_alerts(&mut m, alerts);
         let grid = screen(&m, width, height, now);
         let [(fx, fy), (kx, ky), (xx, xy), (wx, wy)] =
             HISTORY_TITLES.map(|title| location(&grid, title));
         let figure_y = location(&grid, "Bt 2 Bz -2 nT").1;
+        let outlook_y = location(&grid, "Watch for Es openings").1;
         let alert_y = location(&grid, &format!("QX{alerts:02}")).1;
-        assert_eq!(fy, figure_y.max(alert_y) + 1, "{}", screen_text(&grid));
+        assert!(outlook_y > figure_y, "outlook must follow the figures");
+        assert!(
+            fy == outlook_y.max(alert_y) + 1,
+            "charts must fill the remaining rows"
+        );
         assert_eq!((fx, xx), (3, 3));
         let bottom = height - 2;
         if width >= 120 {
@@ -534,11 +691,12 @@ fn weather_charts_fill_the_rows_below_figures_and_alerts() {
 fn weather_charts_show_only_what_fits_on_short_screens() {
     // QGDXC-TUI-0121.
     let mut m = history_model();
-    for (width, height, alerts, chart_count) in [(80, 24, 2, 2), (80, 24, 9, 0), (120, 24, 8, 2)] {
+    for (width, height, alerts, chart_count) in [(80, 35, 2, 2), (80, 35, 9, 0), (120, 33, 8, 2)] {
         install_layout_alerts(&mut m, alerts);
         let grid = screen(&m, width, height, Duration::ZERO);
         let text = screen_text(&grid);
         let figure_y = location(&grid, "Bt 2 Bz -2 nT").1;
+        let outlook_y = location(&grid, "Watch for Es openings").1;
         let alert_y = location(&grid, &format!("QX{alerts:02}")).1;
         if width < 120 {
             assert!(alert_y > figure_y);
@@ -549,7 +707,10 @@ fn weather_charts_show_only_what_fits_on_short_screens() {
         if chart_count > 0 {
             let (_, flux_y) = location(&grid, HISTORY_TITLES[0]);
             let (_, kp_y) = location(&grid, HISTORY_TITLES[1]);
-            assert_eq!(flux_y, figure_y.max(alert_y) + 1);
+            assert!(
+                flux_y == outlook_y.max(alert_y) + 1,
+                "charts must fill the remaining rows"
+            );
             if width < 120 {
                 assert!(kp_y - flux_y >= 4);
             } else {
@@ -565,7 +726,7 @@ fn weather_kp_scale_labels_are_left_of_the_bars() {
     // QGDXC-TUI-0122. Check the full scale and minimum-height fallback.
     let mut m = history_model();
     install_layout_alerts(&mut m, 8);
-    for (width, height, label_order) in [(120, 40, "9530"), (120, 24, "950")] {
+    for (width, height, label_order) in [(120, 40, "9530"), (120, 33, "950")] {
         let grid = screen(&m, width, height, Duration::ZERO);
         let (x, top) = location(&grid, HISTORY_TITLES[1]);
         let (_, bottom) = location(&grid, "11-15");
@@ -687,7 +848,7 @@ fn history_xray_axis_labels_are_at_each_logarithmic_decade() {
     // QGDXC-TUI-0122. Labels on the y-axis read X through A from top to bottom.
     let mut m = history_model();
     install_layout_alerts(&mut m, 2);
-    for (width, height) in [(120, 40), (100, 40)] {
+    for (width, height) in [(120, 51), (100, 51)] {
         let grid = screen(&m, width, height, Duration::ZERO);
         let (_, title) = location(&grid, HISTORY_TITLES[2]);
         let bottom = if width == 120 {
@@ -702,7 +863,7 @@ fn history_xray_axis_labels_are_at_each_logarithmic_decade() {
     }
     install_alerts(&mut m, &[]);
     location(
-        &screen(&m, 80, 24, Duration::ZERO),
+        &screen(&m, 80, 35, Duration::ZERO),
         "X-rays (W/m²) · 6 hours · A B C M X",
     );
 }
@@ -722,12 +883,12 @@ fn history_waiting_stale_and_mono_are_visible_in_the_grid() {
         assert!(interior.contains("waiting"));
     }
     let mut m = history_model();
-    let grid = screen(&m, 120, 40, Duration::from_secs(10_800));
+    let grid = screen(&m, 120, 51, Duration::from_secs(10_800));
     for title in &HISTORY_TITLES[1..] {
         location(&grid, &format!("{title} · stale"));
     }
     assert!(!screen_text(&grid).contains("Solar flux (sfu) · 30 days · stale"));
-    let grid = screen(&m, 120, 40, Duration::from_secs(10_801));
+    let grid = screen(&m, 120, 51, Duration::from_secs(10_801));
     for title in HISTORY_TITLES {
         let (x, y) = location(&grid, &format!("{title} · stale"));
         assert_eq!(grid[(x, y)].fg, m.appearance.color(Role::Dim));
@@ -793,7 +954,7 @@ fn wind_history_retains_the_latest_288_successes_of_each_series() {
         assert_eq!(series.back(), Some(&(WEATHER_EPOCH + 299 * 300, value)));
     }
     m.spots_view = SpotsView::Weather;
-    let grid = screen(&m, 120, 26, Duration::from_secs(300 * 300));
+    let grid = screen(&m, 120, 27, Duration::from_secs(300 * 300));
     let (x, y) = location(&grid, HISTORY_TITLES[3]);
     for (label, y) in [("Speed", y + 1), ("Bz", y + 2)] {
         let series: String = row(&grid, y).chars().skip(usize::from(x - 1)).collect();
@@ -804,7 +965,7 @@ fn wind_history_retains_the_latest_288_successes_of_each_series() {
                 .any(|ch| ('\u{2801}'..='\u{28ff}').contains(&ch))
         );
     }
-    let axis = row(&grid, 23);
+    let axis = row(&grid, 24);
     assert!(axis.chars().skip(60).collect::<String>().contains("11-22"));
     assert!(axis.contains("11-23 ┘"));
 }
@@ -1117,7 +1278,7 @@ fn weather_times_follow_the_model_utc_date() {
     ] {
         assert!(current.contains(text), "{text}\n{current}");
     }
-    let after_midnight = screen_text(&screen(&m, 100, 24, Duration::from_hours(4)));
+    let after_midnight = screen_text(&screen(&m, 100, 35, Duration::from_hours(4)));
     for text in ["R0 S0 G0 11-22 19:41 UTC", "QX01 11-22 20:00 UTC"] {
         assert!(after_midnight.contains(text), "{text}\n{after_midnight}");
     }
@@ -1214,8 +1375,13 @@ fn weather_layout_splits_at_120_columns() {
         );
     }
     for width in [100, 119] {
-        let buf = screen(&m, width, 24, Duration::ZERO);
-        assert!(!screen_text(&buf).contains("conditions"), "{width}");
+        let buf = screen(&m, width, 35, Duration::ZERO);
+        assert!(
+            !screen_text(&buf)
+                .lines()
+                .any(|line| line.starts_with("│ conditions")),
+            "{width}"
+        );
         let (left, last_figure) = location(&buf, "Bt ");
         let (right, alerts_heading) = location(&buf, "alerts");
         assert_eq!(left, right, "{width}");

@@ -48,3 +48,47 @@ only what is in force now and only what matters on HF. These requirements add to
 | `QGDXC-SWX-0009` | For each alert the library MUST read, from lines of its `message`, times in the form `<label>: YYYY Mon DD HHMM UTC` (English month abbreviations) and serials as decimal whole numbers: `Serial Number`; `Issue Time`; for a warning, `Valid From` and `Valid To`, or `Now Valid Until` with `Extension to Serial Number`; for a cancellation, `Cancel Serial Number`; and for a watch, the days and levels of the line after `Highest Storm Level Predicted by Day:` (`Mon DD:  <level>` up to three times, each level optionally followed by a parenthesized description, the year taken from `Issue Time` and advanced when the month wraps from December to January). Its kind MUST be the headline's label (`ALERT`, `CONTINUED ALERT`, `WARNING`, `EXTENDED WARNING`, `WATCH`, `CANCEL WARNING`, `CANCEL WATCH`, `SUMMARY`). Any of these that is absent or malformed MUST be absent from the result without refusing the product. | Test |
 | `QGDXC-SWX-0010` | An alert's family MUST be taken from its headline, ignoring ASCII case: `geomagnetic` when it contains `Geomagnetic`; `radio blackout` when it contains `X-ray` or `Radio Blackout`; `solar radiation` when it contains `Proton` or `Solar Radiation`; otherwise `other`. | Test |
 | `QGDXC-SWX-0011` | Given alerts and a UTC time `t`, the library MUST return the items in force at `t`, most severe first (alert, then warning, then watch), then newest first by `Issue Time`. In force means: an `ALERT` or `CONTINUED ALERT` for 3 hours from its `Issue Time`; a `WARNING` from `Valid From` until `Valid To`, and an `EXTENDED WARNING` until `Now Valid Until`, which also ends the warning whose serial it extends; a `WATCH` from `Issue Time` until the end (23:59:59 UTC) of its last forecast day whose level is not `None`, and only the newest watch of a family counts. A `CANCEL WARNING` or `CANCEL WATCH` ends, from its `Issue Time`, the item whose serial it cancels. An extension takes effect from its own `Issue Time`. A warning's end is exclusive and a watch's last second is inclusive. A watch superseded by a newer one of its family stays superseded even after the newer one ends or is cancelled. Items of family `other`, `SUMMARY` items, and items without the times their kind needs MUST NOT be returned. | Test |
+
+## H.4 Band outlook
+
+The band outlook grades each band from 160 m to 6 m from two numbers: the solar flux (SFI) and the
+planetary K index (Kp). It is the outlook QSO Graph Desktop's Conditions page and `solar-mcp` give,
+moved here so every QSO Graph program grades bands the same way from one tested function.
+
+**There is no standard for these words, and these are rules of thumb, not a propagation model.** No
+body defines band-condition words: NOAA's R, S and G scales describe the impact of a disturbance, not
+how good a band is, and propagation models give usable frequencies and reliabilities for a path, as
+numbers. The words and thresholds below are defined by this project. They take today's SFI and Kp and
+nothing about where the operator is or where they are trying to reach.
+
+| Status | What it means on the air |
+|---|---|
+| **Excellent** | Wide open: strong, long-lasting DX openings during the band's usual hours. |
+| **Good** | Regular DX openings expected during the band's usual hours. |
+| **Fair** | Openings are short, patchy or weak; DX is possible but not dependable. |
+| **Poor** | Likely closed for DX, or degraded by absorption and noise. |
+| **Sporadic** | Not graded from the indices: the band opens by sporadic-E, and by F2 when the solar flux is high; watch for openings. |
+
+Each band's rule is read top to bottom and the first that holds gives its status and comment. SFI is
+taken as a whole number, truncated toward zero.
+
+| Band | Rule |
+|---|---|
+| 160m | Kp ≥ 5: Poor, *Storm absorption*. Kp ≥ 3: Fair, *Some noise*. Otherwise Good, *Quiet night conditions*. |
+| 80m | Kp ≥ 5: Poor, *D-layer absorption and noise*. Kp ≥ 4: Fair, *Elevated absorption*. Otherwise Good, *Reliable night band*. |
+| 40m | Kp ≥ 5: Fair, *Reduced DX*. Otherwise Good, *Workhorse band, day and night*. |
+| 30m | Good, *Transition band, usually open*. |
+| 20m | SFI ≥ 150: Excellent, *Strong F-layer, long openings*. SFI ≥ 100: Good, *Reliable daytime DX*. Otherwise Fair, *Shorter openings at low solar flux*. |
+| 17m | SFI ≥ 120: Good, *DX openings likely*. SFI ≥ 90: Fair, *Marginal openings*. Otherwise Poor, *Insufficient ionization*. |
+| 15m | SFI ≥ 140: Excellent, *Wide open DX*. SFI ≥ 100: Good, *Daytime openings*. SFI ≥ 80: Fair, *Sporadic openings*. Otherwise Poor, *Band likely closed*. |
+| 12m | SFI ≥ 150: Good, *DX openings around midday*. SFI ≥ 120: Fair, *Brief openings possible*. Otherwise Poor, *Band likely closed*. |
+| 10m | SFI ≥ 160: Excellent, *Worldwide DX*. SFI ≥ 130: Good, *Daytime DX openings*. SFI ≥ 100: Fair, *Short openings or sporadic-E*. Otherwise Poor, *Closed except sporadic-E*. |
+| 6m | Sporadic, *Watch for Es openings*. |
+
+During a geomagnetic storm (Kp ≥ 5), 20m to 10m keep the status their SFI gives them and their
+comment becomes *Degraded by geomagnetic storm*.
+
+| ID | Requirement | Verify |
+|---|---|---|
+| `QGDXC-SWX-0012` | Given an SFI and a Kp, the library MUST return ten entries, 160m, 80m, 40m, 30m, 20m, 17m, 15m, 12m, 10m and 6m in that order, each with its band, a status that is one of the five of this section, and its comment, exactly by the rules of this section. It MUST refuse an SFI or Kp that is not finite, an SFI outside 0–999 and a Kp outside 0–9, both inclusive. | Test |
+| `QGDXC-SWX-0013` | The outlook MUST give QSO Graph Desktop's answers: for every case of `tests/fixtures/outlook/desktop-agreement.json`, recorded from Desktop's `bandOutlook` (Desktop commit `67ca202`) over SFI and Kp values on each side of every threshold, each band's status and comment joined as `<status> — <comment>` MUST equal Desktop's text ignoring ASCII case. For Desktop's two recorded NOAA sets in `tests/fixtures/outlook/` (`quiet` as NOAA sent it; `storm` edited to Kp 5.67 and SFI 168), the SFI of `solar_flux` and the Kp of the newest `planetary_k` entry MUST give the bands in each set's `expected-bands.json`, which is what `solar-mcp` 0.3.0 reports for those files. Each threshold of this section MUST also have its own test on both sides. | Test |

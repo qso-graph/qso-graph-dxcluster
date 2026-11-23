@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! NOAA SWPC space-weather view (QGDXC-TUI-0114, QGDXC-TUI-0117–0119).
+//! NOAA SWPC space-weather view (QGDXC-TUI-0114, QGDXC-TUI-0117–0119, QGDXC-TUI-0127).
 
 use super::ribbon::{self, Ribbon};
 use super::{
@@ -7,7 +7,7 @@ use super::{
     weather_history,
 };
 use crate::tui::weather::{ALERTS, Data, FEEDS, FLUX_HISTORY, Sample};
-use qso_graph_spaceweather::Alert;
+use qso_graph_spaceweather::{Alert, BandStatus, Product, band_outlook};
 use std::time::Duration;
 
 const DAY: i64 = 86_400;
@@ -59,10 +59,16 @@ pub(super) fn draw(
         .min(usize::from(max_columns));
     let compact = columns > 1;
     let figures_end = (first + measurement_feeds.len().div_ceil(columns) as u16).min(bottom);
+    let outlook_end = outlook(
+        frame,
+        Rect::new(2, figures_end, left, bottom - figures_end),
+        m,
+        now,
+    );
     let alert_row = match (wide, border_headings) {
         (true, true) => first,
         (true, false) => top + 1,
-        (false, _) => figures_end,
+        (false, _) => outlook_end,
     };
     if alert_row >= bottom {
         let alert_stale = alert_sample.stale(alert_feed, now);
@@ -186,13 +192,58 @@ pub(super) fn draw(
     } else {
         bottom
     };
-    let charts_top = figures_end.max(alerts_end);
+    let charts_top = outlook_end.max(alerts_end);
     weather_history::draw(
         frame,
         Rect::new(1, charts_top, width - 2, bottom - charts_top),
         m,
         now,
     )
+}
+
+fn outlook(frame: &mut Frame<'_>, area: Rect, m: &Model, now: Duration) -> u16 {
+    if area.is_empty() {
+        return area.y;
+    }
+    let (flux_feed, flux) = m.weather_data.sample(Product::SolarFlux);
+    let (k_feed, k) = m.weather_data.sample(Product::PlanetaryK);
+    let stale = flux.stale(flux_feed, now) || k.stale(k_feed, now);
+    let suffix = if stale { " · stale" } else { "" };
+    let style = |role| m.appearance.style(if stale { Role::Dim } else { role });
+    let mut heading = Row::new(frame, area.x, area.y, area.width);
+    let values = match (&flux.good, &k.good) {
+        (Some((Data::SolarFlux(sfi), _)), Some((Data::PlanetaryK(k), _))) => {
+            k.last().and_then(|kp| {
+                let bands = band_outlook(sfi.flux, kp.kp).ok()?;
+                Some((sfi.flux as u16, kp.kp, bands))
+            })
+        }
+        _ => None,
+    };
+    let Some((sfi, kp, bands)) = values else {
+        heading.ui(&format!("Band outlook · waiting{suffix}"), style(Role::Dim));
+        return area.y + 1;
+    };
+    heading.ui(
+        &format!("Band outlook · SFI {sfi} · Kp {kp:.2} · rule of thumb{suffix}"),
+        style(Role::Title),
+    );
+    let mut next = area.y + 1;
+    for (band, y) in bands.into_iter().zip(next..area.bottom()) {
+        let role = match band.status {
+            BandStatus::Excellent | BandStatus::Good => Role::Good,
+            BandStatus::Fair => Role::Warning,
+            BandStatus::Poor => Role::Bad,
+            BandStatus::Sporadic => Role::Dim,
+        };
+        let mut row = Row::new(frame, area.x, y, area.width);
+        row.ui(&format!("{:<4}  ", band.band), style(Role::Text));
+        row.ui(band.status.label(), style(role));
+        row.ui(" — ", style(Role::Text));
+        row.ui(band.comment, style(Role::Text));
+        next = y + 1;
+    }
+    next
 }
 
 fn countdown(wait: Duration) -> String {

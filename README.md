@@ -84,6 +84,7 @@ Press `W` (capital) to switch between the spot list and space weather, with data
 [NOAA Space Weather Prediction Center](https://www.swpc.noaa.gov/).
 The weather page shows current figures and alerts, with charts of solar flux, Kp,
 X-rays, and solar wind below as space allows (`QGDXC-TUI-0120`, `QGDXC-TUI-0121`).
+The weather page's band outlook uses SFI and Kp as a rule of thumb for band conditions (`QGDXC-TUI-0127`).
 Fetching starts when you first open the view or use `--space-weather`.
 When an alert, warning, or watch is in force, a ribbon shows it on every dashboard page.
 Solar flux, planetary K, and NOAA scales have a 15-minute minimum between

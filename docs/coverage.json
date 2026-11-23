@@ -2867,6 +2867,110 @@
       ],
       "vectors": []
     },
+    "QGDXC-SWX-0012": {
+      "tests": [
+        {
+          "file": "crates/qso-graph-spaceweather/tests/outlook.rs",
+          "name": "band_outlook_matches_desktop_sweep"
+        },
+        {
+          "file": "crates/qso-graph-spaceweather/tests/outlook.rs",
+          "name": "band_outlook_refuses_nonfinite_and_out_of_range_inputs"
+        }
+      ],
+      "vectors": []
+    },
+    "QGDXC-SWX-0013": {
+      "tests": [
+        {
+          "file": "crates/qso-graph-spaceweather/tests/outlook.rs",
+          "name": "band_outlook_matches_desktop_sweep"
+        },
+        {
+          "file": "crates/qso-graph-spaceweather/tests/outlook.rs",
+          "name": "band_outlook_matches_recorded_quiet_and_storm_products"
+        },
+        {
+          "file": "crates/qso-graph-spaceweather/tests/outlook.rs",
+          "name": "band_outlook_sfi_80"
+        },
+        {
+          "file": "crates/qso-graph-spaceweather/tests/outlook.rs",
+          "name": "band_outlook_sfi_90"
+        },
+        {
+          "file": "crates/qso-graph-spaceweather/tests/outlook.rs",
+          "name": "band_outlook_sfi_100"
+        },
+        {
+          "file": "crates/qso-graph-spaceweather/tests/outlook.rs",
+          "name": "band_outlook_sfi_120"
+        },
+        {
+          "file": "crates/qso-graph-spaceweather/tests/outlook.rs",
+          "name": "band_outlook_sfi_130"
+        },
+        {
+          "file": "crates/qso-graph-spaceweather/tests/outlook.rs",
+          "name": "band_outlook_sfi_140"
+        },
+        {
+          "file": "crates/qso-graph-spaceweather/tests/outlook.rs",
+          "name": "band_outlook_sfi_150"
+        },
+        {
+          "file": "crates/qso-graph-spaceweather/tests/outlook.rs",
+          "name": "band_outlook_sfi_160"
+        },
+        {
+          "file": "crates/qso-graph-spaceweather/tests/outlook.rs",
+          "name": "band_outlook_kp_3"
+        },
+        {
+          "file": "crates/qso-graph-spaceweather/tests/outlook.rs",
+          "name": "band_outlook_kp_4"
+        },
+        {
+          "file": "crates/qso-graph-spaceweather/tests/outlook.rs",
+          "name": "band_outlook_kp_5_preserves_the_sfi_grades"
+        }
+      ],
+      "vectors": []
+    },
+    "QGDXC-TUI-0127": {
+      "tests": [
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/tui/weather/tests.rs",
+          "name": "weather_band_outlook_renders_recorded_rows_and_roles"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/tui/weather/tests.rs",
+          "name": "weather_band_outlook_waits_for_both_products"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/tui/weather/tests.rs",
+          "name": "weather_band_outlook_dims_every_cell_when_either_product_is_stale"
+        }
+      ],
+      "vectors": []
+    },
+    "QGDXC-TUI-0128": {
+      "tests": [
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/tui/weather/tests.rs",
+          "name": "weather_band_outlook_renders_recorded_rows_and_roles"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/tui/weather/tests.rs",
+          "name": "weather_band_outlook_waits_for_both_products"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/tui/weather/tests.rs",
+          "name": "weather_band_outlook_dims_every_cell_when_either_product_is_stale"
+        }
+      ],
+      "vectors": []
+    },
     "QGDXC-POTA-0001": {
       "tests": [
         {
