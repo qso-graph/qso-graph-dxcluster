@@ -202,4 +202,17 @@ pub(super) fn run(origin: Instant, stop: &AtomicBool, tx: &SyncSender<Envelope>)
 }
 
 #[cfg(test)]
+pub(super) fn test_requests() -> Vec<(&'static str, usize)> {
+    use super::web::test_fetch::{FakeClock, Script};
+    let mut fetch = Script::default();
+    fetch.responses.push_back(Outcome::Bytes(b"[]".to_vec()));
+    assert!(
+        Scheduler::default()
+            .step(&mut fetch, &FakeClock::default())
+            .is_some()
+    );
+    fetch.calls
+}
+
+#[cfg(test)]
 mod tests;

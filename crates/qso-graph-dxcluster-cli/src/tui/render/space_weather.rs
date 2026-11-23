@@ -23,7 +23,7 @@ pub(super) fn draw(
     let width = frame.area().width;
     let appearance = m.appearance;
     let data = &m.weather_data;
-    let utc_now = i64::try_from(m.utc_epoch.saturating_add(now.as_secs())).unwrap_or(i64::MAX);
+    let utc_now = i64::try_from(m.utc_seconds(now)).unwrap_or(i64::MAX);
     let mut status = if now < data.pause {
         format!(" Retry-After {} ", countdown(data.pause - now))
     } else {

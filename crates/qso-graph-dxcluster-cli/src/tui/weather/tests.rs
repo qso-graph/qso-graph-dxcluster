@@ -447,7 +447,7 @@ const WEATHER_EPOCH: u64 = 1_795_377_660; // 2026-11-22 20:01:00 UTC
 fn weather_model() -> Model {
     let mut m = Model::new(vec!["source".into()], 100, 100);
     m.spots_view = SpotsView::Weather;
-    m.utc_epoch = WEATHER_EPOCH;
+    m.utc_epoch = Duration::from_secs(WEATHER_EPOCH);
     m
 }
 
@@ -910,7 +910,7 @@ fn ribbon_uses_the_first_free_bands_row_or_the_top_border() {
             100,
             100,
         );
-        m.utc_epoch = WEATHER_EPOCH;
+        m.utc_epoch = Duration::from_secs(WEATHER_EPOCH);
         install_alerts(
             &mut m,
             &[(
@@ -1040,7 +1040,7 @@ fn weather_roles_alert_privacy_and_minimum_height() {
     // QGDXC-TUI-0114 and QGDXC-SEC-0005.
     let mut m = Model::new((1..=8).map(|i| format!("source{i}")).collect(), 100, 100);
     m.spots_view = SpotsView::Weather;
-    m.utc_epoch = WEATHER_EPOCH;
+    m.utc_epoch = Duration::from_secs(WEATHER_EPOCH);
     let mut script = fixture_script();
     let clock = FakeClock::default();
     let mut scheduler = Scheduler::default();
@@ -1233,7 +1233,7 @@ fn weather_alerts_clip_to_the_short_box() {
     // QGDXC-TUI-0118 and QGDXC-TUI-0119.
     let mut m = Model::new((1..=8).map(|i| format!("source{i}")).collect(), 100, 100);
     m.spots_view = SpotsView::Weather;
-    m.utc_epoch = WEATHER_EPOCH;
+    m.utc_epoch = Duration::from_secs(WEATHER_EPOCH);
     m.weather_data = collect_fixtures().0;
     install_alerts(
         &mut m,

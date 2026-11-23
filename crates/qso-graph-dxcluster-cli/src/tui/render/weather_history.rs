@@ -357,7 +357,7 @@ fn wind(frame: &mut Frame<'_>, area: Rect, model: &Model, now: Duration) {
         panel.open(frame, title, None);
         return;
     };
-    let end = model.utc_epoch.saturating_add(now.as_secs());
+    let end = model.utc_seconds(now);
     let window = Window {
         start: start as i64,
         end: end.max(start.saturating_add(1)) as i64,

@@ -14,6 +14,7 @@ pub enum Source {
 pub struct Options {
     pub theme: Theme,
     pub space_weather: bool,
+    pub grid: Option<qso_graph_grid::Position>,
     pub keep_human: usize,
     pub keep_skimmer: usize,
     pub sources: Vec<Source>,
@@ -31,6 +32,7 @@ impl Options {
         let mut replays = vec![];
         let mut call = None;
         let mut sources_file = None;
+        let mut grid = None;
         let mut i = 0;
         while i < args.len() {
             let flag = &args[i];
@@ -54,6 +56,12 @@ impl Options {
                 "--replay" => replays.push(value.clone()),
                 "--call" if call.is_none() => call = Some(value.clone()),
                 "--sources" if sources_file.is_none() => sources_file = Some(value.clone()),
+                "--grid" if grid.is_none() => {
+                    grid = Some(
+                        saved::grid_position(value, "--grid")
+                            .map_err(|e| format!("configuration: {e}"))?,
+                    );
+                }
                 "--keep-human" if keep_human.is_none() => {
                     keep_human = Some(keep(value, flag)?);
                 }
@@ -146,6 +154,7 @@ impl Options {
         let labels = source_labels(&bases, &sources);
         Ok(Self {
             space_weather,
+            grid: grid.or_else(|| saved.as_ref().and_then(|saved| saved.grid)),
             keep_human: keep_human.unwrap_or(DEFAULT_KEEP),
             keep_skimmer: keep_skimmer.unwrap_or(DEFAULT_KEEP),
             theme: Theme::initial(

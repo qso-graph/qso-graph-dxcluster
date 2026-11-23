@@ -1,6 +1,281 @@
 {
   "SPDX-License-Identifier": "GPL-3.0-or-later",
   "requirements": {
+    "QGDXC-AST-0001": {
+      "tests": [
+        {
+          "file": "xtask/src/checks.rs",
+          "name": "policy_rejects_transport_dependencies_in_parsing_libraries"
+        },
+        {
+          "file": "xtask/src/checks.rs",
+          "name": "policy_allows_only_the_astro_and_grid_dependencies"
+        }
+      ],
+      "vectors": []
+    },
+    "QGDXC-AST-0002": {
+      "tests": [
+        {
+          "file": "crates/qso-graph-astro/tests/ranges.rs",
+          "name": "moments_spans_and_terminator_refuse_invalid_inputs"
+        }
+      ],
+      "vectors": []
+    },
+    "QGDXC-AST-0010": {
+      "tests": [
+        {
+          "file": "crates/qso-graph-astro/tests/agreement.rs",
+          "name": "desktop_angles_distance_and_phase"
+        },
+        {
+          "file": "crates/qso-graph-astro/tests/agreement.rs",
+          "name": "pyephem_horizontal_positions"
+        }
+      ],
+      "vectors": []
+    },
+    "QGDXC-AST-0011": {
+      "tests": [
+        {
+          "file": "crates/qso-graph-astro/tests/ranges.rs",
+          "name": "named_altitudes_match_the_annex"
+        }
+      ],
+      "vectors": []
+    },
+    "QGDXC-AST-0012": {
+      "tests": [
+        {
+          "file": "crates/qso-graph-astro/src/lib.rs",
+          "name": "crossing_rounding_and_midpoint"
+        },
+        {
+          "file": "crates/qso-graph-astro/tests/agreement.rs",
+          "name": "desktop_crossings_noon_and_day_start"
+        }
+      ],
+      "vectors": []
+    },
+    "QGDXC-AST-0013": {
+      "tests": [
+        {
+          "file": "crates/qso-graph-astro/tests/agreement.rs",
+          "name": "desktop_crossings_noon_and_day_start"
+        }
+      ],
+      "vectors": []
+    },
+    "QGDXC-AST-0014": {
+      "tests": [
+        {
+          "file": "crates/qso-graph-astro/tests/agreement.rs",
+          "name": "desktop_angles_distance_and_phase"
+        },
+        {
+          "file": "crates/qso-graph-astro/tests/ranges.rs",
+          "name": "supported_moments_places_spans_and_altitudes_are_finite"
+        }
+      ],
+      "vectors": []
+    },
+    "QGDXC-AST-0020": {
+      "tests": [
+        {
+          "file": "crates/qso-graph-astro/tests/agreement.rs",
+          "name": "desktop_angles_distance_and_phase"
+        },
+        {
+          "file": "crates/qso-graph-astro/tests/agreement.rs",
+          "name": "pyephem_moon_ephemeris"
+        }
+      ],
+      "vectors": []
+    },
+    "QGDXC-AST-0021": {
+      "tests": [
+        {
+          "file": "crates/qso-graph-astro/tests/agreement.rs",
+          "name": "pyephem_horizontal_positions"
+        }
+      ],
+      "vectors": []
+    },
+    "QGDXC-AST-0022": {
+      "tests": [
+        {
+          "file": "crates/qso-graph-astro/tests/agreement.rs",
+          "name": "desktop_crossings_noon_and_day_start"
+        },
+        {
+          "file": "crates/qso-graph-astro/tests/agreement.rs",
+          "name": "pyephem_moon_events"
+        }
+      ],
+      "vectors": []
+    },
+    "QGDXC-AST-0023": {
+      "tests": [
+        {
+          "file": "crates/qso-graph-astro/tests/agreement.rs",
+          "name": "desktop_angles_distance_and_phase"
+        },
+        {
+          "file": "crates/qso-graph-astro/tests/agreement.rs",
+          "name": "pyephem_moon_ephemeris"
+        }
+      ],
+      "vectors": []
+    },
+    "QGDXC-AST-0024": {
+      "tests": [
+        {
+          "file": "crates/qso-graph-astro/tests/agreement.rs",
+          "name": "desktop_angles_distance_and_phase"
+        }
+      ],
+      "vectors": []
+    },
+    "QGDXC-AST-0030": {
+      "tests": [
+        {
+          "file": "crates/qso-graph-astro/tests/ranges.rs",
+          "name": "terminator_closes_splits_and_stays_at_its_solar_altitude"
+        },
+        {
+          "file": "crates/qso-graph-astro/tests/ranges.rs",
+          "name": "moments_spans_and_terminator_refuse_invalid_inputs"
+        }
+      ],
+      "vectors": []
+    },
+    "QGDXC-AST-0031": {
+      "tests": [
+        {
+          "file": "crates/qso-graph-astro/tests/agreement.rs",
+          "name": "desktop_grey_line_windows"
+        }
+      ],
+      "vectors": []
+    },
+    "QGDXC-AST-0040": {
+      "tests": [
+        {
+          "file": "crates/qso-graph-astro/tests/agreement.rs",
+          "name": "desktop_angles_distance_and_phase"
+        },
+        {
+          "file": "crates/qso-graph-astro/tests/agreement.rs",
+          "name": "desktop_crossings_noon_and_day_start"
+        },
+        {
+          "file": "crates/qso-graph-astro/tests/agreement.rs",
+          "name": "desktop_grey_line_windows"
+        }
+      ],
+      "vectors": []
+    },
+    "QGDXC-AST-0041": {
+      "tests": [
+        {
+          "file": "crates/qso-graph-astro/tests/agreement.rs",
+          "name": "pyephem_sun_events"
+        },
+        {
+          "file": "crates/qso-graph-astro/tests/agreement.rs",
+          "name": "pyephem_moon_events"
+        },
+        {
+          "file": "crates/qso-graph-astro/tests/agreement.rs",
+          "name": "pyephem_moon_ephemeris"
+        },
+        {
+          "file": "crates/qso-graph-astro/tests/agreement.rs",
+          "name": "pyephem_horizontal_positions"
+        }
+      ],
+      "vectors": []
+    },
+    "QGDXC-AST-0042": {
+      "tests": [
+        {
+          "file": "crates/qso-graph-astro/tests/ranges.rs",
+          "name": "moments_spans_and_terminator_refuse_invalid_inputs"
+        },
+        {
+          "file": "crates/qso-graph-astro/tests/ranges.rs",
+          "name": "supported_moments_places_spans_and_altitudes_are_finite"
+        },
+        {
+          "file": "crates/qso-graph-astro/tests/ranges.rs",
+          "name": "terminator_closes_splits_and_stays_at_its_solar_altitude"
+        }
+      ],
+      "vectors": []
+    },
+    "QGDXC-GRID-0001": {
+      "tests": [
+        {
+          "file": "xtask/src/checks.rs",
+          "name": "policy_rejects_transport_dependencies_in_parsing_libraries"
+        },
+        {
+          "file": "xtask/src/checks.rs",
+          "name": "policy_allows_only_the_astro_and_grid_dependencies"
+        }
+      ],
+      "vectors": []
+    },
+    "QGDXC-GRID-0002": {
+      "tests": [
+        {
+          "file": "crates/qso-graph-grid/tests/agreement.rs",
+          "name": "locator_syntax_precision_and_canonical_case"
+        }
+      ],
+      "vectors": []
+    },
+    "QGDXC-GRID-0003": {
+      "tests": [
+        {
+          "file": "crates/qso-graph-grid/tests/agreement.rs",
+          "name": "locator_syntax_precision_and_canonical_case"
+        }
+      ],
+      "vectors": []
+    },
+    "QGDXC-GRID-0004": {
+      "tests": [
+        {
+          "file": "crates/qso-graph-grid/tests/agreement.rs",
+          "name": "desktop_grid_agreement"
+        }
+      ],
+      "vectors": []
+    },
+    "QGDXC-GRID-0005": {
+      "tests": [
+        {
+          "file": "crates/qso-graph-grid/tests/agreement.rs",
+          "name": "position_checks_edges_and_nonfinite_values"
+        },
+        {
+          "file": "crates/qso-graph-grid/tests/agreement.rs",
+          "name": "desktop_grid_agreement"
+        }
+      ],
+      "vectors": []
+    },
+    "QGDXC-GRID-0006": {
+      "tests": [
+        {
+          "file": "crates/qso-graph-grid/tests/agreement.rs",
+          "name": "desktop_grid_agreement"
+        }
+      ],
+      "vectors": []
+    },
     "QGDXC-ARC-0001": {
       "tests": [
         {
@@ -1454,6 +1729,10 @@
           "file": "crates/qso-graph-dxcluster-cli/tests/tui.rs",
           "name": "first_run_hint_lines_are_only_the_programs_own",
           "platform": "linux"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/tui/tests.rs",
+          "name": "operator_grid_config_is_validated_before_sources_or_terminal"
         }
       ],
       "vectors": []
@@ -1475,6 +1754,10 @@
         {
           "file": "crates/qso-graph-dxcluster-cli/tests/tui.rs",
           "name": "sources_file_errors_come_before_terminal_checks"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/tui/tests.rs",
+          "name": "operator_grid_config_is_validated_before_sources_or_terminal"
         }
       ],
       "vectors": []
@@ -2755,6 +3038,101 @@
         {
           "file": "crates/qso-graph-dxcluster-cli/src/tui/pota/tests.rs",
           "name": "pota_waits_without_requests_and_keeps_rows_on_failure"
+        }
+      ],
+      "vectors": []
+    },
+    "QGDXC-TUI-0140": {
+      "tests": [
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/tui/tests.rs",
+          "name": "operator_grid_config_is_validated_before_sources_or_terminal"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster-cli/tests/tui.rs",
+          "name": "operator_grid_works_with_the_default_sources_file"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster-cli/tests/tui.rs",
+          "name": "tui_help_lists_the_operator_grid"
+        }
+      ],
+      "vectors": []
+    },
+    "QGDXC-TUI-0141": {
+      "tests": [
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/tui/tests.rs",
+          "name": "operator_grid_stays_out_of_cluster_replay_and_https"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/tui/tests.rs",
+          "name": "operator_grid_config_is_validated_before_sources_or_terminal"
+        }
+      ],
+      "vectors": []
+    },
+    "QGDXC-TUI-0142": {
+      "tests": [
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/tui/tests.rs",
+          "name": "sun_moon_border_and_map_marks_use_the_fixed_utc_minute"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/tui/tests.rs",
+          "name": "station_border_checks_fit_in_terminal_cells_before_writing"
+        }
+      ],
+      "vectors": []
+    },
+    "QGDXC-TUI-0143": {
+      "tests": [
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/tui/tests.rs",
+          "name": "sun_moon_border_and_map_marks_use_the_fixed_utc_minute"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/tui/tests.rs",
+          "name": "map_draws_paths_over_the_coastline"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/tui/tests.rs",
+          "name": "map_paths_follow_filters_age_kind_and_the_cap"
+        }
+      ],
+      "vectors": []
+    },
+    "QGDXC-TUI-0144": {
+      "tests": [
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/tui/tests.rs",
+          "name": "astro_cache_reuses_figures_until_the_utc_minute_changes"
+        }
+      ],
+      "vectors": []
+    },
+    "QGDXC-TUI-0145": {
+      "tests": [
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/tui/geo.rs",
+          "name": "grid_centers_follow_maidenhead"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/tui/tests.rs",
+          "name": "map_locates_ends_by_grid_then_prefix"
+        }
+      ],
+      "vectors": []
+    },
+    "QGDXC-TUI-0146": {
+      "tests": [
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/tui/tests.rs",
+          "name": "sun_moon_border_and_map_marks_use_the_fixed_utc_minute"
+        },
+        {
+          "file": "crates/qso-graph-dxcluster-cli/src/tui/tests.rs",
+          "name": "station_border_checks_fit_in_terminal_cells_before_writing"
         }
       ],
       "vectors": []

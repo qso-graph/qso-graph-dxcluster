@@ -90,6 +90,13 @@ Solar flux, planetary K, and NOAA scales have a 15-minute minimum between
 requests. X-rays, solar wind, and alerts have a five-minute minimum
 (`QGDXC-TUI-0111`).
 
+Use `--grid <locator>` (or the sources file's `grid`) to show the next sunrise and
+sunset in UTC, plus the moon's illumination and elevation, below the sources on
+wide screens. Your locator stays on your computer and is never sent. The world
+map shows the grey line and marks the sun and moon. When you supply a locator,
+it also marks your position. The calculations follow NOAA's solar method and
+Jean Meeus's *Astronomical Algorithms* (QGDXC-TUI-0140–0143, Annex L).
+
 Add `--node pota` to include activator spots from Parks on the Air, or set
 `"node": "pota"` in your sources file and select it at startup. The feed has a
 one-minute floor between requests. See [Annex F.14](spec/annex-f-tui.md#f14-pota-spots).

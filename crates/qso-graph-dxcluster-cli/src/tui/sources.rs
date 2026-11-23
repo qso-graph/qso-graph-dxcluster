@@ -1,10 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //! Application-owned source threads and the deterministic offline scheduler.
-use super::{
-    config::{Options, Source},
-    model::Model,
-    pota,
-};
+use super::{config::Source, model::Model, pota};
 use crate::{Delivery, recording::ReplayStream, run_live};
 use qso_graph_dxcluster::Event;
 use std::{
@@ -78,16 +74,15 @@ impl Workers {
         tx
     }
 
-    pub fn start(&mut self, options: Options, model: &mut Model, origin: Instant) {
-        let replay = matches!(options.sources[0], Source::Replay(_));
+    pub fn start(&mut self, sources: Vec<Source>, model: &mut Model, origin: Instant) {
+        let replay = matches!(sources[0], Source::Replay(_));
         self.replay = replay;
-        let senders: Vec<_> = options.sources.iter().map(|_| self.add_queue()).collect();
+        let senders: Vec<_> = sources.iter().map(|_| self.add_queue()).collect();
         let workers = self;
         if replay {
             let stop = workers.stop.clone();
             workers.threads.push(Worker::spawn(move || {
-                let streams = options
-                    .sources
+                let streams = sources
                     .into_iter()
                     .map(|s| match s {
                         Source::Replay(path) => File::open(path)
@@ -121,7 +116,7 @@ impl Workers {
                 schedule.cancel();
             }));
         } else {
-            for (index, (source, tx)) in options.sources.into_iter().zip(senders).enumerate() {
+            for (index, (source, tx)) in sources.into_iter().zip(senders).enumerate() {
                 let stop = workers.stop.clone();
                 let config = match source {
                     Source::Node(config) => config,

@@ -1,0 +1,19 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+[package]
+name = "qso-graph-grid"
+description = "Maidenhead locators and geographic positions"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+readme = "README.md"
+keywords = ["ham-radio", "maidenhead"]
+categories = ["encoding"]
+include = ["src/**/*.rs", "README.md", "LICENSE"]
+
+[dev-dependencies]
+serde_json = "=1.0.145"
+
+[lints]
+workspace = true

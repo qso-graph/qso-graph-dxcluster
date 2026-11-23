@@ -262,10 +262,12 @@ pub fn source_violation(s: &str, library: bool) -> bool {
                 .contains(w)
             })
 }
-const PARSING_CRATES: [&str; 3] = [
+const SANS_IO_CRATES: [&str; 5] = [
     "qso-graph-dxcluster",
     "qso-graph-spaceweather",
     "qso-graph-pota",
+    "qso-graph-grid",
+    "qso-graph-astro",
 ];
 const HTTP_CRATE: &str = "qso-graph-http";
 const TLS_PINS: [(&str, &str); 4] = [
@@ -285,8 +287,6 @@ const HTTPS_DEPS: [&str; 8] = [
     "pkg-config",
 ];
 
-// QGDXC-IO-0001: no approved third-party library test dependencies yet.
-const LIBRARY_DEV_ALLOWLIST: &[&str] = &[];
 fn library_dependencies(metadata: &Value, library_name: &str) -> Result<(), String> {
     let packages = metadata["packages"].as_array().ok_or("metadata packages")?;
     let library = packages
@@ -305,15 +305,29 @@ fn library_dependencies(metadata: &Value, library_name: &str) -> Result<(), Stri
         let description = format!("{name} (as {alias}; {target})");
         if dependency["kind"] == "dev" {
             development.push(description.clone());
-            if !LIBRARY_DEV_ALLOWLIST.contains(&name) {
+            let allowed = matches!(library_name, "qso-graph-grid" | "qso-graph-astro")
+                && name == "serde_json"
+                && dependency["req"] == "=1.0.145"
+                && dependency["features"] == serde_json::json!([])
+                && dependency["uses_default_features"] == true
+                && dependency["source"].as_str()
+                    == Some("registry+https://github.com/rust-lang/crates.io-index");
+            if !allowed {
                 rejected.push(format!("unapproved dev dependency: {description}"));
             }
         } else {
             // QGDXC-SWX-0001 and QGDXC-POTA-0001: exact JSON pins without derive.
-            let allowed = matches!(library_name, "qso-graph-spaceweather" | "qso-graph-pota")
-                && dependency["kind"].is_null()
-                && match name {
-                    "serde_json" => {
+            let allowed = dependency["kind"].is_null()
+                && match (library_name, name) {
+                    ("qso-graph-astro", "qso-graph-grid") => {
+                        dependency["source"].is_null()
+                            && dependency["path"].as_str().is_some_and(|path| {
+                                Path::new(path).ends_with("crates/qso-graph-grid")
+                            })
+                            && dependency["req"] == concat!("=", env!("CARGO_PKG_VERSION"))
+                            && dependency["features"] == serde_json::json!([])
+                    }
+                    ("qso-graph-spaceweather" | "qso-graph-pota", "serde_json") => {
                         dependency["req"] == "=1.0.145"
                             && dependency["features"]
                                 == if library_name == "qso-graph-pota" {
@@ -322,7 +336,7 @@ fn library_dependencies(metadata: &Value, library_name: &str) -> Result<(), Stri
                                     serde_json::json!([])
                                 }
                     }
-                    "serde_core" => {
+                    ("qso-graph-spaceweather" | "qso-graph-pota", "serde_core") => {
                         dependency["req"] == "=1.0.229"
                             && dependency["uses_default_features"] == false
                             && dependency["features"] == serde_json::json!(["std"])
@@ -384,7 +398,7 @@ fn library_transport_dependencies(metadata: &Value) -> Result<(), String> {
         .iter()
         .filter_map(|node| Some((node["id"].as_str()?, node["dependencies"].as_array()?)))
         .collect();
-    for library in PARSING_CRATES {
+    for library in SANS_IO_CRATES {
         let root = packages
             .iter()
             .find(|package| package["name"] == library && package["source"].is_null())
@@ -446,7 +460,7 @@ fn workspace_http_dependencies(metadata: &Value) -> Result<(), String> {
 fn dependency_policy(root: &Path) -> Result<(), String> {
     // Declarations include inactive optional, renamed, and target-specific dependencies.
     let declarations = cargo_metadata(root, "--no-deps")?;
-    for library in PARSING_CRATES {
+    for library in SANS_IO_CRATES {
         library_dependencies(&declarations, library)?;
     }
     workspace_http_dependencies(&declarations)?;
@@ -573,7 +587,7 @@ fn compiled_library_sources(root: &Path, library: &str) -> Result<BTreeSet<PathB
 pub fn policy() -> Result<(), String> {
     dependency_policy(Path::new("."))?;
     let mut sources = BTreeSet::new();
-    for library in PARSING_CRATES {
+    for library in SANS_IO_CRATES {
         sources.extend(compiled_library_sources(Path::new("."), library)?);
     }
     for source in &sources {
@@ -608,7 +622,7 @@ pub fn policy() -> Result<(), String> {
             return Err("policy planted-case detector failed".into());
         }
     }
-    for (krate, library) in PARSING_CRATES
+    for (krate, library) in SANS_IO_CRATES
         .into_iter()
         .map(|name| (name, true))
         .chain([(HTTP_CRATE, false), ("qso-graph-dxcluster-cli", false)])
@@ -624,12 +638,13 @@ pub fn policy() -> Result<(), String> {
             }
             if file.extension().is_some_and(|e| e == "rs") {
                 let s = crate::input::text(&file).map_err(|e| e.to_string())?;
-                // Space-weather integration tests compile as separate executables
-                // and read the NOAA fixtures under QGDXC-SWX-0007. The library
-                // check includes every file compiled into the library above.
-                let weather_integration =
-                    krate == "qso-graph-spaceweather" && file.starts_with(root.join("tests"));
-                if source_violation(&s, library && !weather_integration) || s.contains("#[path") {
+                // These integration tests read reference fixtures as separate executables.
+                // The compiled library source check above applies to all its inputs.
+                let fixture_integration = matches!(
+                    krate,
+                    "qso-graph-spaceweather" | "qso-graph-grid" | "qso-graph-astro"
+                ) && file.starts_with(root.join("tests"));
+                if source_violation(&s, library && !fixture_integration) || s.contains("#[path") {
                     return Err(format!("source policy: {}", file.display()));
                 }
                 if file
@@ -1224,7 +1239,53 @@ const ADIF_CALL_SHAPED_MODES: &[&[&str]] = &[
     &["PSK", "63", "RC", "5"],
     &["PSK", "800", "RC", "2"],
 ];
+/// The grid library's Desktop-agreement fixture and the script that records it hold
+/// Maidenhead locators, whose 6- and 8-character forms have a callsign's shape. Only there,
+/// and only a quoted token that is exactly such a locator, is read as a locator; every other
+/// token in those files still gets the full check.
+const GRID_FIXTURE_FILES: [&str; 2] = [
+    "crates/qso-graph-grid/tests/fixtures/desktop-agreement.json",
+    "crates/qso-graph-grid/tests/fixtures/record-desktop.ts",
+];
+fn is_long_locator(token: &str) -> bool {
+    let b = token.as_bytes();
+    if b.len() != 6 && b.len() != 8 {
+        return false;
+    }
+    let field = |c: u8| (b'A'..=b'R').contains(&c.to_ascii_uppercase());
+    let sub = |c: u8| (b'A'..=b'X').contains(&c.to_ascii_uppercase());
+    field(b[0])
+        && field(b[1])
+        && b[2].is_ascii_digit()
+        && b[3].is_ascii_digit()
+        && sub(b[4])
+        && sub(b[5])
+        && b[6..].iter().all(u8::is_ascii_digit)
+}
+fn mask_quoted_locators(source: &str) -> String {
+    let mut out = String::with_capacity(source.len());
+    let mut rest = source;
+    while let Some(open) = rest.find(['"', '\'']) {
+        let quote = rest.as_bytes()[open] as char;
+        out.push_str(&rest[..=open]);
+        rest = &rest[open + 1..];
+        match rest.find(quote) {
+            Some(close) if is_long_locator(&rest[..close]) => {
+                out.push_str("GRID");
+                out.push(quote);
+                rest = &rest[close + 1..];
+            }
+            _ => {}
+        }
+    }
+    out.push_str(rest);
+    out
+}
 pub(crate) fn public_file_sanitized(file: &Path, source: &str) -> bool {
+    if let Some(i) = GRID_FIXTURE_FILES.iter().position(|f| file == Path::new(f)) {
+        let masked = ["grid_fixture_masked.json", "grid_fixture_masked.ts"][i];
+        return public_file_sanitized(Path::new(masked), &mask_quoted_locators(source));
+    }
     // The shipped country file's prefix lists are entity prefixes, not identities.
     // Exact-callsign entries are stripped before shipping; every other line of the
     // file still gets the full check.
@@ -1508,6 +1569,16 @@ pub const WEATHER_FUZZ: [(&str, &str, &str); 9] = [
     ("swx_alert_force", "products_alerts.json", "262153"),
 ];
 pub fn seed_fuzz() -> Result<(), String> {
+    let grid = Path::new("fuzz/corpus/grid_locator");
+    fs::create_dir_all(grid).map_err(|e| e.to_string())?;
+    for (name, bytes) in [
+        ("field", "AA"),
+        ("square", "JJ00"),
+        ("subsquare", "QR99xx"),
+        ("extended", "QA00aa00"),
+    ] {
+        fs::write(grid.join(name), bytes).map_err(|e| e.to_string())?;
+    }
     let pota = Path::new("fuzz/corpus/pota_spots");
     fs::create_dir_all(pota).map_err(|e| e.to_string())?;
     fs::copy(
@@ -1615,7 +1686,7 @@ mod tests {
         let library = "// SPDX-License-Identifier: GPL-3.0-or-later\n#![forbid(unsafe_code)]\nmod inside;\npub struct Session;\nimpl Session { pub fn new() -> Self { inside::probe(); Self } }\n";
         fs::write(source.join("inside.rs"), inside).unwrap();
         fs::write(source.join("lib.rs"), library).unwrap();
-        let baseline = compiled_library_sources(&root, PARSING_CRATES[0]).unwrap();
+        let baseline = compiled_library_sources(&root, SANS_IO_CRATES[0]).unwrap();
         assert_eq!(baseline.len(), 2);
         assert!(baseline.contains(&source.join("inside.rs").canonicalize().unwrap()));
         fs::write(root.join("shared.rs"), "// SPDX-License-Identifier: GPL-3.0-or-later\npub fn probe() { let _ = std::fs::metadata(\"Cargo.toml\"); }\n").unwrap();
@@ -1628,7 +1699,7 @@ mod tests {
         );
         fs::write(source.join("lib.rs"), &redirected).unwrap();
         assert!(source_violation(&redirected, true));
-        let error = compiled_library_sources(&root, PARSING_CRATES[0]).unwrap_err();
+        let error = compiled_library_sources(&root, SANS_IO_CRATES[0]).unwrap_err();
         assert!(
             error.contains("compiled library source outside src:"),
             "{error}"
@@ -1636,7 +1707,7 @@ mod tests {
         assert!(error.contains("shared.rs"), "{error}");
         fs::write(source.join("lib.rs"), library).unwrap();
         assert_eq!(
-            compiled_library_sources(&root, PARSING_CRATES[0]).unwrap(),
+            compiled_library_sources(&root, SANS_IO_CRATES[0]).unwrap(),
             baseline
         );
         // A conventional module name can also escape through a symlink, with
@@ -1649,7 +1720,7 @@ mod tests {
                 source.join("inside.rs"),
             )
             .unwrap();
-            let error = compiled_library_sources(&root, PARSING_CRATES[0]).unwrap_err();
+            let error = compiled_library_sources(&root, SANS_IO_CRATES[0]).unwrap_err();
             assert!(
                 error.contains("compiled library source outside src:"),
                 "{error}"
@@ -1657,7 +1728,7 @@ mod tests {
             fs::remove_file(source.join("inside.rs")).unwrap();
             fs::write(source.join("inside.rs"), inside).unwrap();
             assert_eq!(
-                compiled_library_sources(&root, PARSING_CRATES[0]).unwrap(),
+                compiled_library_sources(&root, SANS_IO_CRATES[0]).unwrap(),
                 baseline
             );
         }
@@ -1721,7 +1792,7 @@ mod tests {
         ] {
             fs::write(root.join("Cargo.toml"), format!("{base}{declaration}")).unwrap();
             let result = cargo_metadata(&root, "--no-deps")
-                .and_then(|metadata| library_dependencies(&metadata, PARSING_CRATES[0]));
+                .and_then(|metadata| library_dependencies(&metadata, SANS_IO_CRATES[0]));
             if declaration.is_empty() {
                 result.unwrap();
             } else {
@@ -1736,14 +1807,38 @@ mod tests {
         fs::remove_dir_all(root).unwrap();
     }
     #[test]
+    fn policy_allows_only_the_astro_and_grid_dependencies() {
+        let metadata = cargo_metadata(Path::new("."), "--no-deps").unwrap();
+        let packages = metadata["packages"].as_array().unwrap();
+        for name in ["qso-graph-grid", "qso-graph-astro"] {
+            library_dependencies(&metadata, name).unwrap();
+            let index = packages.iter().position(|p| p["name"] == name).unwrap();
+            for (kind, dependency) in [
+                (serde_json::Value::Null, "serde_json"),
+                (serde_json::json!("dev"), "ctrlc"),
+                (serde_json::json!("build"), "qso-graph-grid"),
+            ] {
+                let mut planted = metadata.clone();
+                planted["packages"][index]["dependencies"]
+                    .as_array_mut()
+                    .unwrap()
+                    .push(serde_json::json!({"kind": kind, "name": dependency}));
+                assert!(library_dependencies(&planted, name).is_err());
+            }
+        }
+    }
+
+    #[test]
     fn policy_rejects_transport_dependencies_in_parsing_libraries() {
         // QGDXC-HTTP-0013 and QGDXC-TUI-0115: plant direct and transitive
         // transport dependencies in a resolved Cargo graph.
         let mut graph = serde_json::json!({
             "packages": [
-                {"id": "cluster", "name": PARSING_CRATES[0]},
-                {"id": "weather", "name": PARSING_CRATES[1]},
-                {"id": "pota", "name": PARSING_CRATES[2]},
+                {"id": "cluster", "name": SANS_IO_CRATES[0]},
+                {"id": "weather", "name": SANS_IO_CRATES[1]},
+                {"id": "pota", "name": SANS_IO_CRATES[2]},
+                {"id": "grid", "name": SANS_IO_CRATES[3]},
+                {"id": "astro", "name": SANS_IO_CRATES[4]},
                 {"id": "cli", "name": "qso-graph-dxcluster-cli"},
                 {"id": "json", "name": "serde_json", "source": "registry"},
                 {"id": "transport", "name": HTTP_CRATE, "source": null},
@@ -1752,20 +1847,22 @@ mod tests {
                 {"id": "cluster", "dependencies": []},
                 {"id": "weather", "dependencies": ["json"]},
                 {"id": "pota", "dependencies": ["weather"]},
-                {"id": "cli", "dependencies": ["cluster", "weather", "pota", "transport"]},
+                {"id": "grid", "dependencies": []},
+                {"id": "astro", "dependencies": ["grid"]},
+                {"id": "cli", "dependencies": ["cluster", "weather", "pota", "grid", "astro", "transport"]},
                 {"id": "json", "dependencies": []},
                 {"id": "transport", "dependencies": []},
             ]},
         });
         library_transport_dependencies(&graph).unwrap();
         for prohibited in HTTPS_DEPS {
-            graph["packages"][5]["name"] = serde_json::json!(prohibited);
-            for (library, via) in [(0, 0), (1, 4), (2, 2)] {
+            graph["packages"][7]["name"] = serde_json::json!(prohibited);
+            for (library, via) in [(0, 0), (1, 6), (2, 2), (3, 3), (4, 4)] {
                 let dependencies = &mut graph["resolve"]["nodes"][via]["dependencies"];
                 let original = std::mem::replace(dependencies, serde_json::json!(["transport"]));
                 let error = library_transport_dependencies(&graph).unwrap_err();
                 assert!(
-                    error.contains(PARSING_CRATES[library]) && error.ends_with(prohibited),
+                    error.contains(SANS_IO_CRATES[library]) && error.ends_with(prohibited),
                     "{error}"
                 );
                 graph["resolve"]["nodes"][via]["dependencies"] = original;
@@ -2179,6 +2276,45 @@ mod wcy_credit_exemption {
             )
             .unwrap();
             assert!(public_file_sanitized(Path::new(file), &source), "{file}");
+        }
+    }
+}
+#[cfg(test)]
+mod grid_fixture_exemption {
+    use super::*;
+    #[test]
+    fn exempts_only_quoted_locators_in_the_grid_fixture_files() {
+        let file = Path::new(GRID_FIXTURE_FILES[0]);
+        let locator = ["AP", "03", "sh", "87"].concat();
+        let line = format!(
+            "{{\"grids\":[\"AP\",\"AP03\",\"{}\",\"{locator}\"]}}\n",
+            &locator[..6]
+        );
+        assert!(public_file_sanitized(file, &line));
+        // The same text elsewhere still fails.
+        assert!(!public_file_sanitized(Path::new("README.md"), &line));
+        // A callsign in the fixture still fails, quoted or not.
+        let call = ["W", "1", "ABC"].concat();
+        assert!(!public_file_sanitized(
+            file,
+            &format!("{{\"place\":\"{call}\"}}\n")
+        ));
+        assert!(!public_file_sanitized(
+            Path::new(GRID_FIXTURE_FILES[1]),
+            &format!("// heard {call} today\n")
+        ));
+        // A special-event call with a locator's shape is masked only when quoted and exact.
+        let shaped = ["TM", "70", "AB"].concat();
+        assert!(!public_file_sanitized(
+            file,
+            &format!("{{\"note\":\"{shaped} QRV\"}}\n")
+        ));
+        // The real files pass as a whole.
+        for f in GRID_FIXTURE_FILES {
+            let source =
+                std::fs::read_to_string(Path::new(env!("CARGO_MANIFEST_DIR")).join("..").join(f))
+                    .unwrap();
+            assert!(public_file_sanitized(Path::new(f), &source), "{f}");
         }
     }
 }

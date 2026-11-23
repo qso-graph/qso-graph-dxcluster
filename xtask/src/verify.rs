@@ -72,6 +72,10 @@ pub fn verify() -> Result<(), String> {
                 "-p",
                 "qso-graph-pota",
                 "-p",
+                "qso-graph-grid",
+                "-p",
+                "qso-graph-astro",
+                "-p",
                 "qso-graph-dxcluster-cli",
                 "--config",
                 "patch.crates-io.qso-graph-dxcluster.path=\"crates/qso-graph-dxcluster\"",
@@ -81,6 +85,10 @@ pub fn verify() -> Result<(), String> {
                 "patch.crates-io.qso-graph-http.path=\"crates/qso-graph-http\"",
                 "--config",
                 "patch.crates-io.qso-graph-pota.path=\"crates/qso-graph-pota\"",
+                "--config",
+                "patch.crates-io.qso-graph-grid.path=\"crates/qso-graph-grid\"",
+                "--config",
+                "patch.crates-io.qso-graph-astro.path=\"crates/qso-graph-astro\"",
             ],
         ),
     ];
@@ -254,8 +262,11 @@ pub fn verify() -> Result<(), String> {
         .into_iter()
         .map(|target| (target, "70000"))
         .chain(crate::checks::WEATHER_FUZZ.map(|(target, _, limit)| (target, limit)))
-        .chain([("http_retry_after", "4096"), ("pota_spots", "1048577")])
-        {
+        .chain([
+            ("http_retry_after", "4096"),
+            ("pota_spots", "1048577"),
+            ("grid_locator", "32"),
+        ]) {
             let name = format!("fuzz {target}");
             let path = format!("target/verify/fuzz-{target}.log");
             let file = fs::File::create(path).map_err(|e| e.to_string())?;

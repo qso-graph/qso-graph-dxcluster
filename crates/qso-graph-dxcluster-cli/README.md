@@ -29,6 +29,13 @@ themes. Use `--theme color|daylight|phosphor|amber|mono` at startup. Layout,
 modes, callsigns, and human or skimmer spots. The `connect` command emits events;
 `replay` reads a local recording. Recording is opt-in.
 
+Use `--grid <locator>` (or the sources file's `grid`) to show the next sunrise and
+sunset in UTC, plus the moon's illumination and elevation, below the sources on
+wide screens. Your locator stays on your computer and is never sent. The world
+map shows the grey line and marks the sun and moon. When you supply a locator,
+it also marks your position. The calculations follow NOAA's solar method and
+Jean Meeus's *Astronomical Algorithms* (QGDXC-TUI-0140–0143, Annex L).
+
 Add `--node pota` for Parks on the Air activator spots, or select a source with
 `"node": "pota"` from your sources file. The feed has a one-minute floor between
 requests ([Annex F.14](https://github.com/qso-graph/qso-graph-dxcluster/blob/main/spec/annex-f-tui.md#f14-pota-spots)).

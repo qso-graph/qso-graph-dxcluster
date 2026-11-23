@@ -10,6 +10,8 @@ COPIES = {
     "crates/qso-graph-spaceweather/LICENSE": "LICENSE",
     "crates/qso-graph-http/LICENSE": "LICENSE",
     "crates/qso-graph-pota/LICENSE": "LICENSE",
+    "crates/qso-graph-grid/LICENSE": "LICENSE",
+    "crates/qso-graph-astro/LICENSE": "LICENSE",
     "crates/qso-graph-dxcluster-cli/LICENSE": "LICENSE",
     "crates/qso-graph-dxcluster-cli/NOTICE.md": "NOTICE.md",
 }

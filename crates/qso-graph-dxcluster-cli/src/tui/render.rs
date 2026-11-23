@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 use super::{
+    astro::Station,
     beacons,
     model::{
         CHART_BANDS, Editor, Model, Spot, SpotsView, clip, frequency, frequency_text, sanitize,
@@ -437,13 +438,33 @@ fn utc(seconds: u64) -> String {
         seconds % 60
     )
 }
+// The supplied border width excludes the corners and their adjacent cells.
+pub(super) fn station_border(frame: &mut Frame<'_>, area: Rect, station: &Station, a: Appearance) {
+    let room = usize::from(area.width);
+    let sun_width = " Sun UTC ".len() + station.sun.chars().count();
+    if sun_width > room {
+        return;
+    }
+    let mut row = Row::new(frame, area.x, area.y, area.width);
+    let heading = a.style(Role::Heading);
+    let text = a.style(Role::Text);
+    row.ui(" Sun", heading);
+    row.ui(&station.sun, text);
+    if sun_width + " · Moon".chars().count() + station.moon.chars().count() <= room {
+        row.ui(" · ", text);
+        row.ui("Moon", heading);
+        row.ui(&station.moon, text);
+    }
+    row.ui(" UTC ", heading);
+}
+
 fn dashboard(frame: &mut Frame<'_>, m: &Model, now: Duration) -> bool {
     let area = frame.area();
     let w = area.width;
     let wide = w >= 100;
     let a = m.appearance;
     // Set foreground only. Every unused cell retains the terminal background.
-    let utc_now = m.utc_epoch.saturating_add(now.as_secs());
+    let utc_now = m.utc_seconds(now);
     let date = utc(utc_now);
     let ribbon = ribbon::Ribbon::current(m, utc_now);
     let date_width = if wide { 21 } else { 21.min(w / 3) };
@@ -596,6 +617,12 @@ fn dashboard(frame: &mut Frame<'_>, m: &Model, now: Duration) -> bool {
             ribbon.draw(frame, (lw + 2, 2 + BAND_CHART_ROWS, rw - 4), a);
         }
         border(frame, (0, rows + 2, lw), false, "", "", a);
+        if m.astro.place().is_some()
+            && let Some(figures) = m.astro.at(utc_now).as_ref()
+            && let Some(station) = &figures.station
+        {
+            station_border(frame, Rect::new(2, rows + 2, lw - 4, 1), station, a);
+        }
         border(frame, (lw, rows + 2, rw), false, "", "", a);
         if let Some(solar) = &m.solar {
             let room = rw.saturating_sub(4);
@@ -881,16 +908,16 @@ fn spot_map(
     for y in top + 1..bottom {
         sides(frame, 0, y, w, a);
     }
-    border(
-        frame,
-        (0, bottom, w),
-        false,
-        &format!(" {} paths · M list ", paths.len()),
-        " grid ● · prefix ○ · beacon ◆ ",
-        a,
-    );
+    let count = format!(" {} paths · M list ", paths.len());
+    let mut legend = " grid ● · prefix ○ · beacon ◆ · sun * · moon o ".to_owned();
+    if m.astro.place().is_some() {
+        legend.push_str("· you + ");
+    }
+    let legend_room = (w as usize).saturating_sub(4 + count.chars().count());
+    let legend: String = legend.chars().take(legend_room).collect();
+    border(frame, (0, bottom, w), false, &count, &legend, a);
     // QGDXC-TUI-0104: the beacons transmitting now.
-    let utc = m.utc_epoch.saturating_add(now.as_secs());
+    let utc = m.utc_seconds(now);
     let on_air: Vec<_> = (0..beacons::FREQUENCIES.len())
         .filter_map(|band| {
             let beacon = &beacons::BEACONS[beacons::on_air(utc, band)];
@@ -908,7 +935,7 @@ fn spot_map(
     if rect.width == 0 || rect.height == 0 {
         return;
     }
-    let canvas = Canvas::default()
+    let sky = Canvas::default()
         .marker(Marker::Braille)
         .x_bounds([-180.0, 180.0])
         .y_bounds([-90.0, 90.0])
@@ -918,6 +945,48 @@ fn spot_map(
                 resolution: MapResolution::High,
             });
             ctx.layer();
+            if let Some(figures) = m.astro.at(utc).as_ref() {
+                for (lines, role) in [
+                    (&figures.d_layer, Role::Dim),
+                    (&figures.horizon, Role::Warning),
+                ] {
+                    for pair in lines.iter().flat_map(|line| line.windows(2)) {
+                        ctx.draw(&Line {
+                            x1: pair[0].0,
+                            y1: pair[0].1,
+                            x2: pair[1].0,
+                            y2: pair[1].1,
+                            color: a.color(role),
+                        });
+                    }
+                }
+                ctx.print(
+                    figures.sun.longitude(),
+                    figures.sun.latitude(),
+                    Span::styled("*", a.style(Role::Warning)),
+                );
+                ctx.print(
+                    figures.moon.longitude(),
+                    figures.moon.latitude(),
+                    Span::styled("o", a.style(Role::Text)),
+                );
+                if let Some(place) = m.astro.place() {
+                    ctx.print(
+                        place.longitude(),
+                        place.latitude(),
+                        Span::styled("+", a.style(Role::Accent)),
+                    );
+                }
+            }
+        });
+    frame.render_widget(sky, rect);
+    // Canvas paints labels after its layers. A second pass puts paths and
+    // beacon labels above the astronomy marks as well as the terminators.
+    let canvas = Canvas::default()
+        .marker(Marker::Braille)
+        .x_bounds([-180.0, 180.0])
+        .y_bounds([-90.0, 90.0])
+        .paint(|ctx| {
             // Oldest first, so the newest path is drawn on top.
             for (spot, role) in paths.iter().rev() {
                 let (from, to) = spot.ends.expect("located spot");
@@ -975,7 +1044,7 @@ fn beacon_view(
     use beacons::{BEACONS, FREQUENCIES};
     let a = m.appearance;
     let w = frame.area().width;
-    let utc = m.utc_epoch.saturating_add(now.as_secs());
+    let utc = m.utc_seconds(now);
     ribbon::panel_top(
         frame,
         (0, top, w),

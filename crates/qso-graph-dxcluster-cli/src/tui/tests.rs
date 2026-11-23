@@ -1498,7 +1498,7 @@ fn approved_wide_and_compact_content_and_styles() {
         DEFAULT_KEEP,
         DEFAULT_KEEP,
     );
-    m.utc_epoch = 1_790_000_000;
+    m.utc_epoch = Duration::from_secs(1_790_000_000);
     let mut ready = ClusterEvent::new(Profile::Rbn, "connection_state");
     ready.set("state", "ready");
     m.receive(1, ready, Duration::ZERO);
@@ -2932,7 +2932,7 @@ fn beacon_view_shows_who_is_on_and_who_was_heard() {
     // After 15 minutes the reports no longer count.
     let later = Duration::from_secs(5 + 15 * 60 + 1);
     // Keep the same slot on screen: utc_epoch + later must be 10 modulo 180.
-    m.utc_epoch = (180 * 100 + 10 - later.as_secs()) % 180;
+    m.utc_epoch = Duration::from_secs((180 * 100 + 10 - later.as_secs()) % 180);
     let late = grid_at(&m, 120, 40, later);
     let twenty = (0..40)
         .map(|y| text(&late, y))
@@ -3002,4 +3002,353 @@ fn solar_strip_fits_the_bands_box_at_its_narrowest() {
         )
         .is_some()
     );
+}
+
+#[test]
+fn operator_grid_config_is_validated_before_sources_or_terminal() {
+    let with_grid = SAVED.replacen(r#""version":1"#, r#""version":1,"grid":"QJ00ae87""#, 1);
+    let path = sources_file("grid-options", &with_grid);
+    let file = path.to_str().unwrap();
+    let options = Options::parse(&args(&["--sources", file])).unwrap();
+    let place = saved_grid;
+    assert_eq!(options.grid, Some(place("QJ00ae87")));
+    let mut options = Options::parse(&args(&["--sources", file, "--grid", "rr99"])).unwrap();
+    options.choose(&[0]);
+    assert_eq!(options.grid, Some(place("RR99")));
+    for prefix in [vec!["--node", "pota"], vec!["--replay", "Cargo.toml"]] {
+        let mut values = prefix;
+        values.extend(["--grid", "jj00"]);
+        assert_eq!(
+            Options::parse(&args(&values)).unwrap().grid,
+            Some(place("JJ00"))
+        );
+    }
+    // Parsing the option precedes default-file lookup, replay metadata and terminal setup.
+    for values in [
+        vec!["--grid"],
+        vec!["--grid", "JJ"],
+        vec!["--grid", "QJ00aa1"],
+        vec!["--grid", "JJ00", "--grid", "RR99"],
+        vec!["--replay", "does-not-exist", "--grid", "JJ00 "],
+        vec!["--sources", "does-not-exist", "--grid", "JJ00\u{1b}"],
+    ] {
+        let error = run(&args(&values)).unwrap_err();
+        assert!(
+            error.starts_with("configuration:") && error.contains("--grid"),
+            "{error}"
+        );
+        assert!(
+            !error.contains("JJ") && !error.contains("QJ") && !error.contains("RR99"),
+            "{error}"
+        );
+    }
+    for (value, expected) in [
+        (r#""JJ""#, "grid: expected"),
+        (r#""QJ00aa123""#, "grid: expected"),
+        ("null", "grid: must be a string"),
+        ("100", "grid: must be a string"),
+    ] {
+        let contents = SAVED.replacen(
+            r#""version":1"#,
+            &format!(r#""version":1,"grid":{value}"#),
+            1,
+        );
+        let path = sources_file("grid-invalid", &contents);
+        let error = run(&args(&[
+            "--sources",
+            path.to_str().unwrap(),
+            "--grid",
+            "RR99",
+        ]))
+        .unwrap_err();
+        assert!(
+            error.starts_with("configuration:") && error.contains(expected),
+            "{error}"
+        );
+        assert!(
+            !error.contains("JJ") && !error.contains("QJ") && !error.contains("RR99"),
+            "{error}"
+        );
+    }
+    let duplicate = with_grid.replacen(r#""version":1"#, r#""version":1,"grid":"RR99""#, 1);
+    let error = qso_graph_dxcluster_cli::saved::parse(duplicate.as_bytes()).unwrap_err();
+    assert!(
+        error.contains("duplicate") && error.contains("line") && error.contains("column"),
+        "{error}"
+    );
+}
+
+fn saved_grid(text: &str) -> qso_graph_grid::Position {
+    qso_graph_grid::Locator::parse(text).unwrap().centre()
+}
+
+#[test]
+fn operator_grid_stays_out_of_cluster_replay_and_https() {
+    use qso_graph_dxcluster::Action;
+    use web::test_fetch::{FakeClock, Script};
+
+    const LOCATOR: &str = "QJ00ae87";
+    let place = saved_grid(LOCATOR);
+    let private_values = [
+        LOCATOR.to_ascii_lowercase(),
+        place.latitude().to_string(),
+        place.longitude().to_string(),
+    ];
+    let assert_public = |bytes: &[u8]| {
+        let visible = String::from_utf8_lossy(bytes).to_ascii_lowercase();
+        for value in &private_values {
+            assert!(
+                !visible.contains(value),
+                "{visible:?} contains station data"
+            );
+        }
+    };
+    let options = Options::parse(&args(&[
+        "--grid",
+        LOCATOR,
+        "--node",
+        "example.invalid:7300/arcluster",
+        "--node",
+        "pota",
+        "--call",
+        "Q1ABC",
+    ]))
+    .unwrap();
+    let mut model = Model::new(options.labels.clone(), DEFAULT_KEEP, DEFAULT_KEEP);
+    model.astro = astro::Cache::new(options.grid);
+    model.utc_epoch = Duration::from_secs(1_795_376_460);
+    // The in-memory cluster receives the output actions the live writer sends.
+    let [Source::Node(config), Source::Pota] = options.sources.as_slice() else {
+        panic!("source types")
+    };
+    let mut cluster = Session::new(config.clone()).unwrap();
+    let mut wire = Vec::new();
+    for batch in [
+        cluster.start(0).unwrap(),
+        cluster.connected(0, 1).unwrap(),
+        cluster
+            .input_chunk(0, 1, b"Please enter your call: ", None)
+            .unwrap(),
+    ] {
+        for action in batch.actions {
+            match action {
+                Action::Connect { .. } => assert_public(config.host.as_bytes()),
+                Action::Output { bytes, .. } => wire.extend(bytes),
+                _ => {}
+            }
+        }
+        for event in batch.events {
+            model.receive(0, event, Duration::ZERO);
+        }
+    }
+    assert!(wire.starts_with(b"Q1ABC"));
+    assert_public(&wire);
+
+    // Feed a fake recording through the same read-only scheduler as --replay.
+    let mut recorder = Recorder::new(Vec::new(), true).unwrap();
+    recorder
+        .note(
+            0.0,
+            r#"qg-dxc configuration: {"call":"Q1ABC","profile":"arcluster"}"#,
+        )
+        .unwrap();
+    recorder.open(0.0).unwrap();
+    recorder
+        .wire(0.0, "in", b"DX de Q9XYZ: 14074 Q2ABC CW 1832Z\n")
+        .unwrap();
+    recorder.close(0.0, "cancelled").unwrap();
+    let bytes = recorder.into_inner();
+    let file = sources_file("grid-replay", std::str::from_utf8(&bytes).unwrap());
+    let options = Options::parse(&args(&[
+        "--grid",
+        LOCATOR,
+        "--replay",
+        file.to_str().unwrap(),
+    ]))
+    .unwrap();
+    let [Source::Replay(path)] = options.sources.as_slice() else {
+        panic!("replay source")
+    };
+    assert_public(path.as_bytes());
+    let mut replay = Schedule::new(vec![Ok(ReplayStream::new(
+        std::io::BufReader::new(std::fs::File::open(path).unwrap()),
+        false,
+    )
+    .unwrap())]);
+    let mut got_spot = false;
+    while let Some((_, message)) = replay.poll(1.0) {
+        if let Message::Event(event) = message {
+            got_spot |= event.kind == "spot";
+            model.receive(0, event, Duration::ZERO);
+        }
+    }
+    assert!(got_spot && replay.done());
+    assert_eq!(std::fs::read(&file).unwrap(), bytes);
+    assert_public(&bytes);
+
+    // The actual weather and POTA schedulers hand their complete request
+    // arguments to a fake provider.
+    let clock = FakeClock::default();
+    let mut fetch = Script::default();
+    fetch
+        .responses
+        .push_back(web::Outcome::Error("test response"));
+    let update = weather::Scheduler::default()
+        .step(&mut fetch, &clock)
+        .unwrap();
+    model.apply_weather(update);
+    let weather_calls = fetch.calls;
+    let pota_calls = pota::test_requests();
+    assert!(!weather_calls.is_empty() && !pota_calls.is_empty());
+    for (url, limit) in weather_calls.into_iter().chain(pota_calls) {
+        assert_public(format!("{url} {limit} {}", web::USER_AGENT).as_bytes());
+    }
+
+    model.spots_view = SpotsView::Map;
+    let buffer = grid(&model, 120, 32);
+    for y in 0..buffer.area.height {
+        assert_public(text(&buffer, y).as_bytes());
+    }
+}
+
+#[test]
+fn sun_moon_border_and_map_marks_use_the_fixed_utc_minute() {
+    use qso_graph_astro::{Moment, Span, moon_crossings, sublunar_point, subsolar_point};
+    use theme::Role;
+
+    let cases = [
+        (
+            1_795_376_460,
+            "JJ00",
+            "Sun ↑05:39 ↓17:45 · Moon 95% +52° UTC",
+            false,
+        ),
+        (
+            1_781_999_999,
+            "JQ85",
+            "Sun up all day · Moon 41% -4° UTC",
+            false,
+        ),
+        (
+            1_797_854_400,
+            "JQ85",
+            "Sun down all day · Moon 90% +14° UTC",
+            false,
+        ),
+        (
+            1_768_003_200,
+            "JJ00",
+            "Sun ↑06:01 ↓18:06 · Moon 57% +9° UTC",
+            true,
+        ),
+    ];
+    for (seconds, locator, expected, missing_moon_event) in cases {
+        let mut model = map_model();
+        let place = saved_grid(locator);
+        model.astro = astro::Cache::new(Some(place));
+        // The frame helper adds ten seconds of monotonic time.
+        model.utc_epoch = Duration::from_secs(seconds - 10);
+        model.spots_view = SpotsView::Map;
+        let at = Moment::from_unix_millis(seconds as i64 / 60 * 60_000).unwrap();
+        if missing_moon_event {
+            let crossings = moon_crossings(Span::new(at, 1440).unwrap(), place);
+            assert!(crossings.rising.is_none() && crossings.setting.is_some());
+        }
+        for width in [100, 120, 150] {
+            let screen = grid(&model, width, 36);
+            let border = text(&screen, 7);
+            assert!(border.contains(expected), "{width}: {border}");
+            let x = border.chars().position(|ch| ch == 'S').unwrap() as u16;
+            assert_eq!(screen[(x, 7)].fg, model.appearance.color(Role::Heading));
+            assert_eq!(screen[(x + 4, 7)].fg, model.appearance.color(Role::Text));
+            assert!(text(&screen, 34).contains("0 paths · M list"));
+            assert!(text(&screen, 34).contains("sun * · moon o · you +"));
+            for (point, symbol, role) in [
+                (subsolar_point(at), "*", Role::Warning),
+                (sublunar_point(at), "o", Role::Text),
+                (place, "+", Role::Accent),
+            ] {
+                let x = 1 + ((point.longitude() + 180.0) * f64::from(width - 3) / 360.0) as u16;
+                let y = 9 + ((90.0 - point.latitude()) * 24.0 / 180.0) as u16;
+                assert_eq!(
+                    screen[(x, y)].symbol(),
+                    symbol,
+                    "{symbol} mark at width {width}"
+                );
+                assert_eq!(screen[(x, y)].fg, model.appearance.color(role));
+            }
+            for role in [Role::Warning, Role::Dim] {
+                let mut color_points = 0;
+                for y in 9..34 {
+                    color_points += (1..width - 1)
+                        .filter(|&x| {
+                            let cell = &screen[(x, y)];
+                            cell.symbol()
+                                .chars()
+                                .next()
+                                .is_some_and(|ch| ('\u{2800}'..='\u{28ff}').contains(&ch))
+                                && cell.fg == model.appearance.color(role)
+                        })
+                        .count();
+                }
+                assert!(color_points > 20, "{role:?} has {color_points} map cells");
+            }
+        }
+        assert!(!(0..36).any(|y| text(&grid(&model, 99, 36), y).contains("Sun ")));
+        model.astro = astro::Cache::default();
+        let screen = grid(&model, 100, 36);
+        assert!(!text(&screen, 7).contains("Sun "));
+        assert!(text(&screen, 34).contains("sun * · moon o"));
+        assert!(!text(&screen, 34).contains("you +"));
+    }
+}
+
+#[test]
+fn station_border_checks_fit_in_terminal_cells_before_writing() {
+    let station = astro::Station {
+        sun: " ↑05:39 ↓—".into(),
+        moon: " 95% +52°".into(),
+    };
+    let full = " Sun ↑05:39 ↓— · Moon 95% +52° UTC ";
+    let short = " Sun ↑05:39 ↓— UTC ";
+    let full_width = full.chars().count() as u16;
+    let short_width = short.chars().count() as u16;
+    for (width, expected) in [
+        (full_width, full),
+        (full_width - 1, short),
+        (short_width, short),
+        (short_width - 1, ""),
+    ] {
+        let mut terminal = Terminal::new(TestBackend::new(width, 1)).unwrap();
+        terminal
+            .draw(|frame| {
+                render::station_border(frame, frame.area(), &station, theme::Appearance::default());
+            })
+            .unwrap();
+        assert_eq!(
+            text(terminal.backend().buffer(), 0).trim_end(),
+            expected.trim_end()
+        );
+    }
+}
+
+#[test]
+fn astro_cache_reuses_figures_until_the_utc_minute_changes() {
+    let mut model = map_model();
+    let second = 1_795_376_460;
+    model.utc_epoch = Duration::from_millis(second * 1_000 + 59_999);
+    assert_eq!(model.utc_seconds(Duration::ZERO), second + 59);
+    assert_eq!(model.utc_seconds(Duration::from_millis(1)), second + 60);
+    let cache = astro::Cache::new(Some(saved_grid("JJ00")));
+    let snapshot = |second| {
+        let entry = cache.at(second);
+        let figures = entry.as_ref().unwrap();
+        (figures.horizon.as_ptr(), figures.sun)
+    };
+    let initial = snapshot(second);
+    assert_eq!(snapshot(second + 59), initial);
+    let next = snapshot(second + 60);
+    assert_ne!(next.0, initial.0);
+    assert_ne!(next.1, initial.1);
+    assert_eq!(snapshot(second + 119), next);
 }

@@ -164,13 +164,15 @@ class Published(unittest.TestCase):
 
 class FirstToken(unittest.TestCase):
     def test_while_a_crate_is_new(self):
-        for new in ("qso-graph-http", "qso-graph-pota"):
+        for new in ("qso-graph-http", "qso-graph-pota", "qso-graph-grid", "qso-graph-astro"):
             with self.subTest(new=new):
                 self.assertTrue(rc.first_token_allowed({
                     "qso-graph-dxcluster": True,
                     "qso-graph-spaceweather": True,
                     "qso-graph-http": new != "qso-graph-http",
                     "qso-graph-pota": new != "qso-graph-pota",
+                    "qso-graph-grid": new != "qso-graph-grid",
+                    "qso-graph-astro": new != "qso-graph-astro",
                     "qso-graph-dxcluster-cli": True,
                 }))
         self.assertTrue(rc.first_token_allowed({"a": False}))
@@ -181,6 +183,8 @@ class FirstToken(unittest.TestCase):
             "qso-graph-spaceweather": True,
             "qso-graph-http": True,
             "qso-graph-pota": True,
+            "qso-graph-grid": True,
+            "qso-graph-astro": True,
             "qso-graph-dxcluster-cli": True,
         }))
 

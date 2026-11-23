@@ -41,6 +41,51 @@ fn help_describes_retention_options() {
 }
 
 #[test]
+fn tui_help_lists_the_operator_grid() {
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_qg-dxc"))
+        .args(["tui", "--help"])
+        .output()
+        .expect("qg-dxc runs");
+    assert!(output.status.success());
+    assert!(
+        String::from_utf8(output.stdout)
+            .unwrap()
+            .contains("--grid <locator>")
+    );
+}
+
+#[test]
+fn operator_grid_works_with_the_default_sources_file() {
+    let root = std::env::temp_dir().join(format!("qg-dxc-grid-{}", std::process::id()));
+    let config = root.join("qso-graph");
+    std::fs::create_dir_all(&config).unwrap();
+    let file = config.join("dxcluster-sources.json");
+    std::fs::write(
+        &file,
+        br#"{"version":1,"sources":[{"name":"POTA","node":"pota"}]}"#,
+    )
+    .unwrap();
+    let output = Command::new(env!("CARGO_BIN_EXE_qg-dxc"))
+        .args(["tui", "--grid", "QJ00ae"])
+        .env("APPDATA", &root)
+        .env("XDG_CONFIG_HOME", &root)
+        .stdin(Stdio::null())
+        .output()
+        .unwrap();
+    std::fs::remove_file(file).unwrap();
+    std::fs::remove_dir(config).unwrap();
+    std::fs::remove_dir(root).unwrap();
+    assert_eq!(output.status.code(), Some(1));
+    assert!(output.stdout.is_empty());
+    assert!(!output.stderr.contains(&27));
+    let error = String::from_utf8(output.stderr).unwrap();
+    assert!(
+        error.contains("requires terminal") && !error.contains("QJ00ae"),
+        "{error}"
+    );
+}
+
+#[test]
 fn nonterminal_refusal_opens_no_source_and_emits_no_escape() {
     // QGDXC-TUI-0005 QGDXC-TUI-0052
     for arguments in [

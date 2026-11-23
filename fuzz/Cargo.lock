@@ -669,6 +669,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "qso-graph-astro"
+version = "0.6.0"
+dependencies = [
+ "qso-graph-grid",
+]
+
+[[package]]
 name = "qso-graph-dxcluster"
 version = "0.6.0"
 
@@ -679,7 +686,9 @@ dependencies = [
  "crossterm",
  "ctrlc",
  "getrandom 0.4.3",
+ "qso-graph-astro",
  "qso-graph-dxcluster",
+ "qso-graph-grid",
  "qso-graph-http",
  "qso-graph-pota",
  "qso-graph-spaceweather",
@@ -695,10 +704,15 @@ dependencies = [
  "libfuzzer-sys",
  "qso-graph-dxcluster",
  "qso-graph-dxcluster-cli",
+ "qso-graph-grid",
  "qso-graph-http",
  "qso-graph-pota",
  "qso-graph-spaceweather",
 ]
+
+[[package]]
+name = "qso-graph-grid"
+version = "0.6.0"
 
 [[package]]
 name = "qso-graph-http"

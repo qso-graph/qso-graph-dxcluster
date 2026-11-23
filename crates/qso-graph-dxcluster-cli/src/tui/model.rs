@@ -626,7 +626,8 @@ impl WindHistory {
 
 pub struct Model {
     pub appearance: Appearance,
-    pub utc_epoch: u64,
+    pub utc_epoch: Duration,
+    pub(super) astro: super::astro::Cache,
     pub activity: VecDeque<Bucket>,
     pub spots: VecDeque<Spot>,
     keep_human: usize,
@@ -693,7 +694,8 @@ impl Model {
     pub fn new(labels: Vec<String>, keep_human: usize, keep_skimmer: usize) -> Self {
         Self {
             appearance: Appearance::default(),
-            utc_epoch: 0,
+            utc_epoch: Duration::ZERO,
+            astro: super::astro::Cache::default(),
             activity: VecDeque::new(),
             spots: VecDeque::new(),
             keep_human,
@@ -732,10 +734,12 @@ impl Model {
             heard: Default::default(),
         }
     }
+    pub(super) fn utc_seconds(&self, elapsed: Duration) -> u64 {
+        self.utc_epoch.saturating_add(elapsed).as_secs()
+    }
+
     pub(super) fn apply_weather(&mut self, update: Update) {
-        let utc = self
-            .utc_epoch
-            .saturating_add(update.completed_at().as_secs());
+        let utc = self.utc_seconds(update.completed_at());
         match update.data() {
             Some(Data::WindSpeed(value)) => {
                 WindHistory::push(&mut self.wind_history.speed, (utc, value.proton_speed));

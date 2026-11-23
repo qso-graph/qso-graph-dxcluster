@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 [workspace]
-members = ["crates/qso-graph-dxcluster", "crates/qso-graph-dxcluster-cli", "crates/qso-graph-spaceweather", "crates/qso-graph-http", "crates/qso-graph-pota", "xtask"]
+members = ["crates/qso-graph-dxcluster", "crates/qso-graph-dxcluster-cli", "crates/qso-graph-spaceweather", "crates/qso-graph-http", "crates/qso-graph-pota", "crates/qso-graph-grid", "crates/qso-graph-astro", "xtask"]
 exclude = ["fuzz"]
 resolver = "3"
 

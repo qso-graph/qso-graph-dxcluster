@@ -1,0 +1,1502 @@
+[
+ {
+  "place": "Denver",
+  "latitude": 39.7392,
+  "longitude": -104.9903,
+  "utc": "2026-01-03T00:17:00Z",
+  "sun_azimuth": 245.085,
+  "sun_elevation": -5.9221,
+  "moon_azimuth": 64.6325,
+  "moon_elevation": 12.1722
+ },
+ {
+  "place": "Denver",
+  "latitude": 39.7392,
+  "longitude": -104.9903,
+  "utc": "2026-01-03T05:17:00Z",
+  "sun_azimuth": 298.6815,
+  "sun_elevation": -61.6925,
+  "moon_azimuth": 114.0744,
+  "moon_elevation": 66.0892
+ },
+ {
+  "place": "Denver",
+  "latitude": 39.7392,
+  "longitude": -104.9903,
+  "utc": "2026-01-03T10:17:00Z",
+  "sun_azimuth": 82.1007,
+  "sun_elevation": -46.116,
+  "moon_azimuth": 266.9626,
+  "moon_elevation": 48.1896
+ },
+ {
+  "place": "Denver",
+  "latitude": 39.7392,
+  "longitude": -104.9903,
+  "utc": "2026-01-03T15:17:00Z",
+  "sun_azimuth": 128.7514,
+  "sun_elevation": 8.0394,
+  "moon_azimuth": 308.6422,
+  "moon_elevation": -3.9381
+ },
+ {
+  "place": "Denver",
+  "latitude": 39.7392,
+  "longitude": -104.9903,
+  "utc": "2026-01-03T20:17:00Z",
+  "sun_azimuth": 198.4661,
+  "sun_elevation": 25.2581,
+  "moon_azimuth": 10.9264,
+  "moon_elevation": -24.3986
+ },
+ {
+  "place": "Denver",
+  "latitude": 39.7392,
+  "longitude": -104.9903,
+  "utc": "2026-04-11T00:17:00Z",
+  "sun_azimuth": 269.3669,
+  "sun_elevation": 13.7186,
+  "moon_azimuth": 301.1271,
+  "moon_elevation": -63.8481
+ },
+ {
+  "place": "Denver",
+  "latitude": 39.7392,
+  "longitude": -104.9903,
+  "utc": "2026-04-11T05:17:00Z",
+  "sun_azimuth": 327.448,
+  "sun_elevation": -36.2507,
+  "moon_azimuth": 81.5346,
+  "moon_elevation": -46.7107
+ },
+ {
+  "place": "Denver",
+  "latitude": 39.7392,
+  "longitude": -104.9903,
+  "utc": "2026-04-11T10:17:00Z",
+  "sun_azimuth": 54.7754,
+  "sun_elevation": -23.9369,
+  "moon_azimuth": 126.1619,
+  "moon_elevation": 6.3701
+ },
+ {
+  "place": "Denver",
+  "latitude": 39.7392,
+  "longitude": -104.9903,
+  "utc": "2026-04-11T15:17:00Z",
+  "sun_azimuth": 106.3449,
+  "sun_elevation": 31.3089,
+  "moon_azimuth": 193.8982,
+  "moon_elevation": 27.4145
+ },
+ {
+  "place": "Denver",
+  "latitude": 39.7392,
+  "longitude": -104.9903,
+  "utc": "2026-04-11T20:17:00Z",
+  "sun_azimuth": 213.7085,
+  "sun_elevation": 54.4773,
+  "moon_azimuth": 251.8631,
+  "moon_elevation": -10.3102
+ },
+ {
+  "place": "Denver",
+  "latitude": 39.7392,
+  "longitude": -104.9903,
+  "utc": "2026-07-22T00:17:00Z",
+  "sun_azimuth": 278.5984,
+  "sun_elevation": 22.0991,
+  "moon_azimuth": 166.0501,
+  "moon_elevation": 30.4976
+ },
+ {
+  "place": "Denver",
+  "latitude": 39.7392,
+  "longitude": -104.9903,
+  "utc": "2026-07-22T05:17:00Z",
+  "sun_azimuth": 331.646,
+  "sun_elevation": -24.7873,
+  "moon_azimuth": 236.327,
+  "moon_elevation": 8.0797
+ },
+ {
+  "place": "Denver",
+  "latitude": 39.7392,
+  "longitude": -104.9903,
+  "utc": "2026-07-22T10:17:00Z",
+  "sun_azimuth": 45.9776,
+  "sun_elevation": -15.3823,
+  "moon_azimuth": 282.4059,
+  "moon_elevation": -45.7254
+ },
+ {
+  "place": "Denver",
+  "latitude": 39.7392,
+  "longitude": -104.9903,
+  "utc": "2026-07-22T15:17:00Z",
+  "sun_azimuth": 94.217,
+  "sun_elevation": 37.571,
+  "moon_azimuth": 56.2524,
+  "moon_elevation": -61.288
+ },
+ {
+  "place": "Denver",
+  "latitude": 39.7392,
+  "longitude": -104.9903,
+  "utc": "2026-07-22T20:17:00Z",
+  "sun_azimuth": 222.7865,
+  "sun_elevation": 65.2498,
+  "moon_azimuth": 111.6283,
+  "moon_elevation": -8.3267
+ },
+ {
+  "place": "Denver",
+  "latitude": 39.7392,
+  "longitude": -104.9903,
+  "utc": "2026-10-05T00:17:00Z",
+  "sun_azimuth": 261.3711,
+  "sun_elevation": 3.0428,
+  "moon_azimuth": 329.5446,
+  "moon_elevation": -22.5307
+ },
+ {
+  "place": "Denver",
+  "latitude": 39.7392,
+  "longitude": -104.9903,
+  "utc": "2026-10-05T05:17:00Z",
+  "sun_azimuth": 323.5118,
+  "sun_elevation": -49.3738,
+  "moon_azimuth": 40.3598,
+  "moon_elevation": -18.4622
+ },
+ {
+  "place": "Denver",
+  "latitude": 39.7392,
+  "longitude": -104.9903,
+  "utc": "2026-10-05T10:17:00Z",
+  "sun_azimuth": 67.4802,
+  "sun_elevation": -31.5937,
+  "moon_azimuth": 88.1359,
+  "moon_elevation": 30.1588
+ },
+ {
+  "place": "Denver",
+  "latitude": 39.7392,
+  "longitude": -104.9903,
+  "utc": "2026-10-05T15:17:00Z",
+  "sun_azimuth": 119.5715,
+  "sun_elevation": 24.0933,
+  "moon_azimuth": 196.3833,
+  "moon_elevation": 68.7725
+ },
+ {
+  "place": "Denver",
+  "latitude": 39.7392,
+  "longitude": -104.9903,
+  "utc": "2026-10-05T20:17:00Z",
+  "sun_azimuth": 209.8109,
+  "sun_elevation": 40.8309,
+  "moon_azimuth": 277.5258,
+  "moon_elevation": 19.4912
+ },
+ {
+  "place": "Denver",
+  "latitude": 39.7392,
+  "longitude": -104.9903,
+  "utc": "2026-11-23T00:17:00Z",
+  "sun_azimuth": 249.7615,
+  "sun_elevation": -7.4763,
+  "moon_azimuth": 85.311,
+  "moon_elevation": 23.7252
+ },
+ {
+  "place": "Denver",
+  "latitude": 39.7392,
+  "longitude": -104.9903,
+  "utc": "2026-11-23T05:17:00Z",
+  "sun_azimuth": 308.8901,
+  "sun_elevation": -62.7767,
+  "moon_azimuth": 177.1283,
+  "moon_elevation": 69.8218
+ },
+ {
+  "place": "Denver",
+  "latitude": 39.7392,
+  "longitude": -104.9903,
+  "utc": "2026-11-23T10:17:00Z",
+  "sun_azimuth": 82.6929,
+  "sun_elevation": -41.2874,
+  "moon_azimuth": 275.2458,
+  "moon_elevation": 26.5521
+ },
+ {
+  "place": "Denver",
+  "latitude": 39.7392,
+  "longitude": -104.9903,
+  "utc": "2026-11-23T15:17:00Z",
+  "sun_azimuth": 130.5301,
+  "sun_elevation": 12.5343,
+  "moon_azimuth": 323.8461,
+  "moon_elevation": -20.4038
+ },
+ {
+  "place": "Denver",
+  "latitude": 39.7392,
+  "longitude": -104.9903,
+  "utc": "2026-11-23T20:17:00Z",
+  "sun_azimuth": 203.6938,
+  "sun_elevation": 26.1863,
+  "moon_azimuth": 34.3024,
+  "moon_elevation": -20.3484
+ },
+ {
+  "place": "Greenwich",
+  "latitude": 51.4769,
+  "longitude": 0.0,
+  "utc": "2026-01-03T00:17:00Z",
+  "sun_azimuth": 6.1089,
+  "sun_elevation": -61.2579,
+  "moon_azimuth": 199.4911,
+  "moon_elevation": 64.9332
+ },
+ {
+  "place": "Greenwich",
+  "latitude": 51.4769,
+  "longitude": 0.0,
+  "utc": "2026-01-03T05:17:00Z",
+  "sun_azimuth": 95.9223,
+  "sun_elevation": -24.9135,
+  "moon_azimuth": 281.3532,
+  "moon_elevation": 25.8009
+ },
+ {
+  "place": "Greenwich",
+  "latitude": 51.4769,
+  "longitude": 0.0,
+  "utc": "2026-01-03T10:17:00Z",
+  "sun_azimuth": 154.7866,
+  "sun_elevation": 12.064,
+  "moon_azimuth": 335.4866,
+  "moon_elevation": -8.838
+ },
+ {
+  "place": "Greenwich",
+  "latitude": 51.4769,
+  "longitude": 0.0,
+  "utc": "2026-01-03T15:17:00Z",
+  "sun_azimuth": 223.5215,
+  "sun_elevation": 4.6162,
+  "moon_azimuth": 38.7283,
+  "moon_elevation": -3.8225
+ },
+ {
+  "place": "Greenwich",
+  "latitude": 51.4769,
+  "longitude": 0.0,
+  "utc": "2026-01-03T20:17:00Z",
+  "sun_azimuth": 281.197,
+  "sun_elevation": -38.0397,
+  "moon_azimuth": 92.6409,
+  "moon_elevation": 35.2779
+ },
+ {
+  "place": "Greenwich",
+  "latitude": 51.4769,
+  "longitude": 0.0,
+  "utc": "2026-04-11T00:17:00Z",
+  "sun_azimuth": 4.5413,
+  "sun_elevation": -30.1837,
+  "moon_azimuth": 97.8726,
+  "moon_elevation": -24.6656
+ },
+ {
+  "place": "Greenwich",
+  "latitude": 51.4769,
+  "longitude": 0.0,
+  "utc": "2026-04-11T05:17:00Z",
+  "sun_azimuth": 76.2248,
+  "sun_elevation": -0.2658,
+  "moon_azimuth": 154.497,
+  "moon_elevation": 11.4355
+ },
+ {
+  "place": "Greenwich",
+  "latitude": 51.4769,
+  "longitude": 0.0,
+  "utc": "2026-04-11T10:17:00Z",
+  "sun_azimuth": 144.3441,
+  "sun_elevation": 41.9117,
+  "moon_azimuth": 221.8704,
+  "moon_elevation": 5.8067
+ },
+ {
+  "place": "Greenwich",
+  "latitude": 51.4769,
+  "longitude": 0.0,
+  "utc": "2026-04-11T15:17:00Z",
+  "sun_azimuth": 240.882,
+  "sun_elevation": 31.2884,
+  "moon_azimuth": 278.4819,
+  "moon_elevation": -34.2606
+ },
+ {
+  "place": "Greenwich",
+  "latitude": 51.4769,
+  "longitude": 0.0,
+  "utc": "2026-04-11T20:17:00Z",
+  "sun_azimuth": 302.663,
+  "sun_elevation": -13.1984,
+  "moon_azimuth": 18.8199,
+  "moon_elevation": -57.8347
+ },
+ {
+  "place": "Greenwich",
+  "latitude": 51.4769,
+  "longitude": 0.0,
+  "utc": "2026-07-22T00:17:00Z",
+  "sun_azimuth": 2.5956,
+  "sun_elevation": -18.1813,
+  "moon_azimuth": 260.5704,
+  "moon_elevation": -16.2484
+ },
+ {
+  "place": "Greenwich",
+  "latitude": 51.4769,
+  "longitude": 0.0,
+  "utc": "2026-07-22T05:17:00Z",
+  "sun_azimuth": 67.851,
+  "sun_elevation": 8.381,
+  "moon_azimuth": 334.921,
+  "moon_elevation": -55.7634
+ },
+ {
+  "place": "Greenwich",
+  "latitude": 51.4769,
+  "longitude": 0.0,
+  "utc": "2026-07-22T10:17:00Z",
+  "sun_azimuth": 135.34,
+  "sun_elevation": 52.1319,
+  "moon_azimuth": 77.1545,
+  "moon_elevation": -35.8037
+ },
+ {
+  "place": "Greenwich",
+  "latitude": 51.4769,
+  "longitude": 0.0,
+  "utc": "2026-07-22T15:17:00Z",
+  "sun_azimuth": 248.0065,
+  "sun_elevation": 41.5985,
+  "moon_azimuth": 134.3509,
+  "moon_elevation": 5.1593
+ },
+ {
+  "place": "Greenwich",
+  "latitude": 51.4769,
+  "longitude": 0.0,
+  "utc": "2026-07-22T20:17:00Z",
+  "sun_azimuth": 307.6667,
+  "sun_elevation": -2.6305,
+  "moon_azimuth": 202.3385,
+  "moon_elevation": 13.4986
+ },
+ {
+  "place": "Greenwich",
+  "latitude": 51.4769,
+  "longitude": 0.0,
+  "utc": "2026-10-05T00:17:00Z",
+  "sun_azimuth": 9.6824,
+  "sun_elevation": -42.811,
+  "moon_azimuth": 64.1103,
+  "moon_elevation": 7.2162
+ },
+ {
+  "place": "Greenwich",
+  "latitude": 51.4769,
+  "longitude": 0.0,
+  "utc": "2026-10-05T05:17:00Z",
+  "sun_azimuth": 86.792,
+  "sun_elevation": -8.6106,
+  "moon_azimuth": 126.5056,
+  "moon_elevation": 49.7317
+ },
+ {
+  "place": "Greenwich",
+  "latitude": 51.4769,
+  "longitude": 0.0,
+  "utc": "2026-10-05T10:17:00Z",
+  "sun_azimuth": 153.3333,
+  "sun_elevation": 30.4055,
+  "moon_azimuth": 239.0258,
+  "moon_elevation": 46.1114
+ },
+ {
+  "place": "Greenwich",
+  "latitude": 51.4769,
+  "longitude": 0.0,
+  "utc": "2026-10-05T15:17:00Z",
+  "sun_azimuth": 235.9651,
+  "sun_elevation": 18.29,
+  "moon_azimuth": 298.3272,
+  "moon_elevation": 1.9016
+ },
+ {
+  "place": "Greenwich",
+  "latitude": 51.4769,
+  "longitude": 0.0,
+  "utc": "2026-10-05T20:17:00Z",
+  "sun_azimuth": 297.7065,
+  "sun_elevation": -26.2872,
+  "moon_azimuth": 3.4778,
+  "moon_elevation": -20.8686
+ },
+ {
+  "place": "Greenwich",
+  "latitude": 51.4769,
+  "longitude": 0.0,
+  "utc": "2026-11-23T00:17:00Z",
+  "sun_azimuth": 13.7883,
+  "sun_elevation": -58.2464,
+  "moon_azimuth": 229.3446,
+  "moon_elevation": 48.296
+ },
+ {
+  "place": "Greenwich",
+  "latitude": 51.4769,
+  "longitude": 0.0,
+  "utc": "2026-11-23T05:17:00Z",
+  "sun_azimuth": 97.5301,
+  "sun_elevation": -20.2728,
+  "moon_azimuth": 293.1255,
+  "moon_elevation": 6.2105
+ },
+ {
+  "place": "Greenwich",
+  "latitude": 51.4769,
+  "longitude": 0.0,
+  "utc": "2026-11-23T10:17:00Z",
+  "sun_azimuth": 158.2957,
+  "sun_elevation": 15.5121,
+  "moon_azimuth": 356.168,
+  "moon_elevation": -18.4719
+ },
+ {
+  "place": "Greenwich",
+  "latitude": 51.4769,
+  "longitude": 0.0,
+  "utc": "2026-11-23T15:17:00Z",
+  "sun_azimuth": 228.3606,
+  "sun_elevation": 4.649,
+  "moon_azimuth": 59.7694,
+  "moon_elevation": 3.3768
+ },
+ {
+  "place": "Greenwich",
+  "latitude": 51.4769,
+  "longitude": 0.0,
+  "utc": "2026-11-23T20:17:00Z",
+  "sun_azimuth": 287.1995,
+  "sun_elevation": -39.0413,
+  "moon_azimuth": 117.9522,
+  "moon_elevation": 47.3724
+ },
+ {
+  "place": "Sydney",
+  "latitude": -33.8688,
+  "longitude": 151.2093,
+  "utc": "2026-01-03T00:17:00Z",
+  "sun_azimuth": 70.5238,
+  "sun_elevation": 65.0069,
+  "moon_azimuth": 255.5701,
+  "moon_elevation": -72.3333
+ },
+ {
+  "place": "Sydney",
+  "latitude": -33.8688,
+  "longitude": 151.2093,
+  "utc": "2026-01-03T05:17:00Z",
+  "sun_azimuth": 271.0225,
+  "sun_elevation": 45.6011,
+  "moon_azimuth": 83.6162,
+  "moon_elevation": -46.0042
+ },
+ {
+  "place": "Sydney",
+  "latitude": -33.8688,
+  "longitude": 151.2093,
+  "utc": "2026-01-03T10:17:00Z",
+  "sun_azimuth": 231.218,
+  "sun_elevation": -12.4704,
+  "moon_azimuth": 48.6035,
+  "moon_elevation": 8.0507
+ },
+ {
+  "place": "Sydney",
+  "latitude": -33.8688,
+  "longitude": 151.2093,
+  "utc": "2026-01-03T15:17:00Z",
+  "sun_azimuth": 159.2776,
+  "sun_elevation": -30.4454,
+  "moon_azimuth": 344.299,
+  "moon_elevation": 26.9292
+ },
+ {
+  "place": "Sydney",
+  "latitude": -33.8688,
+  "longitude": 151.2093,
+  "utc": "2026-01-03T20:17:00Z",
+  "sun_azimuth": 107.0874,
+  "sun_elevation": 15.8372,
+  "moon_azimuth": 293.2864,
+  "moon_elevation": -13.0654
+ },
+ {
+  "place": "Sydney",
+  "latitude": -33.8688,
+  "longitude": 151.2093,
+  "utc": "2026-04-11T00:17:00Z",
+  "sun_azimuth": 33.8453,
+  "sun_elevation": 41.7494,
+  "moon_azimuth": 269.2741,
+  "moon_elevation": 43.2593
+ },
+ {
+  "place": "Sydney",
+  "latitude": -33.8688,
+  "longitude": 151.2093,
+  "utc": "2026-04-11T05:17:00Z",
+  "sun_azimuth": 301.9058,
+  "sun_elevation": 26.4455,
+  "moon_azimuth": 231.6009,
+  "moon_elevation": -13.472
+ },
+ {
+  "place": "Sydney",
+  "latitude": -33.8688,
+  "longitude": 151.2093,
+  "utc": "2026-04-11T10:17:00Z",
+  "sun_azimuth": 256.3327,
+  "sun_elevation": -33.7057,
+  "moon_azimuth": 161.5913,
+  "moon_elevation": -33.017
+ },
+ {
+  "place": "Sydney",
+  "latitude": -33.8688,
+  "longitude": 151.2093,
+  "utc": "2026-04-11T15:17:00Z",
+  "sun_azimuth": 139.1243,
+  "sun_elevation": -58.5162,
+  "moon_azimuth": 107.8769,
+  "moon_elevation": 9.9366
+ },
+ {
+  "place": "Sydney",
+  "latitude": -33.8688,
+  "longitude": 151.2093,
+  "utc": "2026-04-11T20:17:00Z",
+  "sun_azimuth": 79.9985,
+  "sun_elevation": -0.4614,
+  "moon_azimuth": 53.6543,
+  "moon_elevation": 68.3698
+ },
+ {
+  "place": "Sydney",
+  "latitude": -33.8688,
+  "longitude": 151.2093,
+  "utc": "2026-07-22T00:17:00Z",
+  "sun_azimuth": 28.6359,
+  "sun_elevation": 30.3643,
+  "moon_azimuth": 119.8079,
+  "moon_elevation": -11.2579
+ },
+ {
+  "place": "Sydney",
+  "latitude": -33.8688,
+  "longitude": 151.2093,
+  "utc": "2026-07-22T05:17:00Z",
+  "sun_azimuth": 311.8117,
+  "sun_elevation": 18.6399,
+  "moon_azimuth": 79.9642,
+  "moon_elevation": 47.8669
+ },
+ {
+  "place": "Sydney",
+  "latitude": -33.8688,
+  "longitude": 151.2093,
+  "utc": "2026-07-22T10:17:00Z",
+  "sun_azimuth": 269.6959,
+  "sun_elevation": -38.7919,
+  "moon_azimuth": 291.3579,
+  "moon_elevation": 60.0505
+ },
+ {
+  "place": "Sydney",
+  "latitude": -33.8688,
+  "longitude": 151.2093,
+  "utc": "2026-07-22T15:17:00Z",
+  "sun_azimuth": 124.5474,
+  "sun_elevation": -68.4173,
+  "moon_azimuth": 246.5417,
+  "moon_elevation": 1.1462
+ },
+ {
+  "place": "Sydney",
+  "latitude": -33.8688,
+  "longitude": 151.2093,
+  "utc": "2026-07-22T20:17:00Z",
+  "sun_azimuth": 71.093,
+  "sun_elevation": -8.0386,
+  "moon_azimuth": 186.2357,
+  "moon_elevation": -35.2946
+ },
+ {
+  "place": "Sydney",
+  "latitude": -33.8688,
+  "longitude": 151.2093,
+  "utc": "2026-10-05T00:17:00Z",
+  "sun_azimuth": 39.3715,
+  "sun_elevation": 54.5178,
+  "moon_azimuth": 315.7049,
+  "moon_elevation": 18.0608
+ },
+ {
+  "place": "Sydney",
+  "latitude": -33.8688,
+  "longitude": 151.2093,
+  "utc": "2026-10-05T05:17:00Z",
+  "sun_azimuth": 288.2118,
+  "sun_elevation": 32.6922,
+  "moon_azimuth": 274.325,
+  "moon_elevation": -35.1414
+ },
+ {
+  "place": "Sydney",
+  "latitude": -33.8688,
+  "longitude": 151.2093,
+  "utc": "2026-10-05T10:17:00Z",
+  "sun_azimuth": 242.066,
+  "sun_elevation": -27.8126,
+  "moon_azimuth": 143.7992,
+  "moon_elevation": -74.2404
+ },
+ {
+  "place": "Sydney",
+  "latitude": -33.8688,
+  "longitude": 151.2093,
+  "utc": "2026-10-05T15:17:00Z",
+  "sun_azimuth": 145.7615,
+  "sun_elevation": -45.3849,
+  "moon_azimuth": 77.4769,
+  "moon_elevation": -17.8458
+ },
+ {
+  "place": "Sydney",
+  "latitude": -33.8688,
+  "longitude": 151.2093,
+  "utc": "2026-10-05T20:17:00Z",
+  "sun_azimuth": 89.4853,
+  "sun_elevation": 9.7259,
+  "moon_azimuth": 28.7123,
+  "moon_elevation": 31.497
+ },
+ {
+  "place": "Sydney",
+  "latitude": -33.8688,
+  "longitude": 151.2093,
+  "utc": "2026-11-23T00:17:00Z",
+  "sun_azimuth": 59.4176,
+  "sun_elevation": 66.9022,
+  "moon_azimuth": 169.2223,
+  "moon_elevation": -75.0332
+ },
+ {
+  "place": "Sydney",
+  "latitude": -33.8688,
+  "longitude": 151.2093,
+  "utc": "2026-11-23T05:17:00Z",
+  "sun_azimuth": 271.4664,
+  "sun_elevation": 40.7394,
+  "moon_azimuth": 80.7069,
+  "moon_elevation": -23.8546
+ },
+ {
+  "place": "Sydney",
+  "latitude": -33.8688,
+  "longitude": 151.2093,
+  "utc": "2026-11-23T10:17:00Z",
+  "sun_azimuth": 229.7885,
+  "sun_elevation": -17.1168,
+  "moon_azimuth": 34.4955,
+  "moon_elevation": 26.0821
+ },
+ {
+  "place": "Sydney",
+  "latitude": -33.8688,
+  "longitude": 151.2093,
+  "utc": "2026-11-23T15:17:00Z",
+  "sun_azimuth": 153.721,
+  "sun_elevation": -31.1424,
+  "moon_azimuth": 320.2904,
+  "moon_elevation": 21.9107
+ },
+ {
+  "place": "Sydney",
+  "latitude": -33.8688,
+  "longitude": 151.2093,
+  "utc": "2026-11-23T20:17:00Z",
+  "sun_azimuth": 102.7912,
+  "sun_elevation": 18.3225,
+  "moon_azimuth": 278.8387,
+  "moon_elevation": -30.5278
+ },
+ {
+  "place": "Quito",
+  "latitude": -0.1807,
+  "longitude": -78.4678,
+  "utc": "2026-01-03T00:17:00Z",
+  "sun_azimuth": 246.4294,
+  "sun_elevation": -13.4689,
+  "moon_azimuth": 60.5674,
+  "moon_elevation": 17.0608
+ },
+ {
+  "place": "Quito",
+  "latitude": -0.1807,
+  "longitude": -78.4678,
+  "utc": "2026-01-03T05:17:00Z",
+  "sun_azimuth": 180.7278,
+  "sun_elevation": -66.9991,
+  "moon_azimuth": 355.6151,
+  "moon_elevation": 61.7943
+ },
+ {
+  "place": "Quito",
+  "latitude": -0.1807,
+  "longitude": -78.4678,
+  "utc": "2026-01-03T10:17:00Z",
+  "sun_azimuth": 113.5913,
+  "sun_elevation": -14.0387,
+  "moon_azimuth": 298.0015,
+  "moon_elevation": 13.1016
+ },
+ {
+  "place": "Quito",
+  "latitude": -0.1807,
+  "longitude": -78.4678,
+  "utc": "2026-01-03T15:17:00Z",
+  "sun_azimuth": 129.5395,
+  "sun_elevation": 52.8263,
+  "moon_azimuth": 311.4999,
+  "moon_elevation": -48.5414
+ },
+ {
+  "place": "Quito",
+  "latitude": -0.1807,
+  "longitude": -78.4678,
+  "utc": "2026-01-03T20:17:00Z",
+  "sun_azimuth": 239.2898,
+  "sun_elevation": 41.1143,
+  "moon_azimuth": 51.6038,
+  "moon_elevation": -46.18
+ },
+ {
+  "place": "Quito",
+  "latitude": -0.1807,
+  "longitude": -78.4678,
+  "utc": "2026-04-11T00:17:00Z",
+  "sun_azimuth": 278.5011,
+  "sun_elevation": -15.3629,
+  "moon_azimuth": 175.5828,
+  "moon_elevation": -66.8929
+ },
+ {
+  "place": "Quito",
+  "latitude": -0.1807,
+  "longitude": -78.4678,
+  "utc": "2026-04-11T05:17:00Z",
+  "sun_azimuth": 3.5705,
+  "sun_elevation": -81.8449,
+  "moon_azimuth": 113.2631,
+  "moon_elevation": -15.1544
+ },
+ {
+  "place": "Quito",
+  "latitude": -0.1807,
+  "longitude": -78.4678,
+  "utc": "2026-04-11T10:17:00Z",
+  "sun_azimuth": 81.3777,
+  "sun_elevation": -14.3458,
+  "moon_azimuth": 125.9264,
+  "moon_elevation": 50.7543
+ },
+ {
+  "place": "Quito",
+  "latitude": -0.1807,
+  "longitude": -78.4678,
+  "utc": "2026-04-11T15:17:00Z",
+  "sun_azimuth": 72.8563,
+  "sun_elevation": 59.3959,
+  "moon_azimuth": 239.3657,
+  "moon_elevation": 45.5145
+ },
+ {
+  "place": "Quito",
+  "latitude": -0.1807,
+  "longitude": -78.4678,
+  "utc": "2026-04-11T20:17:00Z",
+  "sun_azimuth": 282.0614,
+  "sun_elevation": 43.7871,
+  "moon_azimuth": 248.5693,
+  "moon_elevation": -21.61
+ },
+ {
+  "place": "Quito",
+  "latitude": -0.1807,
+  "longitude": -78.4678,
+  "utc": "2026-07-22T00:17:00Z",
+  "sun_azimuth": 290.8493,
+  "sun_elevation": -13.3316,
+  "moon_azimuth": 217.3054,
+  "moon_elevation": 67.2646
+ },
+ {
+  "place": "Quito",
+  "latitude": -0.1807,
+  "longitude": -78.4678,
+  "utc": "2026-07-22T05:17:00Z",
+  "sun_azimuth": 357.7057,
+  "sun_elevation": -69.8991,
+  "moon_azimuth": 251.2392,
+  "moon_elevation": 2.2203
+ },
+ {
+  "place": "Quito",
+  "latitude": -0.1807,
+  "longitude": -78.4678,
+  "utc": "2026-07-22T10:17:00Z",
+  "sun_azimuth": 69.0905,
+  "sun_elevation": -14.9092,
+  "moon_azimuth": 224.2786,
+  "moon_elevation": -62.1715
+ },
+ {
+  "place": "Quito",
+  "latitude": -0.1807,
+  "longitude": -78.4678,
+  "utc": "2026-07-22T15:17:00Z",
+  "sun_azimuth": 54.1627,
+  "sun_elevation": 53.5854,
+  "moon_azimuth": 115.4602,
+  "moon_elevation": -35.7487
+ },
+ {
+  "place": "Quito",
+  "latitude": -0.1807,
+  "longitude": -78.4678,
+  "utc": "2026-07-22T20:17:00Z",
+  "sun_azimuth": 297.9114,
+  "sun_elevation": 42.2592,
+  "moon_azimuth": 115.3317,
+  "moon_elevation": 31.4261
+ },
+ {
+  "place": "Quito",
+  "latitude": -0.1807,
+  "longitude": -78.4678,
+  "utc": "2026-10-05T00:17:00Z",
+  "sun_azimuth": 265.0225,
+  "sun_elevation": -18.5662,
+  "moon_azimuth": 350.0414,
+  "moon_elevation": -67.8228
+ },
+ {
+  "place": "Quito",
+  "latitude": -0.1807,
+  "longitude": -78.4678,
+  "utc": "2026-10-05T05:17:00Z",
+  "sun_azimuth": 143.4438,
+  "sun_elevation": -83.8703,
+  "moon_azimuth": 67.0831,
+  "moon_elevation": -21.2967
+ },
+ {
+  "place": "Quito",
+  "latitude": -0.1807,
+  "longitude": -78.4678,
+  "utc": "2026-10-05T10:17:00Z",
+  "sun_azimuth": 94.9516,
+  "sun_elevation": -11.2715,
+  "moon_azimuth": 59.4297,
+  "moon_elevation": 45.3605
+ },
+ {
+  "place": "Quito",
+  "latitude": -0.1807,
+  "longitude": -78.4678,
+  "utc": "2026-10-05T15:17:00Z",
+  "sun_azimuth": 100.5957,
+  "sun_elevation": 63.3025,
+  "moon_azimuth": 303.5357,
+  "moon_elevation": 51.8136
+ },
+ {
+  "place": "Quito",
+  "latitude": -0.1807,
+  "longitude": -78.4678,
+  "utc": "2026-10-05T20:17:00Z",
+  "sun_azimuth": 263.5405,
+  "sun_elevation": 41.1231,
+  "moon_azimuth": 289.0619,
+  "moon_elevation": -15.1923
+ },
+ {
+  "place": "Quito",
+  "latitude": -0.1807,
+  "longitude": -78.4678,
+  "utc": "2026-11-23T00:17:00Z",
+  "sun_azimuth": 248.5553,
+  "sun_elevation": -17.9185,
+  "moon_azimuth": 64.6918,
+  "moon_elevation": 39.6128
+ },
+ {
+  "place": "Quito",
+  "latitude": -0.1807,
+  "longitude": -78.4678,
+  "utc": "2026-11-23T05:17:00Z",
+  "sun_azimuth": 168.9074,
+  "sun_elevation": -69.0703,
+  "moon_azimuth": 310.3278,
+  "moon_elevation": 57.4117
+ },
+ {
+  "place": "Quito",
+  "latitude": -0.1807,
+  "longitude": -78.4678,
+  "utc": "2026-11-23T10:17:00Z",
+  "sun_azimuth": 110.7521,
+  "sun_elevation": -10.0647,
+  "moon_azimuth": 291.0663,
+  "moon_elevation": -8.1722
+ },
+ {
+  "place": "Quito",
+  "latitude": -0.1807,
+  "longitude": -78.4678,
+  "utc": "2026-11-23T15:17:00Z",
+  "sun_azimuth": 130.3129,
+  "sun_elevation": 57.6297,
+  "moon_azimuth": 335.8093,
+  "moon_elevation": -66.5064
+ },
+ {
+  "place": "Quito",
+  "latitude": -0.1807,
+  "longitude": -78.4678,
+  "utc": "2026-11-23T20:17:00Z",
+  "sun_azimuth": 243.863,
+  "sun_elevation": 37.8593,
+  "moon_azimuth": 64.6183,
+  "moon_elevation": -26.8825
+ },
+ {
+  "place": "Tromso",
+  "latitude": 69.6492,
+  "longitude": 18.9553,
+  "utc": "2026-01-03T00:17:00Z",
+  "sun_azimuth": 27.5626,
+  "sun_elevation": -41.3622,
+  "moon_azimuth": 216.0742,
+  "moon_elevation": 44.4201
+ },
+ {
+  "place": "Tromso",
+  "latitude": 69.6492,
+  "longitude": 18.9553,
+  "utc": "2026-01-03T05:17:00Z",
+  "sun_azimuth": 104.8146,
+  "sun_elevation": -18.9022,
+  "moon_azimuth": 288.984,
+  "moon_elevation": 21.4106
+ },
+ {
+  "place": "Tromso",
+  "latitude": 69.6492,
+  "longitude": 18.9553,
+  "utc": "2026-01-03T10:17:00Z",
+  "sun_azimuth": 172.7045,
+  "sun_elevation": -2.6253,
+  "moon_azimuth": 352.3547,
+  "moon_elevation": 5.8862
+ },
+ {
+  "place": "Tromso",
+  "latitude": 69.6492,
+  "longitude": 18.9553,
+  "utc": "2026-01-03T15:17:00Z",
+  "sun_azimuth": 240.9588,
+  "sun_elevation": -13.774,
+  "moon_azimuth": 56.302,
+  "moon_elevation": 15.2267
+ },
+ {
+  "place": "Tromso",
+  "latitude": 69.6492,
+  "longitude": 18.9553,
+  "utc": "2026-01-03T20:17:00Z",
+  "sun_azimuth": 313.972,
+  "sun_elevation": -37.9927,
+  "moon_azimuth": 125.023,
+  "moon_elevation": 38.4019
+ },
+ {
+  "place": "Tromso",
+  "latitude": 69.6492,
+  "longitude": 18.9553,
+  "utc": "2026-04-11T00:17:00Z",
+  "sun_azimuth": 23.0806,
+  "sun_elevation": -10.5217,
+  "moon_azimuth": 106.9748,
+  "moon_elevation": -19.3909
+ },
+ {
+  "place": "Tromso",
+  "latitude": 69.6492,
+  "longitude": 18.9553,
+  "utc": "2026-04-11T05:17:00Z",
+  "sun_azimuth": 94.5356,
+  "sun_elevation": 10.5524,
+  "moon_azimuth": 172.4962,
+  "moon_elevation": -3.2102
+ },
+ {
+  "place": "Tromso",
+  "latitude": 69.6492,
+  "longitude": 18.9553,
+  "utc": "2026-04-11T10:17:00Z",
+  "sun_azimuth": 172.0507,
+  "sun_elevation": 28.5755,
+  "moon_azimuth": 238.9836,
+  "moon_elevation": -12.82
+ },
+ {
+  "place": "Tromso",
+  "latitude": 69.6492,
+  "longitude": 18.9553,
+  "utc": "2026-04-11T15:17:00Z",
+  "sun_azimuth": 252.0664,
+  "sun_elevation": 15.4963,
+  "moon_azimuth": 309.0988,
+  "moon_elevation": -35.5634
+ },
+ {
+  "place": "Tromso",
+  "latitude": 69.6492,
+  "longitude": 18.9553,
+  "utc": "2026-04-11T20:17:00Z",
+  "sun_azimuth": 323.0598,
+  "sun_elevation": -7.7714,
+  "moon_azimuth": 35.6548,
+  "moon_elevation": -37.855
+ },
+ {
+  "place": "Tromso",
+  "latitude": 69.6492,
+  "longitude": 18.9553,
+  "utc": "2026-07-22T00:17:00Z",
+  "sun_azimuth": 20.1878,
+  "sun_elevation": 1.2643,
+  "moon_azimuth": 283.9506,
+  "moon_elevation": -24.8948
+ },
+ {
+  "place": "Tromso",
+  "latitude": 69.6492,
+  "longitude": 18.9553,
+  "utc": "2026-07-22T05:17:00Z",
+  "sun_azimuth": 88.7934,
+  "sun_elevation": 21.2302,
+  "moon_azimuth": 5.0892,
+  "moon_elevation": -39.7294
+ },
+ {
+  "place": "Tromso",
+  "latitude": 69.6492,
+  "longitude": 18.9553,
+  "utc": "2026-07-22T10:17:00Z",
+  "sun_azimuth": 169.6204,
+  "sun_elevation": 40.3083,
+  "moon_azimuth": 84.7933,
+  "moon_elevation": -23.7587
+ },
+ {
+  "place": "Tromso",
+  "latitude": 69.6492,
+  "longitude": 18.9553,
+  "utc": "2026-07-22T15:17:00Z",
+  "sun_azimuth": 255.0599,
+  "sun_elevation": 26.9481,
+  "moon_azimuth": 151.6411,
+  "moon_elevation": -3.635
+ },
+ {
+  "place": "Tromso",
+  "latitude": 69.6492,
+  "longitude": 18.9553,
+  "utc": "2026-07-22T20:17:00Z",
+  "sun_azimuth": 324.2129,
+  "sun_elevation": 3.841,
+  "moon_azimuth": 219.0043,
+  "moon_elevation": -6.7083
+ },
+ {
+  "place": "Tromso",
+  "latitude": 69.6492,
+  "longitude": 18.9553,
+  "utc": "2026-10-05T00:17:00Z",
+  "sun_azimuth": 28.365,
+  "sun_elevation": -22.8035,
+  "moon_azimuth": 84.9044,
+  "moon_elevation": 21.1357
+ },
+ {
+  "place": "Tromso",
+  "latitude": 69.6492,
+  "longitude": 18.9553,
+  "utc": "2026-10-05T05:17:00Z",
+  "sun_azimuth": 102.0259,
+  "sun_elevation": -0.6249,
+  "moon_azimuth": 162.0312,
+  "moon_elevation": 40.2962
+ },
+ {
+  "place": "Tromso",
+  "latitude": 69.6492,
+  "longitude": 18.9553,
+  "utc": "2026-10-05T10:17:00Z",
+  "sun_azimuth": 175.965,
+  "sun_elevation": 15.4802,
+  "moon_azimuth": 246.3927,
+  "moon_elevation": 29.3131
+ },
+ {
+  "place": "Tromso",
+  "latitude": 69.6492,
+  "longitude": 18.9553,
+  "utc": "2026-10-05T15:17:00Z",
+  "sun_azimuth": 250.594,
+  "sun_elevation": 1.8351,
+  "moon_azimuth": 313.5284,
+  "moon_elevation": 4.9151
+ },
+ {
+  "place": "Tromso",
+  "latitude": 69.6492,
+  "longitude": 18.9553,
+  "utc": "2026-10-05T20:17:00Z",
+  "sun_azimuth": 323.3166,
+  "sun_elevation": -21.6598,
+  "moon_azimuth": 21.187,
+  "moon_elevation": -1.399
+ },
+ {
+  "place": "Tromso",
+  "latitude": 69.6492,
+  "longitude": 18.9553,
+  "utc": "2026-11-23T00:17:00Z",
+  "sun_azimuth": 32.2957,
+  "sun_elevation": -38.0842,
+  "moon_azimuth": 238.4863,
+  "moon_elevation": 29.9173
+ },
+ {
+  "place": "Tromso",
+  "latitude": 69.6492,
+  "longitude": 18.9553,
+  "utc": "2026-11-23T05:17:00Z",
+  "sun_azimuth": 107.9805,
+  "sun_elevation": -15.0843,
+  "moon_azimuth": 307.1241,
+  "moon_elevation": 7.1648
+ },
+ {
+  "place": "Tromso",
+  "latitude": 69.6492,
+  "longitude": 18.9553,
+  "utc": "2026-11-23T10:17:00Z",
+  "sun_azimuth": 176.8248,
+  "sun_elevation": -0.069,
+  "moon_azimuth": 14.0332,
+  "moon_elevation": 0.2052
+ },
+ {
+  "place": "Tromso",
+  "latitude": 69.6492,
+  "longitude": 18.9553,
+  "utc": "2026-11-23T15:17:00Z",
+  "sun_azimuth": 245.8469,
+  "sun_elevation": -12.9676,
+  "moon_azimuth": 79.4137,
+  "moon_elevation": 18.4953
+ },
+ {
+  "place": "Tromso",
+  "latitude": 69.6492,
+  "longitude": 18.9553,
+  "utc": "2026-11-23T20:17:00Z",
+  "sun_azimuth": 319.8465,
+  "sun_elevation": -36.8605,
+  "moon_azimuth": 154.0102,
+  "moon_elevation": 40.7128
+ },
+ {
+  "place": "McMurdo",
+  "latitude": -77.8463,
+  "longitude": 166.6682,
+  "utc": "2026-01-03T00:17:00Z",
+  "sun_azimuth": 11.4031,
+  "sun_elevation": 34.779,
+  "moon_azimuth": 184.943,
+  "moon_elevation": -40.6726
+ },
+ {
+  "place": "McMurdo",
+  "latitude": -77.8463,
+  "longitude": 166.6682,
+  "utc": "2026-01-03T05:17:00Z",
+  "sun_azimuth": 289.8783,
+  "sun_elevation": 27.4929,
+  "moon_azimuth": 106.0561,
+  "moon_elevation": -32.3491
+ },
+ {
+  "place": "McMurdo",
+  "latitude": -77.8463,
+  "longitude": 166.6682,
+  "utc": "2026-01-03T10:17:00Z",
+  "sun_azimuth": 217.695,
+  "sun_elevation": 13.3276,
+  "moon_azimuth": 37.6476,
+  "moon_elevation": -18.5614
+ },
+ {
+  "place": "McMurdo",
+  "latitude": -77.8463,
+  "longitude": 166.6682,
+  "utc": "2026-01-03T15:17:00Z",
+  "sun_azimuth": 147.3824,
+  "sun_elevation": 12.6505,
+  "moon_azimuth": 331.3835,
+  "moon_elevation": -16.9395
+ },
+ {
+  "place": "McMurdo",
+  "latitude": -77.8463,
+  "longitude": 166.6682,
+  "utc": "2026-01-03T20:17:00Z",
+  "sun_azimuth": 75.5723,
+  "sun_elevation": 26.3427,
+  "moon_azimuth": 263.3177,
+  "moon_elevation": -28.902
+ },
+ {
+  "place": "McMurdo",
+  "latitude": -77.8463,
+  "longitude": 166.6682,
+  "utc": "2026-04-11T00:17:00Z",
+  "sun_azimuth": 9.2886,
+  "sun_elevation": 3.7482,
+  "moon_azimuth": 287.5313,
+  "moon_elevation": 26.6173
+ },
+ {
+  "place": "McMurdo",
+  "latitude": -77.8463,
+  "longitude": 166.6682,
+  "utc": "2026-04-11T05:17:00Z",
+  "sun_azimuth": 295.4671,
+  "sun_elevation": -3.1875,
+  "moon_azimuth": 217.9379,
+  "moon_elevation": 12.1194
+ },
+ {
+  "place": "McMurdo",
+  "latitude": -77.8463,
+  "longitude": 166.6682,
+  "utc": "2026-04-11T10:17:00Z",
+  "sun_azimuth": 221.1648,
+  "sun_elevation": -17.6906,
+  "moon_azimuth": 149.7077,
+  "moon_elevation": 10.342
+ },
+ {
+  "place": "McMurdo",
+  "latitude": -77.8463,
+  "longitude": 166.6682,
+  "utc": "2026-04-11T15:17:00Z",
+  "sun_azimuth": 142.5998,
+  "sun_elevation": -18.2547,
+  "moon_azimuth": 80.1026,
+  "moon_elevation": 22.5562
+ },
+ {
+  "place": "McMurdo",
+  "latitude": -77.8463,
+  "longitude": 166.6682,
+  "utc": "2026-04-11T20:17:00Z",
+  "sun_azimuth": 68.0503,
+  "sun_elevation": -4.1186,
+  "moon_azimuth": 2.9526,
+  "moon_elevation": 31.259
+ },
+ {
+  "place": "McMurdo",
+  "latitude": -77.8463,
+  "longitude": 166.6682,
+  "utc": "2026-07-22T00:17:00Z",
+  "sun_azimuth": 10.1386,
+  "sun_elevation": -8.3545,
+  "moon_azimuth": 104.36,
+  "moon_elevation": 14.2565
+ },
+ {
+  "place": "McMurdo",
+  "latitude": -77.8463,
+  "longitude": 166.6682,
+  "utc": "2026-07-22T05:17:00Z",
+  "sun_azimuth": 299.111,
+  "sun_elevation": -14.6543,
+  "moon_azimuth": 30.7905,
+  "moon_elevation": 28.536
+ },
+ {
+  "place": "McMurdo",
+  "latitude": -77.8463,
+  "longitude": 166.6682,
+  "utc": "2026-07-22T10:17:00Z",
+  "sun_azimuth": 224.5067,
+  "sun_elevation": -29.1918,
+  "moon_azimuth": 311.4939,
+  "moon_elevation": 27.2126
+ },
+ {
+  "place": "McMurdo",
+  "latitude": -77.8463,
+  "longitude": 166.6682,
+  "utc": "2026-07-22T15:17:00Z",
+  "sun_azimuth": 142.3497,
+  "sun_elevation": -30.0374,
+  "moon_azimuth": 239.3428,
+  "moon_elevation": 13.7157
+ },
+ {
+  "place": "McMurdo",
+  "latitude": -77.8463,
+  "longitude": 166.6682,
+  "utc": "2026-07-22T20:17:00Z",
+  "sun_azimuth": 67.025,
+  "sun_elevation": -15.7441,
+  "moon_azimuth": 170.6144,
+  "moon_elevation": 8.4477
+ },
+ {
+  "place": "McMurdo",
+  "latitude": -77.8463,
+  "longitude": 166.6682,
+  "utc": "2026-10-05T00:17:00Z",
+  "sun_azimuth": 6.4755,
+  "sun_elevation": 16.7376,
+  "moon_azimuth": 302.6344,
+  "moon_elevation": -17.0621
+ },
+ {
+  "place": "McMurdo",
+  "latitude": -77.8463,
+  "longitude": 166.6682,
+  "utc": "2026-10-05T05:17:00Z",
+  "sun_azimuth": 289.8268,
+  "sun_elevation": 9.0118,
+  "moon_azimuth": 231.1506,
+  "moon_elevation": -30.3233
+ },
+ {
+  "place": "McMurdo",
+  "latitude": -77.8463,
+  "longitude": 166.6682,
+  "utc": "2026-10-05T10:17:00Z",
+  "sun_azimuth": 216.2006,
+  "sun_elevation": -5.003,
+  "moon_azimuth": 151.8343,
+  "moon_elevation": -32.2142
+ },
+ {
+  "place": "McMurdo",
+  "latitude": -77.8463,
+  "longitude": 166.6682,
+  "utc": "2026-10-05T15:17:00Z",
+  "sun_azimuth": 141.1948,
+  "sun_elevation": -4.5856,
+  "moon_azimuth": 78.1981,
+  "moon_elevation": -18.389
+ },
+ {
+  "place": "McMurdo",
+  "latitude": -77.8463,
+  "longitude": 166.6682,
+  "utc": "2026-10-05T20:17:00Z",
+  "sun_azimuth": 67.6102,
+  "sun_elevation": 9.7652,
+  "moon_azimuth": 9.4307,
+  "moon_elevation": -7.4855
+ },
+ {
+  "place": "McMurdo",
+  "latitude": -77.8463,
+  "longitude": 166.6682,
+  "utc": "2026-11-23T00:17:00Z",
+  "sun_azimuth": 6.2734,
+  "sun_elevation": 32.3846,
+  "moon_azimuth": 159.7137,
+  "moon_elevation": -31.2027
+ },
+ {
+  "place": "McMurdo",
+  "latitude": -77.8463,
+  "longitude": 166.6682,
+  "utc": "2026-11-23T05:17:00Z",
+  "sun_azimuth": 285.9186,
+  "sun_elevation": 24.1695,
+  "moon_azimuth": 85.0331,
+  "moon_elevation": -20.2619
+ },
+ {
+  "place": "McMurdo",
+  "latitude": -77.8463,
+  "longitude": 166.6682,
+  "utc": "2026-11-23T10:17:00Z",
+  "sun_azimuth": 213.7629,
+  "sun_elevation": 10.379,
+  "moon_azimuth": 16.295,
+  "moon_elevation": -10.2599
+ },
+ {
+  "place": "McMurdo",
+  "latitude": -77.8463,
+  "longitude": 166.6682,
+  "utc": "2026-11-23T15:17:00Z",
+  "sun_azimuth": 142.805,
+  "sun_elevation": 10.8658,
+  "moon_azimuth": 308.3807,
+  "moon_elevation": -15.53
+ },
+ {
+  "place": "McMurdo",
+  "latitude": -77.8463,
+  "longitude": 166.6682,
+  "utc": "2026-11-23T20:17:00Z",
+  "sun_azimuth": 70.4505,
+  "sun_elevation": 25.0245,
+  "moon_azimuth": 238.096,
+  "moon_elevation": -30.5002
+ }
+]
